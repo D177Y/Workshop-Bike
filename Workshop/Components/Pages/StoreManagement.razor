@@ -1,9 +1,10 @@
 ﻿@rendermode InteractiveServer
 @page "/manage-stores"
+@using System
+@using System.Linq
 @using Workshop.Models
 @using Workshop.Services
 @inject WorkshopData Data
-@inject NavigationManager Nav
 
 <style>
     .store-card {
@@ -144,7 +145,7 @@
         <div class="form-section">
             <label>Days Open</label>
             <div>
-                @foreach (DayOfWeek day in Enum.GetValues(typeof(DayOfWeek)))
+                @foreach (var day in Enum.GetValues<DayOfWeek>())
                 {
                     <div class="day-checkbox">
                         <input type="checkbox"
@@ -401,4 +402,3 @@ else
         IsError = false;
     }
 }
-
