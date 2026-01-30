@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Workshop.Client/Workshop.Client.csproj" />
+  <Project Path="Workshop/Workshop.csproj" />
+</Solution>

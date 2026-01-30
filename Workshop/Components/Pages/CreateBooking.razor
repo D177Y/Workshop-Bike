@@ -1,0 +1,409 @@
+﻿@rendermode InteractiveServer
+@page "/create-booking"
+@using Workshop.Models
+@using Workshop.Services
+@using Syncfusion.Blazor.Calendars
+@inject WorkshopData Data
+@inject JobCatalogService Catalog
+@inject SchedulingService Scheduler
+@inject NavigationManager Nav
+
+<style>
+    .day-unavailable .e-day {
+        background: #fee !important;
+        color: #900 !important;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+
+    /* optional: make disabled days feel more "blocked" */
+    .e-disabled.day-unavailable .e-day {
+        opacity: 1 !important;
+        cursor: not-allowed !important;
+    }
+</style>
+
+<h3>Create booking</h3>
+
+<div style="display:grid; gap:12px; max-width:720px;">
+    <div>
+        <label>Store</label><br />
+        <select @bind="SelectedStoreId">
+            @foreach (var s in Data.Stores)
+            {
+                <option value="@s.Id">@s.Name</option>
+            }
+        </select>
+    </div>
+
+    <div>
+        <label>Mechanic</label><br />
+        <select @bind="SelectedMechanicId">
+            <option value="0">All</option>
+            @foreach (var m in MechanicsForSelectedStore)
+            {
+                <option value="@m.Id">@m.Name</option>
+            }
+        </select>
+    </div>
+
+    <div>
+        <label>Job</label><br />
+        <select @bind="SelectedJobId">
+            @foreach (var j in Catalog.Jobs)
+            {
+                <option value="@j.Id">@j.Name (@j.DefaultMinutes mins, £@j.BasePriceIncVat)</option>
+            }
+        </select>
+    </div>
+
+    <div>
+        <label>Add ons</label><br />
+        @foreach (var a in Catalog.AddOns)
+        {
+            <div>
+                <input type="checkbox"
+                       checked="@SelectedAddOns.Contains(a.Id)"
+                       @onchange="e => ToggleAddOn(a.Id, e)" />
+                <span>@a.Name</span>
+            </div>
+        }
+    </div>
+
+    <div>
+        <label>Earliest day</label><br />
+
+        <SfDatePicker TValue="DateTime ?"
+                      Value="EarliestDay"
+                      Format="dd/MM/yyyy"
+                      StrictMode="true"
+                      AllowEdit="false"
+                      Placeholder="Select a day">
+            <DatePickerEvents TValue="DateTime ?"
+                              ValueChange="@OnEarliestDayChanged"
+                              OnRenderDayCell="@OnCalendarRenderDayCell">
+            </DatePickerEvents>
+        </SfDatePicker>
+
+        <div style="font-size:12px; color:#666; margin-top:6px;">
+            We’ll always schedule the earliest available slot on the selected day.
+        </div>
+    </div>
+
+    <div style="padding:10px; border:1px solid #ddd;">
+        <div><b>Calculated</b></div>
+        <div>Minutes: @CalculatedMinutes</div>
+        <div>Price inc VAT: £@CalculatedPrice.ToString("0.00")</div>
+    </div>
+
+    <div>
+        <button @onclick="Create">Auto schedule</button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div style="padding:10px; border:1px solid #ddd;">
+            @Message
+        </div>
+    }
+</div>
+
+@code {
+    private int _selectedStoreId;
+    private string _selectedJobId = "SVC_BRONZE";
+    private int _selectedMechanicId = 0; // 0 = All
+
+    private readonly HashSet<string> SelectedAddOns = new(StringComparer.OrdinalIgnoreCase);
+
+    private DateTime? EarliestDay;
+    private string Message = "";
+
+    private int CalculatedMinutes;
+    private decimal CalculatedPrice;
+
+    // Days that cannot fit the selected job duration (for the month currently being rendered)
+    private readonly HashSet<DateTime> UnavailableDays = new();
+
+    private int SelectedStoreId
+    {
+        get => _selectedStoreId;
+        set
+        {
+            if (_selectedStoreId == value) return;
+            _selectedStoreId = value;
+
+            // If selected mechanic isn’t in this store, reset to All
+            var mechIds = MechanicsForSelectedStore.Select(m => m.Id).ToHashSet();
+            if (_selectedMechanicId != 0 && !mechIds.Contains(_selectedMechanicId))
+                _selectedMechanicId = 0;
+
+            Recalc();
+            SetDefaultDayIfNeeded();
+            RefreshMonthAvailability();
+            EnsureEarliestDayIsValid();
+        }
+    }
+
+    private int SelectedMechanicId
+    {
+        get => _selectedMechanicId;
+        set
+        {
+            if (_selectedMechanicId == value) return;
+            _selectedMechanicId = value;
+
+            RefreshMonthAvailability();
+            EnsureEarliestDayIsValid();
+        }
+    }
+
+    private string SelectedJobId
+    {
+        get => _selectedJobId;
+        set
+        {
+            if (_selectedJobId == value) return;
+            _selectedJobId = value;
+
+            Recalc();
+            RefreshMonthAvailability();
+            EnsureEarliestDayIsValid();
+        }
+    }
+
+    private IEnumerable<Mechanic> MechanicsForSelectedStore =>
+        Data.Mechanics.Where(m => m.StoreId == SelectedStoreId);
+
+    protected override void OnInitialized()
+    {
+        SelectedStoreId = Data.Stores.First().Id;
+
+        Recalc();
+        SetDefaultDayIfNeeded();
+        RefreshMonthAvailability();
+        EnsureEarliestDayIsValid();
+    }
+
+    private void SetDefaultDayIfNeeded()
+    {
+        if (EarliestDay.HasValue) return;
+
+        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
+        var now = DateTime.Now;
+
+        var todayOpen = now.Date.Add(store.OpenFrom);
+        var todayClose = now.Date.Add(store.OpenTo);
+
+        // Default to today unless we are already past closing time
+        EarliestDay = now > todayClose ? now.Date.AddDays(1) : now.Date;
+
+        // if today is before opening time, still fine because we schedule from opening time
+        _ = todayOpen;
+    }
+
+    private void ToggleAddOn(string id, ChangeEventArgs e)
+    {
+        var isChecked = e?.Value is bool b && b;
+
+        if (isChecked) SelectedAddOns.Add(id);
+        else SelectedAddOns.Remove(id);
+
+        Recalc();
+        RefreshMonthAvailability();
+        EnsureEarliestDayIsValid();
+    }
+
+    private void Recalc()
+    {
+        var (mins, price, _) = Catalog.PriceAndTime(SelectedJobId, SelectedAddOns.ToList());
+        CalculatedMinutes = mins;
+        CalculatedPrice = price;
+    }
+
+    private void RefreshMonthAvailability()
+    {
+        UnavailableDays.Clear();
+
+        if (CalculatedMinutes <= 0) return;
+
+        var baseDay = (EarliestDay ?? DateTime.Today).Date;
+
+        var monthStart = new DateTime(baseDay.Year, baseDay.Month, 1);
+        var monthEnd = monthStart.AddMonths(1);
+
+        int? mechanicFilter = _selectedMechanicId == 0 ? null : _selectedMechanicId;
+
+        for (var d = monthStart; d < monthEnd; d = d.AddDays(1))
+        {
+            var canFit = Scheduler.CanFitOnDay(SelectedStoreId, CalculatedMinutes, d, mechanicFilter);
+            if (!canFit)
+                UnavailableDays.Add(d.Date);
+        }
+    }
+
+    private void EnsureEarliestDayIsValid()
+    {
+        if (!EarliestDay.HasValue)
+            return;
+
+        var day = EarliestDay.Value.Date;
+
+        // First, try to move backward to find an earlier available day
+        var earlierDay = FindEarlierAvailableDay(day);
+        if (earlierDay.HasValue)
+        {
+            EarliestDay = earlierDay.Value;
+            Message = "";
+            RefreshMonthAvailability();
+            return;
+        }
+
+        // If current day is unavailable, move forward to next available day
+        if (UnavailableDays.Contains(day))
+        {
+            var next = FindNextAvailableDay(day);
+            if (next.HasValue)
+            {
+                EarliestDay = next.Value;
+                Message = "";
+                RefreshMonthAvailability();
+            }
+            else
+            {
+                Message = "No availability found in the current range. Try a different job, store, or mechanic.";
+            }
+        }
+    }
+
+    private DateTime? FindEarlierAvailableDay(DateTime fromDay)
+    {
+        var today = DateTime.Today;
+        var start = fromDay.Date.AddDays(-1); // Start checking one day before current
+
+        // Don't go earlier than today
+        if (start < today) return null;
+
+        int? mechanicFilter = _selectedMechanicId == 0 ? null : _selectedMechanicId;
+
+        // Search backward from current day to today
+        for (var d = start; d >= today; d = d.AddDays(-1))
+        {
+            if (Scheduler.CanFitOnDay(SelectedStoreId, CalculatedMinutes, d, mechanicFilter))
+                return d.Date;
+        }
+
+        return null;
+    }
+
+    private DateTime? FindNextAvailableDay(DateTime fromDay)
+    {
+        // Search up to 90 days ahead to keep it simple for now
+        var start = fromDay.Date;
+        var end = start.AddDays(90);
+
+        int? mechanicFilter = _selectedMechanicId == 0 ? null : _selectedMechanicId;
+
+        for (var d = start; d <= end; d = d.AddDays(1))
+        {
+            // Make sure month cache is valid for the day we are checking
+            // If we cross into a new month, rebuild UnavailableDays based on that month
+            var currentBase = (EarliestDay ?? DateTime.Today).Date;
+            if (d.Month != currentBase.Month || d.Year != currentBase.Year)
+            {
+                EarliestDay = d.Date;
+                RefreshMonthAvailability();
+            }
+
+            if (Scheduler.CanFitOnDay(SelectedStoreId, CalculatedMinutes, d, mechanicFilter))
+                return d.Date;
+        }
+
+        return null;
+    }
+
+    private void OnCalendarRenderDayCell(RenderDayCellEventArgs args)
+    {
+        var day = args.Date.Date;
+
+        if (UnavailableDays.Contains(day))
+        {
+            args.IsDisabled = true;
+
+            // v32.1.19 way: use CellData.ClassList
+            args.CellData.ClassList = (args.CellData.ClassList ?? "") + " day-unavailable";
+        }
+    }
+
+
+
+    private void OnEarliestDayChanged(ChangedEventArgs<DateTime?> args)
+    {
+        var value = args.Value;
+
+        if (!value.HasValue)
+        {
+            EarliestDay = null;
+            return;
+        }
+
+        var picked = value.Value.Date;
+
+        if (UnavailableDays.Contains(picked))
+        {
+            Message = "No availability on that day for the selected job duration. Pick another day.";
+            return;
+        }
+
+        Message = "";
+        EarliestDay = picked;
+
+        RefreshMonthAvailability();
+    }
+
+    private void Create()
+    {
+        Message = "";
+
+        if (!EarliestDay.HasValue)
+        {
+            Message = "Pick an earliest day first.";
+            return;
+        }
+
+        var (mins, price, title) = Catalog.PriceAndTime(SelectedJobId, SelectedAddOns.ToList());
+
+        int? mechanicFilter = _selectedMechanicId == 0 ? null : _selectedMechanicId;
+
+        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
+
+        // earliest time is store opening time on selected day
+        var dayStart = EarliestDay.Value.Date.Add(store.OpenFrom);
+        var dayEnd = EarliestDay.Value.Date.Add(store.OpenTo);
+
+        var slot = Scheduler.FindFirstSlot(SelectedStoreId, mins, dayStart, mechanicFilter);
+
+        if (!slot.Found || slot.Start.Date != dayStart.Date || slot.End > dayEnd)
+        {
+            Message = "No availability on that day for the selected job duration.";
+            return;
+        }
+
+        var id = Data.NextBookingId();
+
+        Data.Bookings.Add(new Booking
+        {
+            Id = id,
+            StoreId = SelectedStoreId,
+            MechanicId = slot.MechanicId,
+            Title = title,
+            Start = slot.Start,
+            End = slot.End,
+            JobId = SelectedJobId,
+            AddOnIds = SelectedAddOns.ToArray(),
+            TotalMinutes = mins,
+            TotalPriceIncVat = price
+        });
+
+        Nav.NavigateTo($"/store/{SelectedStoreId}");
+    }
+}

@@ -1,0 +1,243 @@
+﻿@rendermode InteractiveServer
+@page "/store/{StoreId:int}"
+@using Syncfusion.Blazor.Schedule
+@using Syncfusion.Blazor.Popups
+@using Workshop.Models
+@using Workshop.Services
+@inject WorkshopData Data
+@inject SchedulingService Scheduler
+
+<h3 style="margin: 0 0 10px 0;">@StoreName</h3>
+
+<SfSchedule @ref="ScheduleRef"
+            TValue="AppointmentVM"
+            Height="800px"
+            Width="100%"
+            StartHour="@StartHourText"
+            EndHour="@EndHourText"
+            AllowDragAndDrop="true"
+            AllowResizing="true"
+            @bind-SelectedDate="SelectedDate">
+
+    <ScheduleEvents TValue="AppointmentVM" OnActionBegin="OnActionBegin"></ScheduleEvents>
+
+    <ScheduleGroup Resources="@GroupResources"></ScheduleGroup>
+
+    <ScheduleResources>
+        <ScheduleResource TValue="int" TItem="Mechanic"
+                          DataSource="@Mechanics"
+                          Field="MechanicId"
+                          Title="Mechanic"
+                          Name="Mechanics"
+                          TextField="Name"
+                          IdField="Id">
+        </ScheduleResource>
+    </ScheduleResources>
+
+    <ScheduleViews>
+        <ScheduleView Option="View.Day"></ScheduleView>
+        <ScheduleView Option="View.Week"></ScheduleView>
+        <ScheduleView Option="View.Month"></ScheduleView>
+    </ScheduleViews>
+
+    <ScheduleEventSettings DataSource="@Appointments"></ScheduleEventSettings>
+</SfSchedule>
+
+<SfDialog Width="440px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          Visible="@IsOverbookDialogVisible"
+          Header="Over booking warning"
+          Content="@OverbookMessage"
+          OnClose="OnOverbookCancel">
+    <DialogButtons>
+        <DialogButton Content="Cancel" IsPrimary="false" OnClick="OnOverbookCancel" />
+        <DialogButton Content="Allow once" IsPrimary="true" OnClick="OnOverbookAllowOnce" />
+    </DialogButtons>
+</SfDialog>
+
+@code {
+    [Parameter] public int StoreId { get; set; }
+
+    private SfSchedule<AppointmentVM>? ScheduleRef;
+
+    private DateTime SelectedDate { get; set; } = DateTime.Today;
+
+    private string[] GroupResources { get; set; } = new[] { "Mechanics" };
+
+    private List<Mechanic> Mechanics { get; set; } = new();
+
+    private List<AppointmentVM> Appointments { get; set; } = new();
+
+    private string StoreName { get; set; } = "";
+    private string StartHourText { get; set; } = "09:00";
+    private string EndHourText { get; set; } = "17:30";
+
+    // Allow-once flow
+    private bool IsOverbookDialogVisible;
+    private string OverbookMessage = "";
+
+    private bool BypassLimitOnce;
+    private AppointmentVM? PendingAppointment;
+    private ActionType? PendingActionType;
+
+    protected override void OnParametersSet()
+    {
+        var store = Data.Stores.First(s => s.Id == StoreId);
+        StoreName = store.Name;
+
+        StartHourText = store.OpenFrom.ToString(@"hh\:mm");
+        EndHourText = store.OpenTo.ToString(@"hh\:mm");
+
+
+        Mechanics = Data.Mechanics.Where(m => m.StoreId == StoreId).ToList();
+        ReloadAppointmentsFromBookings();
+    }
+
+    private void ReloadAppointmentsFromBookings()
+    {
+        Appointments = Data.Bookings
+            .Where(b => b.StoreId == StoreId)
+            .Select(b => new AppointmentVM
+            {
+                Id = b.Id,
+                Subject = $"{b.Title}  (£{b.TotalPriceIncVat:0.00})",
+                StartTime = b.Start,
+                EndTime = b.End,
+                MechanicId = b.MechanicId
+            })
+            .ToList();
+    }
+
+    private async Task OnActionBegin(ActionEventArgs<AppointmentVM> args)
+    {
+        if (BypassLimitOnce)
+        {
+            BypassLimitOnce = false;
+            return;
+        }
+
+        // This matches the args shape you have (ActionType + AddedRecords/ChangedRecords)
+        if (args.ActionType != ActionType.EventCreate &&
+            args.ActionType != ActionType.EventChange)
+            return;
+
+        AppointmentVM? appt = null;
+
+        if (args.ActionType == ActionType.EventCreate)
+            appt = args.AddedRecords?.FirstOrDefault();
+        else if (args.ActionType == ActionType.EventChange)
+            appt = args.ChangedRecords?.FirstOrDefault();
+
+        if (appt is null) return;
+
+        // Enforce daily cap
+        var bookingIdToIgnore = args.ActionType == ActionType.EventChange ? appt.Id : (int?)null;
+        var exceed = Scheduler.WouldExceedDailyLimit(StoreId, appt.MechanicId, appt.StartTime, appt.EndTime, bookingIdToIgnore);
+
+        if (!exceed)
+        {
+            // Persist changes to the in memory booking store
+            PersistSchedulerChange(appt, args.ActionType);
+            return;
+        }
+
+        args.Cancel = true;
+
+        var mech = Mechanics.First(m => m.Id == appt.MechanicId);
+        OverbookMessage =
+            $"{mech.Name} has a daily cap of {mech.MaxBookableHoursPerDay:0.#}h.\n\n" +
+            "This change would exceed that.\n\n" +
+            "Allow once?";
+
+        PendingAppointment = Clone(appt);
+        PendingActionType = args.ActionType;
+        IsOverbookDialogVisible = true;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void PersistSchedulerChange(AppointmentVM appt, ActionType actionType)
+    {
+        if (actionType == ActionType.EventCreate)
+        {
+            // Scheduler create from UI: create a booking with unknown job. We keep it simple here.
+            var id = Data.NextBookingId();
+            var title = appt.Subject?.Trim();
+            if (string.IsNullOrWhiteSpace(title)) title = "Manual booking";
+
+            Data.Bookings.Add(new Booking
+            {
+                Id = id,
+                StoreId = StoreId,
+                MechanicId = appt.MechanicId,
+                Title = title,
+                Start = appt.StartTime,
+                End = appt.EndTime,
+                JobId = "MANUAL",
+                AddOnIds = Array.Empty<string>(),
+                TotalMinutes = (int)(appt.EndTime - appt.StartTime).TotalMinutes,
+                TotalPriceIncVat = 0
+            });
+
+            ReloadAppointmentsFromBookings();
+        }
+        else if (actionType == ActionType.EventChange)
+        {
+            var b = Data.Bookings.First(x => x.StoreId == StoreId && x.Id == appt.Id);
+            b.MechanicId = appt.MechanicId;
+            b.Start = appt.StartTime;
+            b.End = appt.EndTime;
+            b.TotalMinutes = (int)(b.End - b.Start).TotalMinutes;
+
+            ReloadAppointmentsFromBookings();
+        }
+    }
+
+    private Task OnOverbookCancel()
+    {
+        IsOverbookDialogVisible = false;
+        PendingAppointment = null;
+        PendingActionType = null;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnOverbookAllowOnce()
+    {
+        IsOverbookDialogVisible = false;
+
+        if (PendingAppointment is null || PendingActionType is null || ScheduleRef is null)
+            return;
+
+        BypassLimitOnce = true;
+
+        // Apply change to the underlying booking store
+        PersistSchedulerChange(PendingAppointment, PendingActionType.Value);
+
+        // Refresh Scheduler data
+        await ScheduleRef.RefreshEventsAsync();
+
+        PendingAppointment = null;
+        PendingActionType = null;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static AppointmentVM Clone(AppointmentVM a) => new()
+    {
+        Id = a.Id,
+        Subject = a.Subject,
+        StartTime = a.StartTime,
+        EndTime = a.EndTime,
+        MechanicId = a.MechanicId
+    };
+
+    public sealed class AppointmentVM
+    {
+        public int Id { get; set; }
+        public string Subject { get; set; } = "";
+        public DateTime StartTime { get; set; }
+        public DateTime EndTime { get; set; }
+        public int MechanicId { get; set; }
+    }
+}
