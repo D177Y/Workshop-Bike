@@ -6,12 +6,54 @@ public sealed class WorkshopData
 {
     public List<Store> Stores { get; } = new()
     {
-        new Store { Id = 1, Name = "Taunton", OpenFrom = new TimeSpan(9, 0, 0), OpenTo = new TimeSpan(17, 30, 0) },
-        new Store { Id = 2, Name = "Yeovil", OpenFrom = new TimeSpan(9, 0, 0), OpenTo = new TimeSpan(17, 30, 0) },
-        new Store { Id = 3, Name = "Bristol", OpenFrom = new TimeSpan(9, 0, 0), OpenTo = new TimeSpan(17, 30, 0) },
-        new Store { Id = 4, Name = "Bridgwater", OpenFrom = new TimeSpan(9, 0, 0), OpenTo = new TimeSpan(17, 30, 0) },
-        new Store { Id = 5, Name = "Weston", OpenFrom = new TimeSpan(9, 0, 0), OpenTo = new TimeSpan(17, 30, 0) },
-        new Store { Id = 6, Name = "Hereford", OpenFrom = new TimeSpan(9, 0, 0), OpenTo = new TimeSpan(17, 30, 0) },
+        new Store
+        {
+            Id = 1,
+            Name = "Taunton",
+            OpenFrom = new TimeSpan(9, 0, 0),
+            OpenTo = new TimeSpan(17, 30, 0),
+            DaysOpen = new HashSet<DayOfWeek> { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday }
+        },
+        new Store
+        {
+            Id = 2,
+            Name = "Yeovil",
+            OpenFrom = new TimeSpan(9, 0, 0),
+            OpenTo = new TimeSpan(17, 30, 0),
+            DaysOpen = new HashSet<DayOfWeek> { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday }
+        },
+        new Store
+        {
+            Id = 3,
+            Name = "Bristol",
+            OpenFrom = new TimeSpan(9, 0, 0),
+            OpenTo = new TimeSpan(17, 30, 0),
+            DaysOpen = new HashSet<DayOfWeek> { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday }
+        },
+        new Store
+        {
+            Id = 4,
+            Name = "Bridgwater",
+            OpenFrom = new TimeSpan(9, 0, 0),
+            OpenTo = new TimeSpan(17, 30, 0),
+            DaysOpen = new HashSet<DayOfWeek> { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday }
+        },
+        new Store
+        {
+            Id = 5,
+            Name = "Weston",
+            OpenFrom = new TimeSpan(9, 0, 0),
+            OpenTo = new TimeSpan(17, 30, 0),
+            DaysOpen = new HashSet<DayOfWeek> { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday }
+        },
+        new Store
+        {
+            Id = 6,
+            Name = "Hereford",
+            OpenFrom = new TimeSpan(9, 0, 0),
+            OpenTo = new TimeSpan(17, 30, 0),
+            DaysOpen = new HashSet<DayOfWeek> { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday }
+        },
     };
 
     public List<Mechanic> Mechanics { get; } = new()

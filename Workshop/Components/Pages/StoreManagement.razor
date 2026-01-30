@@ -1,0 +1,404 @@
+﻿@rendermode InteractiveServer
+@page "/manage-stores"
+@using Workshop.Models
+@using Workshop.Services
+@inject WorkshopData Data
+@inject NavigationManager Nav
+
+<style>
+    .store-card {
+        border: 1px solid #ddd;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 6px;
+        background: #f9f9f9;
+    }
+
+        .store-card h4 {
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+
+    .day-checkbox {
+        display: inline-block;
+        margin-right: 15px;
+        margin-bottom: 8px;
+    }
+
+    .form-section {
+        margin-bottom: 15px;
+    }
+
+        .form-section label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+    .time-input {
+        padding: 5px;
+        margin-right: 10px;
+    }
+
+    .btn {
+        padding: 8px 16px;
+        margin-right: 8px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .btn-primary {
+        background: #0066cc;
+        color: white;
+    }
+
+        .btn-primary:hover {
+            background: #0052a3;
+        }
+
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+
+    .btn-danger {
+        background: #dc3545;
+        color: white;
+    }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+    .btn-success {
+        background: #28a745;
+        color: white;
+    }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+    .add-store-section {
+        border: 2px dashed #0066cc;
+        padding: 20px;
+        margin-bottom: 30px;
+        border-radius: 6px;
+        background: #f0f8ff;
+    }
+
+    .error-message {
+        color: #dc3545;
+        margin-top: 10px;
+        padding: 10px;
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 4px;
+    }
+
+    .success-message {
+        color: #155724;
+        margin-top: 10px;
+        padding: 10px;
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 4px;
+    }
+</style>
+
+<h3>Manage Stores</h3>
+
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="@(IsError ? "error-message" : "success-message")">
+        @Message
+    </div>
+}
+
+<!-- Add New Store Section -->
+@if (ShowAddForm)
+{
+    <div class="add-store-section">
+        <h4>@(EditingStoreId.HasValue ? "Edit Store" : "Add New Store")</h4>
+
+        <div class="form-section">
+            <label>Store Name</label>
+            <input type="text" @bind="NewStoreName" style="width: 300px; padding: 5px;" placeholder="Enter store name" />
+        </div>
+
+        <div class="form-section">
+            <label>Opening Time</label>
+            <input type="time" @bind="NewStoreOpenFrom" class="time-input" />
+        </div>
+
+        <div class="form-section">
+            <label>Closing Time</label>
+            <input type="time" @bind="NewStoreOpenTo" class="time-input" />
+        </div>
+
+        <div class="form-section">
+            <label>Days Open</label>
+            <div>
+                @foreach (DayOfWeek day in Enum.GetValues(typeof(DayOfWeek)))
+                {
+                    <div class="day-checkbox">
+                        <input type="checkbox"
+                               id="day-@day"
+                               checked="@NewStoreDaysOpen.Contains(day)"
+                               @onchange="e => ToggleDay(day, e)" />
+                        <label for="day-@day">@day</label>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div>
+            <button class="btn btn-success" @onclick="SaveStore">@(EditingStoreId.HasValue ? "Update Store" : "Add Store")</button>
+            <button class="btn btn-secondary" @onclick="CancelAddEdit">Cancel</button>
+        </div>
+    </div>
+}
+else
+{
+    <div style="margin-bottom: 20px;">
+        <button class="btn btn-primary" @onclick="ShowAddStoreForm">+ Add New Store</button>
+    </div>
+}
+
+<!-- Existing Stores -->
+<h4>Existing Stores (@Data.Stores.Count)</h4>
+
+@foreach (var store in Data.Stores.OrderBy(s => s.Name))
+{
+    <div class="store-card">
+        <h4>@store.Name</h4>
+
+        <div style="margin-bottom: 10px;">
+            <strong>Hours:</strong> @store.OpenFrom.ToString(@"hh\:mm") - @store.OpenTo.ToString(@"hh\:mm")
+        </div>
+
+        <div style="margin-bottom: 10px;">
+            <strong>Days Open:</strong>
+            @if (store.DaysOpen.Any())
+            {
+                <span>@string.Join(", ", store.DaysOpen.OrderBy(d => (int)d))</span>
+            }
+            else
+            {
+                <span style="color: #dc3545;">No days set (Store will appear closed)</span>
+            }
+        </div>
+
+        <div>
+            <button class="btn btn-primary" @onclick="() => EditStore(store.Id)">Edit</button>
+            <button class="btn btn-danger" @onclick="() => DeleteStore(store.Id)">Delete</button>
+        </div>
+    </div>
+}
+
+@code {
+    private string Message = "";
+    private bool IsError = false;
+    private bool ShowAddForm = false;
+    private int? EditingStoreId = null;
+
+    // Form fields
+    private string NewStoreName = "";
+    private string NewStoreOpenFrom = "09:00";
+    private string NewStoreOpenTo = "17:30";
+    private HashSet<DayOfWeek> NewStoreDaysOpen = new();
+
+    private void ShowAddStoreForm()
+    {
+        ShowAddForm = true;
+        EditingStoreId = null;
+        NewStoreName = "";
+        NewStoreOpenFrom = "09:00";
+        NewStoreOpenTo = "17:30";
+        NewStoreDaysOpen = new HashSet<DayOfWeek>
+        {
+            DayOfWeek.Monday,
+            DayOfWeek.Tuesday,
+            DayOfWeek.Wednesday,
+            DayOfWeek.Thursday,
+            DayOfWeek.Friday,
+            DayOfWeek.Saturday
+        };
+        Message = "";
+    }
+
+    private void EditStore(int storeId)
+    {
+        var store = Data.Stores.FirstOrDefault(s => s.Id == storeId);
+        if (store == null)
+        {
+            Message = "Store not found.";
+            IsError = true;
+            return;
+        }
+
+        ShowAddForm = true;
+        EditingStoreId = storeId;
+        NewStoreName = store.Name;
+        NewStoreOpenFrom = store.OpenFrom.ToString(@"hh\:mm");
+        NewStoreOpenTo = store.OpenTo.ToString(@"hh\:mm");
+        NewStoreDaysOpen = new HashSet<DayOfWeek>(store.DaysOpen);
+        Message = "";
+    }
+
+    private void CancelAddEdit()
+    {
+        ShowAddForm = false;
+        EditingStoreId = null;
+        Message = "";
+    }
+
+    private void ToggleDay(DayOfWeek day, ChangeEventArgs e)
+    {
+        var isChecked = e?.Value is bool b && b;
+
+        if (isChecked)
+            NewStoreDaysOpen.Add(day);
+        else
+            NewStoreDaysOpen.Remove(day);
+    }
+
+    private void SaveStore()
+    {
+        Message = "";
+        IsError = false;
+
+        // Validation
+        if (string.IsNullOrWhiteSpace(NewStoreName))
+        {
+            Message = "Store name is required.";
+            IsError = true;
+            return;
+        }
+
+        if (!TimeSpan.TryParse(NewStoreOpenFrom, out var openFrom))
+        {
+            Message = "Invalid opening time format.";
+            IsError = true;
+            return;
+        }
+
+        if (!TimeSpan.TryParse(NewStoreOpenTo, out var openTo))
+        {
+            Message = "Invalid closing time format.";
+            IsError = true;
+            return;
+        }
+
+        if (openFrom >= openTo)
+        {
+            Message = "Closing time must be after opening time.";
+            IsError = true;
+            return;
+        }
+
+        if (NewStoreDaysOpen.Count == 0)
+        {
+            Message = "Please select at least one day the store is open.";
+            IsError = true;
+            return;
+        }
+
+        if (EditingStoreId.HasValue)
+        {
+            // Update existing store
+            var store = Data.Stores.FirstOrDefault(s => s.Id == EditingStoreId.Value);
+            if (store == null)
+            {
+                Message = "Store not found.";
+                IsError = true;
+                return;
+            }
+
+            // Check if name conflicts with another store
+            if (Data.Stores.Any(s => s.Id != EditingStoreId.Value && s.Name.Equals(NewStoreName, StringComparison.OrdinalIgnoreCase)))
+            {
+                Message = $"A store with the name '{NewStoreName}' already exists.";
+                IsError = true;
+                return;
+            }
+
+            store.Name = NewStoreName.Trim();
+            store.OpenFrom = openFrom;
+            store.OpenTo = openTo;
+            store.DaysOpen = new HashSet<DayOfWeek>(NewStoreDaysOpen);
+
+            Message = $"Store '{store.Name}' updated successfully!";
+            IsError = false;
+        }
+        else
+        {
+            // Add new store
+            // Check if name already exists
+            if (Data.Stores.Any(s => s.Name.Equals(NewStoreName, StringComparison.OrdinalIgnoreCase)))
+            {
+                Message = $"A store with the name '{NewStoreName}' already exists.";
+                IsError = true;
+                return;
+            }
+
+            var newId = Data.Stores.Any() ? Data.Stores.Max(s => s.Id) + 1 : 1;
+
+            var newStore = new Store
+            {
+                Id = newId,
+                Name = NewStoreName.Trim(),
+                OpenFrom = openFrom,
+                OpenTo = openTo,
+                DaysOpen = new HashSet<DayOfWeek>(NewStoreDaysOpen)
+            };
+
+            Data.Stores.Add(newStore);
+
+            Message = $"Store '{newStore.Name}' added successfully!";
+            IsError = false;
+        }
+
+        ShowAddForm = false;
+        EditingStoreId = null;
+    }
+
+    private void DeleteStore(int storeId)
+    {
+        var store = Data.Stores.FirstOrDefault(s => s.Id == storeId);
+        if (store == null)
+        {
+            Message = "Store not found.";
+            IsError = true;
+            return;
+        }
+
+        // Check if there are mechanics assigned to this store
+        var mechanicsCount = Data.Mechanics.Count(m => m.StoreId == storeId);
+        if (mechanicsCount > 0)
+        {
+            Message = $"Cannot delete store '{store.Name}' because it has {mechanicsCount} mechanic(s) assigned. Please reassign or remove mechanics first.";
+            IsError = true;
+            return;
+        }
+
+        // Check if there are bookings for this store
+        var bookingsCount = Data.Bookings.Count(b => b.StoreId == storeId);
+        if (bookingsCount > 0)
+        {
+            Message = $"Cannot delete store '{store.Name}' because it has {bookingsCount} booking(s). Please remove bookings first.";
+            IsError = true;
+            return;
+        }
+
+        Data.Stores.Remove(store);
+        Message = $"Store '{store.Name}' deleted successfully.";
+        IsError = false;
+    }
+}
+

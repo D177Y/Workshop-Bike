@@ -9,6 +9,7 @@
 @inject NavigationManager Nav
 
 <style>
+    /* Fully booked days - red */
     .day-unavailable .e-day {
         background: #fee !important;
         color: #900 !important;
@@ -16,8 +17,20 @@
         font-weight: 600;
     }
 
-    /* optional: make disabled days feel more "blocked" */
     .e-disabled.day-unavailable .e-day {
+        opacity: 1 !important;
+        cursor: not-allowed !important;
+    }
+
+    /* Closed days - grey */
+    .day-closed .e-day {
+        background: #f5f5f5 !important;
+        color: #999 !important;
+        border-radius: 6px;
+        text-decoration: line-through;
+    }
+
+    .e-disabled.day-closed .e-day {
         opacity: 1 !important;
         cursor: not-allowed !important;
     }
@@ -73,20 +86,20 @@
     <div>
         <label>Earliest day</label><br />
 
-        <SfDatePicker TValue="DateTime ?"
+        <SfDatePicker TValue="DateTime?"
                       Value="EarliestDay"
                       Format="dd/MM/yyyy"
                       StrictMode="true"
                       AllowEdit="false"
                       Placeholder="Select a day">
-            <DatePickerEvents TValue="DateTime ?"
+            <DatePickerEvents TValue="DateTime?"
                               ValueChange="@OnEarliestDayChanged"
                               OnRenderDayCell="@OnCalendarRenderDayCell">
             </DatePickerEvents>
         </SfDatePicker>
 
         <div style="font-size:12px; color:#666; margin-top:6px;">
-            We’ll always schedule the earliest available slot on the selected day.
+            We'll always schedule the earliest available slot on the selected day.
         </div>
     </div>
 
@@ -123,6 +136,9 @@
 
     // Days that cannot fit the selected job duration (for the month currently being rendered)
     private readonly HashSet<DateTime> UnavailableDays = new();
+    
+    // Days when the store is closed (for the month currently being rendered)
+    private readonly HashSet<DateTime> ClosedDays = new();
 
     private int SelectedStoreId
     {
@@ -132,7 +148,7 @@
             if (_selectedStoreId == value) return;
             _selectedStoreId = value;
 
-            // If selected mechanic isn’t in this store, reset to All
+            // If selected mechanic isn't in this store, reset to All
             var mechIds = MechanicsForSelectedStore.Select(m => m.Id).ToHashSet();
             if (_selectedMechanicId != 0 && !mechIds.Contains(_selectedMechanicId))
                 _selectedMechanicId = 0;
@@ -191,14 +207,27 @@
         var store = Data.Stores.First(s => s.Id == SelectedStoreId);
         var now = DateTime.Now;
 
-        var todayOpen = now.Date.Add(store.OpenFrom);
+        // Find the next open day
+        var candidateDay = now.Date;
+        
+        // If we're past closing time today, start from tomorrow
         var todayClose = now.Date.Add(store.OpenTo);
+        if (now > todayClose)
+            candidateDay = candidateDay.AddDays(1);
 
-        // Default to today unless we are already past closing time
-        EarliestDay = now > todayClose ? now.Date.AddDays(1) : now.Date;
+        // Find next day the store is actually open
+        for (int i = 0; i < 14; i++) // Check up to 2 weeks ahead
+        {
+            if (store.IsOpenOnDay(candidateDay))
+            {
+                EarliestDay = candidateDay;
+                return;
+            }
+            candidateDay = candidateDay.AddDays(1);
+        }
 
-        // if today is before opening time, still fine because we schedule from opening time
-        _ = todayOpen;
+        // Fallback (shouldn't happen unless store never opens)
+        EarliestDay = now.Date;
     }
 
     private void ToggleAddOn(string id, ChangeEventArgs e)
@@ -223,10 +252,12 @@
     private void RefreshMonthAvailability()
     {
         UnavailableDays.Clear();
+        ClosedDays.Clear();
 
         if (CalculatedMinutes <= 0) return;
 
         var baseDay = (EarliestDay ?? DateTime.Today).Date;
+        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
 
         var monthStart = new DateTime(baseDay.Year, baseDay.Month, 1);
         var monthEnd = monthStart.AddMonths(1);
@@ -235,6 +266,14 @@
 
         for (var d = monthStart; d < monthEnd; d = d.AddDays(1))
         {
+            // Check if store is closed on this day
+            if (!store.IsOpenOnDay(d))
+            {
+                ClosedDays.Add(d.Date);
+                continue;
+            }
+
+            // Check if we can fit the job on this day
             var canFit = Scheduler.CanFitOnDay(SelectedStoreId, CalculatedMinutes, d, mechanicFilter);
             if (!canFit)
                 UnavailableDays.Add(d.Date);
@@ -247,6 +286,25 @@
             return;
 
         var day = EarliestDay.Value.Date;
+        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
+
+        // Check if the selected day is a closed day
+        if (ClosedDays.Contains(day))
+        {
+            var next = FindNextOpenDay(day);
+            if (next.HasValue)
+            {
+                EarliestDay = next.Value;
+                Message = "";
+                RefreshMonthAvailability();
+                return;
+            }
+            else
+            {
+                Message = "Store is closed on this day. Please select another day.";
+                return;
+            }
+        }
 
         // First, try to move backward to find an earlier available day
         var earlierDay = FindEarlierAvailableDay(day);
@@ -275,10 +333,26 @@
         }
     }
 
+    private DateTime? FindNextOpenDay(DateTime fromDay)
+    {
+        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
+        var start = fromDay.Date.AddDays(1);
+        var end = start.AddDays(14); // Check 2 weeks ahead
+
+        for (var d = start; d <= end; d = d.AddDays(1))
+        {
+            if (store.IsOpenOnDay(d))
+                return d.Date;
+        }
+
+        return null;
+    }
+
     private DateTime? FindEarlierAvailableDay(DateTime fromDay)
     {
         var today = DateTime.Today;
         var start = fromDay.Date.AddDays(-1); // Start checking one day before current
+        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
 
         // Don't go earlier than today
         if (start < today) return null;
@@ -288,6 +362,10 @@
         // Search backward from current day to today
         for (var d = start; d >= today; d = d.AddDays(-1))
         {
+            // Skip closed days
+            if (!store.IsOpenOnDay(d))
+                continue;
+
             if (Scheduler.CanFitOnDay(SelectedStoreId, CalculatedMinutes, d, mechanicFilter))
                 return d.Date;
         }
@@ -300,11 +378,16 @@
         // Search up to 90 days ahead to keep it simple for now
         var start = fromDay.Date;
         var end = start.AddDays(90);
+        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
 
         int? mechanicFilter = _selectedMechanicId == 0 ? null : _selectedMechanicId;
 
         for (var d = start; d <= end; d = d.AddDays(1))
         {
+            // Skip closed days
+            if (!store.IsOpenOnDay(d))
+                continue;
+
             // Make sure month cache is valid for the day we are checking
             // If we cross into a new month, rebuild UnavailableDays based on that month
             var currentBase = (EarliestDay ?? DateTime.Today).Date;
@@ -325,16 +408,19 @@
     {
         var day = args.Date.Date;
 
-        if (UnavailableDays.Contains(day))
+        // Check if it's a closed day first (takes priority)
+        if (ClosedDays.Contains(day))
         {
             args.IsDisabled = true;
-
-            // v32.1.19 way: use CellData.ClassList
+            args.CellData.ClassList = (args.CellData.ClassList ?? "") + " day-closed";
+        }
+        // Then check if it's unavailable due to booking capacity
+        else if (UnavailableDays.Contains(day))
+        {
+            args.IsDisabled = true;
             args.CellData.ClassList = (args.CellData.ClassList ?? "") + " day-unavailable";
         }
     }
-
-
 
     private void OnEarliestDayChanged(ChangedEventArgs<DateTime?> args)
     {
@@ -348,6 +434,14 @@
 
         var picked = value.Value.Date;
 
+        // Check if the picked day is closed
+        if (ClosedDays.Contains(picked))
+        {
+            Message = "Store is closed on that day. Please select another day.";
+            return;
+        }
+
+        // Check if the picked day is unavailable due to capacity
         if (UnavailableDays.Contains(picked))
         {
             Message = "No availability on that day for the selected job duration. Pick another day.";
@@ -370,11 +464,18 @@
             return;
         }
 
+        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
+
+        // Verify the selected day is not a closed day
+        if (!store.IsOpenOnDay(EarliestDay.Value))
+        {
+            Message = "Store is closed on that day. Please select another day.";
+            return;
+        }
+
         var (mins, price, title) = Catalog.PriceAndTime(SelectedJobId, SelectedAddOns.ToList());
 
         int? mechanicFilter = _selectedMechanicId == 0 ? null : _selectedMechanicId;
-
-        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
 
         // earliest time is store opening time on selected day
         var dayStart = EarliestDay.Value.Date.Add(store.OpenFrom);

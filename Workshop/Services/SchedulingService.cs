@@ -32,6 +32,11 @@ public sealed class SchedulingService
         for (var dayOffset = 0; dayOffset < 60; dayOffset++)
         {
             var day = cursor.Date.AddDays(dayOffset);
+
+            // Skip closed days
+            if (!store.IsOpenOnDay(day))
+                continue;
+
             var dayStart = day.Add(store.OpenFrom);
             var dayEnd = day.Add(store.OpenTo);
 
@@ -99,9 +104,14 @@ public sealed class SchedulingService
         var rounded = dt.AddMinutes(add);
         return new DateTime(rounded.Year, rounded.Month, rounded.Day, rounded.Hour, rounded.Minute, 0);
     }
+
     public bool CanFitOnDay(int storeId, int minutes, DateTime day, int? mechanicId = null)
     {
         var store = _data.Stores.First(s => s.Id == storeId);
+
+        // If the store is closed on this day, it cannot fit
+        if (!store.IsOpenOnDay(day))
+            return false;
 
         var dayStart = day.Date.Add(store.OpenFrom);
         var dayEnd = day.Date.Add(store.OpenTo);
