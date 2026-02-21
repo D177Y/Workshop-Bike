@@ -1,0 +1,174 @@
+.dashboard-page {
+    display: grid;
+    gap: 12px;
+    padding: 8px 0 24px;
+}
+
+.dashboard-header h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 28px;
+}
+
+.dashboard-header p {
+    margin: 4px 0 0;
+    color: #475569;
+}
+
+.fy-pill {
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    color: #1e3a8a;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 10px;
+}
+
+.panel-content {
+    height: 100%;
+    min-height: 0;
+}
+
+.monthly-panel-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.annual-panel-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.monthly-stack {
+    display: grid;
+    gap: 10px;
+    height: auto;
+    min-height: auto;
+    overflow: visible;
+    padding-right: 0;
+    grid-auto-rows: max-content;
+    align-content: start;
+}
+
+.rank-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+    padding: 8px;
+}
+
+.rank-card-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: #475569;
+}
+
+.rank-card-head strong {
+    color: #0f172a;
+    font-size: 14px;
+}
+
+.table-wrap {
+    height: 100%;
+    overflow: auto;
+}
+
+::deep .top-mechanic-layout .e-dashboardlayout {
+    width: 100%;
+}
+
+::deep .top-mechanic-layout .e-panel {
+    overflow: hidden;
+}
+
+::deep .top-mechanic-layout .e-panel-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+::deep .top-mechanic-layout .e-panel-header {
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    min-height: 42px;
+}
+
+::deep .top-mechanic-layout .e-panel-header > * {
+    width: 100%;
+}
+
+::deep .top-mechanic-layout .e-panel-header h4 {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.2;
+    font-weight: 700;
+    color: #0f172a;
+    white-space: nowrap;
+}
+
+::deep .top-mechanic-layout .e-panel-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 8px 12px 10px;
+    overflow: hidden;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+th,
+td {
+    border-bottom: 1px solid #e2e8f0;
+    padding: 7px 8px;
+    white-space: nowrap;
+    text-align: left;
+}
+
+th:last-child,
+td:last-child {
+    text-align: right;
+}
+
+th {
+    background: #f8fafc;
+    color: #334155;
+    font-weight: 700;
+}
+
+.status {
+    border-radius: 8px;
+    padding: 9px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+}
+
+.status.error {
+    border-color: #fca5a5;
+    background: #fff1f2;
+    color: #991b1b;
+}
+
+.status.success {
+    border-color: #86efac;
+    background: #f0fdf4;
+    color: #166534;
+}
+
+.muted {
+    color: #64748b;
+    font-size: 13px;
+}

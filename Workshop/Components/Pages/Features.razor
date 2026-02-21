@@ -1,0 +1,51 @@
+@page "/features"
+@layout MarketingLayout
+@attribute [AllowAnonymous]
+
+<Section>
+    <div class="mk-center-head mk-reveal">
+        <h1 class="mk-page-title">Everything your workshop needs</h1>
+        <p class="mk-page-sub">Purpose-built tools for bike workshop scheduling, job management, and customer communication.</p>
+    </div>
+</Section>
+
+<Section Soft="true">
+    <div class="mk-category-grid">
+        <article class="mk-card mk-category mk-reveal mk-reveal-delay-0"><span class="mk-icon-chip"><IconGlyph Name="store" /></span><h3>Multi-store setup</h3><p>Manage multiple locations from one account with role-based access.</p></article>
+        <article class="mk-card mk-category mk-reveal mk-reveal-delay-1"><span class="mk-icon-chip"><IconGlyph Name="users" /></span><h3>Mechanic management</h3><p>Add mechanics, set skills, and let the system handle capacity.</p></article>
+        <article class="mk-card mk-category mk-reveal mk-reveal-delay-2"><span class="mk-icon-chip"><IconGlyph Name="package" /></span><h3>Service packages</h3><p>Bundle services into packages with fixed pricing and durations.</p></article>
+        <article class="mk-card mk-category mk-reveal mk-reveal-delay-3"><span class="mk-icon-chip"><IconGlyph Name="calendar" /></span><h3>Smart booking</h3><p>Capacity-aware scheduling that prevents overbooking automatically.</p></article>
+        <article class="mk-card mk-category mk-reveal mk-reveal-delay-4"><span class="mk-icon-chip"><IconGlyph Name="clipboard" /></span><h3>Job cards</h3><p>Track every job from intake to completion with status updates.</p></article>
+        <article class="mk-card mk-category mk-reveal mk-reveal-delay-5"><span class="mk-icon-chip"><IconGlyph Name="mail" /></span><h3>Customer comms</h3><p>Automated email updates keep customers informed at every stage.</p></article>
+        <article class="mk-card mk-category mk-reveal mk-reveal-delay-6"><span class="mk-icon-chip"><IconGlyph Name="clock" /></span><h3>Time-off sync</h3><p>Timetastic integration keeps mechanic availability up to date.</p></article>
+        <article class="mk-card mk-category mk-reveal mk-reveal-delay-7"><span class="mk-icon-chip"><IconGlyph Name="bar" /></span><h3>Dashboard & reporting</h3><p>Real-time overview of bookings, capacity, and workshop performance.</p></article>
+    </div>
+</Section>
+
+<Section>
+    <div class="mk-feature-stack">
+        <FeatureRow Icon="calendar"
+                    Title="Capacity-aware booking"
+                    Description="The schedule reflects real mechanic availability. No double-booking, no surprises." />
+
+        <FeatureRow Icon="wrench"
+                    Title="Quote to job card in one flow"
+                    Description="Take an intake request, build a quote, convert it to a booking, and track the job through to completion."
+                    Reversed="true" />
+
+        <FeatureRow Icon="plug"
+                    Title="Integrations that matter"
+                    Description="Sync mechanic time-off from Timetastic. We focus on integrations workshop teams actually use." />
+    </div>
+</Section>
+
+<Section Soft="true">
+    <div class="mk-final-cta">
+        <h2>See it in action</h2>
+        <p>Walk through the operational flow step by step.</p>
+        <div class="mk-links-row mk-links-center">
+            <a class="mk-btn mk-btn-primary" href="/how-it-works">How it works</a>
+            <a class="mk-btn mk-btn-secondary" href="/pricing">View pricing</a>
+        </div>
+    </div>
+</Section>

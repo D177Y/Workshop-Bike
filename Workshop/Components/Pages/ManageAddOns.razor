@@ -1,0 +1,917 @@
+@rendermode InteractiveServer
+@page "/manage-addons"
+@attribute [Authorize]
+@using Microsoft.JSInterop
+@using Workshop.Models
+@using Workshop.Services
+@using Syncfusion.Blazor.Grids
+@using Syncfusion.Blazor.Popups
+@inject JobCatalogService Catalog
+@inject IJSRuntime JS
+@inject ILogger<ManageAddOns> Logger
+
+<style>
+    .addon-card {
+        border: 1px solid #ddd;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 6px;
+        background: #f9f9f9;
+    }
+
+    .addon-card h4 {
+        margin-top: 0;
+        margin-bottom: 10px;
+    }
+
+    .form-section {
+        margin-bottom: 15px;
+    }
+
+    .form-section label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 5px;
+    }
+
+    .inline-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .catalog-editor-row {
+        display: grid;
+        grid-template-columns: 20px 220px 1fr;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 0;
+        cursor: grab;
+        user-select: none;
+    }
+
+    .catalog-editor-row.dragging {
+        opacity: 0.6;
+    }
+
+    .drag-handle {
+        cursor: grab;
+        color: #6b7280;
+        user-select: none;
+        font-size: 18px;
+        line-height: 1;
+    }
+
+    .editor-name {
+        width: 100%;
+        padding: 4px;
+        box-sizing: border-box;
+    }
+
+    .editor-color {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .editor-hex {
+        width: 100px;
+        padding: 4px;
+        box-sizing: border-box;
+    }
+
+    .package-row {
+        display: grid;
+        grid-template-columns: 28px 190px 110px 110px 180px;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .package-input {
+        width: 100%;
+        padding: 5px;
+        box-sizing: border-box;
+    }
+
+    .btn {
+        padding: 8px 16px;
+        margin-right: 8px;
+        border: none;
+        border-radius: 999px;
+        cursor: pointer;
+    }
+
+    .btn-primary {
+        background: #0d6efd;
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #0b5ed7;
+    }
+
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-secondary:hover {
+        background: #545b62;
+    }
+
+    .btn-success {
+        background: #0d6efd;
+        color: white;
+    }
+
+    .btn-success:hover {
+        background: #0b5ed7;
+    }
+
+    .btn-danger {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background: #5a6268;
+    }
+
+    .grid-btn {
+        width: 64px;
+        height: 24px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .add-addon-section {
+        border: 2px dashed #0066cc;
+        padding: 20px;
+        margin-bottom: 30px;
+        border-radius: 6px;
+        background: #f0f8ff;
+    }
+
+    .error-message {
+        color: #dc3545;
+        margin-top: 10px;
+        margin-bottom: 14px;
+        padding: 10px;
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 4px;
+    }
+
+    .success-message {
+        color: #155724;
+        margin-top: 10px;
+        margin-bottom: 14px;
+        padding: 10px;
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 4px;
+    }
+
+    .required-asterisk {
+        color: #dc3545;
+        margin-left: 4px;
+    }
+
+</style>
+
+<h3>Manage Add-ons</h3>
+
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="@(IsError ? "error-message" : "success-message")">
+        @Message
+    </div>
+}
+
+@if (ShowAddForm)
+{
+    <div class="add-addon-section">
+        <h4>@(EditingAddOnId is not null ? "Edit Add-on" : "Add New Add-on")</h4>
+
+        <div class="form-section">
+            <label>Name<span class="required-asterisk">*</span></label>
+            <input type="text" @bind="NewAddOnName" style="width: 320px; padding: 5px;" placeholder="Enter add-on name" />
+        </div>
+
+        <div class="form-section">
+            <label>Category<span class="required-asterisk">*</span></label>
+            <div class="inline-row">
+                <select @bind="NewAddOnCategory">
+                    @foreach (var c in Catalog.Categories.OrderBy(c => c))
+                    {
+                        <option value="@c">@c</option>
+                    }
+                </select>
+                <button class="btn btn-secondary" type="button" @onclick="OpenCategoryEditor">Add/Edit</button>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <label>Description</label>
+            <textarea @bind="NewAddOnDescription" rows="3" style="width: 520px; padding: 5px;"></textarea>
+        </div>
+
+        <div class="form-section">
+            <label>Service Packages<span class="required-asterisk">*</span></label>
+            @if (ServicePackages.Count == 0)
+            {
+                <div style="color:#666;">No service package jobs found.</div>
+            }
+            else
+            {
+                <div class="package-row" style="font-weight: 600;">
+                    <span></span>
+                    <span>Package</span>
+                    <span>Minutes</span>
+                    <span>Price</span>
+                    <span>Part Number</span>
+                </div>
+                @foreach (var job in ServicePackages)
+                {
+                    var settings = GetPackageSettings(job.Id);
+                    var enabled = SelectedPackages.Contains(job.Id);
+                    <div class="package-row">
+                        <input type="checkbox"
+                               checked="@enabled"
+                               @onchange="e => TogglePackage(job.Id, e)" />
+                        <span>@job.Name</span>
+                        <input type="number" min="0" @bind="settings.Minutes" disabled="@(!enabled)" class="package-input" />
+                        <input type="number" min="0" step="0.01" @bind="settings.Price" disabled="@(!enabled)" class="package-input" />
+                        <input type="text" @bind="settings.PartNumber" disabled="@(!enabled)" class="package-input" />
+                    </div>
+                }
+            }
+        </div>
+
+        <div>
+            <button class="btn btn-success" @onclick="SaveAddOn">@(EditingAddOnId is not null ? "Update Add-on" : "Add Add-on")</button>
+            <button class="btn btn-secondary" @onclick="CancelAddEdit">Cancel</button>
+        </div>
+    </div>
+}
+else
+{
+    <div style="margin-bottom: 20px;">
+        <button class="btn btn-primary" @onclick="ShowAddAddOnForm">+ Add New Add-on</button>
+    </div>
+}
+
+<h4>Add-ons (@Catalog.AddOns.Count)</h4>
+
+@foreach (var category in GetAddOnCategories())
+{
+    var addOnsInCategory = Catalog.AddOns
+        .Where(a => NormalizeCategory(a.Category) == category)
+        .OrderBy(a => a.Name)
+        .ToList();
+
+    <h5 style="margin:20px 0 8px 0;">@category (@addOnsInCategory.Count)</h5>
+    <SfGrid DataSource="@addOnsInCategory" AllowSorting="true" Width="100%">
+        <GridColumns>
+            <GridColumn HeaderText="Name" Width="190">
+                <Template>
+                    @{
+                        var addOn = (AddOnDefinition)context;
+                    }
+                    @addOn.Name
+                </Template>
+            </GridColumn>
+            <GridColumn HeaderText="Description" Width="220">
+                <Template>
+                    @{
+                        var addOn = (AddOnDefinition)context;
+                    }
+                    @(string.IsNullOrWhiteSpace(addOn.Description) ? "-" : addOn.Description)
+                </Template>
+            </GridColumn>
+            <GridColumn HeaderText="Packages" Width="600">
+                <Template>
+                    @{
+                        var addOn = (AddOnDefinition)context;
+                        var rules = GetRulesForAddOn(addOn.Id);
+                    }
+                    @if (rules.Count == 0)
+                    {
+                        <span style="color:#666;">None</span>
+                    }
+                    else
+                    {
+                        @foreach (var rule in rules)
+                        {
+                            var packageName = Catalog.Jobs.FirstOrDefault(j => j.Id == rule.JobId)?.Name ?? rule.JobId;
+                            <div>@packageName - Minutes: @rule.ExtraMinutes | Price: £@rule.ExtraPriceIncVat.ToString("0.00") | Part Number: @(string.IsNullOrWhiteSpace(rule.PartNumber) ? "No part #" : rule.PartNumber)</div>
+                        }
+                    }
+                </Template>
+            </GridColumn>
+            <GridColumn HeaderText="Actions" Width="180" TextAlign="TextAlign.Center">
+                <Template>
+                    @{
+                        var addOn = (AddOnDefinition)context;
+                    }
+                    <button class="btn btn-primary grid-btn" @onclick="() => EditAddOn(addOn.Id)">Edit</button>
+                    <button class="btn btn-danger grid-btn" style="margin-right:0;" @onclick="() => DeleteAddOn(addOn.Id)">Delete</button>
+                </Template>
+            </GridColumn>
+        </GridColumns>
+    </SfGrid>
+}
+
+<SfDialog Width="620px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          @bind-Visible="IsCategoryDialogVisible"
+          Header="Manage Categories">
+    <DialogTemplates>
+        <Content>
+            <div style="display:grid; gap:10px;">
+                @if (!string.IsNullOrWhiteSpace(CategoryEditorMessage))
+                {
+                    <div style="color:#dc3545;">@CategoryEditorMessage</div>
+                }
+
+                <div style="font-weight:600;">Existing categories</div>
+                <div id="addons-category-editor-list" @ref="CategoryListRef">
+                    @for (var i = 0; i < CategoryEditorItems.Count; i++)
+                    {
+                        var itemIndex = i;
+                        var item = CategoryEditorItems[i];
+                        var isServicePackages = string.Equals(item.OriginalName, "Service Packages", StringComparison.OrdinalIgnoreCase);
+                        <div class="catalog-editor-row"
+                             data-index="@i"
+                             draggable="@(!isServicePackages)">
+                            <span class="drag-handle" aria-label="Drag to reorder">≡</span>
+                            <input type="text" @bind="item.Name" class="editor-name" disabled="@isServicePackages" />
+                            <div class="editor-color">
+                                <input type="color" @bind="item.ColorHex" />
+                                <input type="text" @bind="item.ColorHex" class="editor-hex" placeholder="#RRGGBB" />
+                                <button class="e-btn e-flat"
+                                        style="color:#dc3545;"
+                                        type="button"
+                                        @onclick="() => RemoveCategoryEditorItem(itemIndex)"
+                                        disabled="@isServicePackages">Delete</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div style="margin-top:6px; font-weight:600;">Add new category</div>
+                <div class="catalog-editor-row">
+                    <span class="drag-handle" style="visibility:hidden;">≡</span>
+                    <input type="text" @bind="NewCategoryEditorName" class="editor-name" placeholder="Category name" />
+                    <div class="editor-color">
+                        <input type="color" @bind="NewCategoryEditorColor" />
+                        <input type="text" @bind="NewCategoryEditorColor" class="editor-hex" placeholder="#RRGGBB" />
+                        <button class="e-btn e-flat" type="button" @onclick="AddCategoryEditorItem">Add</button>
+                    </div>
+                </div>
+            </div>
+        </Content>
+    </DialogTemplates>
+    <DialogButtons>
+        <DialogButton Content="Cancel" IsPrimary="false" OnClick="CloseCategoryEditor" />
+    </DialogButtons>
+</SfDialog>
+
+@code {
+    private string _message = "";
+    private bool _scrollToTopRequested;
+    private bool ShowAddForm;
+    private bool IsError;
+    private string Message
+    {
+        get => _message;
+        set
+        {
+            if (_message == value) return;
+            _message = value;
+            _scrollToTopRequested = !string.IsNullOrWhiteSpace(value);
+        }
+    }
+
+    private string? EditingAddOnId;
+
+    private string NewAddOnName = "";
+    private string NewAddOnCategory = "";
+    private string NewAddOnDescription = "";
+
+    private bool IsCategoryDialogVisible;
+    private string CategoryEditorMessage = "";
+    private List<CategoryEditorItem> CategoryEditorItems = new();
+    private string NewCategoryEditorName = "";
+    private string NewCategoryEditorColor = "#94a3b8";
+    private DotNetObjectReference<ManageAddOns>? CategoryDotNetRef;
+    private ElementReference CategoryListRef;
+    private bool ShouldInitCategoryDnd;
+
+    private readonly HashSet<string> SelectedPackages = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, PackageSettings> PackageSettingsByJobId = new(StringComparer.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Catalog.EnsureInitializedAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_scrollToTopRequested)
+        {
+            _scrollToTopRequested = false;
+            await JS.InvokeVoidAsync("window.scrollTo", 0, 0);
+        }
+
+        if (ShouldInitCategoryDnd)
+        {
+            ShouldInitCategoryDnd = false;
+            await EnsureCategoryDndAsync();
+        }
+    }
+
+    private sealed class PackageSettings
+    {
+        public int Minutes { get; set; }
+        public decimal Price { get; set; }
+        public string PartNumber { get; set; } = "";
+    }
+
+    private List<JobDefinition> ServicePackages
+        => Catalog.Jobs.Where(j => j.Category.Equals("Service Packages", StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private void ShowAddAddOnForm()
+    {
+        ShowAddForm = true;
+        EditingAddOnId = null;
+        NewAddOnName = "";
+        NewAddOnCategory = Catalog.Categories.FirstOrDefault() ?? "";
+        NewAddOnDescription = "";
+        SelectedPackages.Clear();
+        PackageSettingsByJobId.Clear();
+        Message = "";
+    }
+
+    private void EditAddOn(string addOnId)
+    {
+        var addOn = Catalog.AddOns.FirstOrDefault(a => a.Id == addOnId);
+        if (addOn == null)
+        {
+            Message = "Add-on not found.";
+            IsError = true;
+            return;
+        }
+
+        ShowAddForm = true;
+        EditingAddOnId = addOnId;
+        NewAddOnName = addOn.Name;
+        NewAddOnCategory = addOn.Category;
+        NewAddOnDescription = addOn.Description;
+
+        SelectedPackages.Clear();
+        PackageSettingsByJobId.Clear();
+
+        foreach (var rule in Catalog.Rules.Where(r => r.AddOnId == addOnId))
+        {
+            SelectedPackages.Add(rule.JobId);
+            PackageSettingsByJobId[rule.JobId] = new PackageSettings
+            {
+                Minutes = rule.ExtraMinutes,
+                Price = rule.ExtraPriceIncVat,
+                PartNumber = rule.PartNumber
+            };
+        }
+    }
+
+    private void CancelAddEdit()
+    {
+        ShowAddForm = false;
+        EditingAddOnId = null;
+        Message = "";
+    }
+
+    private sealed class CategoryEditorItem
+    {
+        public CategoryEditorItem(string name, string colorHex)
+        {
+            OriginalName = name;
+            Name = name;
+            ColorHex = colorHex;
+        }
+
+        public string OriginalName { get; }
+        public string Name { get; set; }
+        public string ColorHex { get; set; }
+    }
+
+    private Task OpenCategoryEditor()
+    {
+        CategoryEditorItems = Catalog.CategoryColors
+            .Select(kvp => new CategoryEditorItem(kvp.Key, NormalizeColor(kvp.Value)))
+            .ToList();
+
+        if (!CategoryEditorItems.Any(i => IsServicePackagesCategory(i.Name)))
+            CategoryEditorItems.Insert(0, new CategoryEditorItem("Service Packages", "#4f46e5"));
+
+        CategoryEditorMessage = "";
+        NewCategoryEditorName = "";
+        NewCategoryEditorColor = "#94a3b8";
+        IsCategoryDialogVisible = true;
+        ShouldInitCategoryDnd = true;
+        return Task.CompletedTask;
+    }
+
+    private void CloseCategoryEditor()
+    {
+        IsCategoryDialogVisible = false;
+        CategoryEditorMessage = "";
+    }
+
+    private async Task AddCategoryEditorItem()
+    {
+        var name = (NewCategoryEditorName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+
+        if (IsServicePackagesCategory(name))
+        {
+            CategoryEditorMessage = "Service Packages category is reserved.";
+            return;
+        }
+
+        if (!CategoryEditorItems.Any(i => i.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            CategoryEditorItems.Add(new CategoryEditorItem(name, NormalizeColor(NewCategoryEditorColor)));
+
+        NewCategoryEditorName = "";
+        await SaveCategoryEdits(closeDialog: false);
+    }
+
+    private async Task RemoveCategoryEditorItem(int index)
+    {
+        if (index < 0 || index >= CategoryEditorItems.Count)
+            return;
+
+        if (IsServicePackagesCategory(CategoryEditorItems[index].OriginalName))
+        {
+            CategoryEditorMessage = "Service Packages category cannot be removed.";
+            return;
+        }
+
+        CategoryEditorItems.RemoveAt(index);
+        CategoryEditorMessage = "";
+        await SaveCategoryEdits(closeDialog: false);
+    }
+
+    private async Task SaveCategoryEdits(bool closeDialog = true)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var hasServicePackages = false;
+
+        foreach (var item in CategoryEditorItems)
+        {
+            item.Name = (item.Name ?? "").Trim();
+            item.ColorHex = NormalizeColor(item.ColorHex);
+
+            if (string.IsNullOrWhiteSpace(item.Name))
+            {
+                CategoryEditorMessage = "Category names cannot be empty.";
+                return;
+            }
+
+            if (!names.Add(item.Name))
+            {
+                CategoryEditorMessage = "Category names must be unique.";
+                return;
+            }
+
+            if (IsServicePackagesCategory(item.OriginalName) && !IsServicePackagesCategory(item.Name))
+            {
+                CategoryEditorMessage = "Service Packages category name cannot be changed.";
+                return;
+            }
+
+            if (IsServicePackagesCategory(item.Name))
+                hasServicePackages = true;
+        }
+
+        if (!hasServicePackages)
+        {
+            CategoryEditorMessage = "Service Packages category is required.";
+            return;
+        }
+
+        var renameMap = CategoryEditorItems
+            .Where(i => !i.OriginalName.Equals(i.Name, StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(i => i.OriginalName, i => i.Name, StringComparer.OrdinalIgnoreCase);
+
+        var existingNames = Catalog.CategoryColors.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var newNames = CategoryEditorItems.Select(i => i.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var removed = existingNames.Except(newNames, StringComparer.OrdinalIgnoreCase).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var fallbackIndividualCategory = CategoryEditorItems
+            .Select(i => i.Name)
+            .FirstOrDefault(n => !IsServicePackagesCategory(n)) ?? "Service Packages";
+        var fallbackAddOnCategory = CategoryEditorItems
+            .Select(i => i.Name)
+            .FirstOrDefault(n => !IsServicePackagesCategory(n)) ?? "Service Packages";
+
+        Catalog.CategoryColors.Clear();
+        foreach (var item in CategoryEditorItems)
+            Catalog.CategoryColors[item.Name] = item.ColorHex;
+
+        await Catalog.SaveSettingsAsync();
+
+        foreach (var job in Catalog.Jobs)
+        {
+            var current = (job.Category ?? "").Trim();
+            var updated = current;
+
+            if (renameMap.TryGetValue(current, out var renamed))
+                updated = renamed;
+            else if (removed.Contains(current))
+                updated = IsServicePackagesCategory(current) ? "Service Packages" : fallbackIndividualCategory;
+
+            if (updated.Equals(current, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            job.Category = updated;
+            await Catalog.SaveJobAsync(job);
+        }
+
+        foreach (var addOn in Catalog.AddOns)
+        {
+            var current = (addOn.Category ?? "").Trim();
+            var updated = current;
+
+            if (renameMap.TryGetValue(current, out var renamed))
+                updated = renamed;
+            else if (removed.Contains(current))
+                updated = fallbackAddOnCategory;
+
+            if (updated.Equals(current, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            addOn.Category = updated;
+            await Catalog.SaveAddOnAsync(addOn);
+        }
+
+        if (renameMap.TryGetValue(NewAddOnCategory, out var newCategoryName))
+            NewAddOnCategory = newCategoryName;
+        else if (removed.Contains(NewAddOnCategory))
+            NewAddOnCategory = fallbackAddOnCategory;
+
+        if (string.IsNullOrWhiteSpace(NewAddOnCategory))
+            NewAddOnCategory = fallbackAddOnCategory;
+
+        CategoryEditorItems = CategoryEditorItems
+            .Select(i => new CategoryEditorItem(i.Name, i.ColorHex))
+            .ToList();
+        if (closeDialog)
+            IsCategoryDialogVisible = false;
+        CategoryEditorMessage = "";
+    }
+
+    private async Task EnsureCategoryDndAsync()
+    {
+        try
+        {
+            CategoryDotNetRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("workshopStatusDnd.init", CategoryListRef, CategoryDotNetRef, "ReorderCategory", ".catalog-editor-row");
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Add-on category editor drag-and-drop initialization failed.");
+        }
+    }
+
+    [JSInvokable]
+    public async Task ReorderCategory(int fromIndex, int toIndex)
+    {
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= CategoryEditorItems.Count || toIndex >= CategoryEditorItems.Count)
+            return;
+
+        if (fromIndex == toIndex)
+            return;
+
+        if (IsServicePackagesCategory(CategoryEditorItems[fromIndex].OriginalName))
+            return;
+
+        var item = CategoryEditorItems[fromIndex];
+        CategoryEditorItems.RemoveAt(fromIndex);
+        if (toIndex > fromIndex) toIndex--;
+        CategoryEditorItems.Insert(toIndex, item);
+        StateHasChanged();
+        await SaveCategoryEdits(closeDialog: false);
+    }
+
+    private void TogglePackage(string jobId, ChangeEventArgs e)
+    {
+        var isChecked = e?.Value is bool b && b;
+        if (isChecked)
+        {
+            SelectedPackages.Add(jobId);
+            EnsurePackageSettings(jobId);
+        }
+        else
+        {
+            SelectedPackages.Remove(jobId);
+        }
+    }
+
+    private PackageSettings GetPackageSettings(string jobId)
+    {
+        if (PackageSettingsByJobId.TryGetValue(jobId, out var settings))
+            return settings;
+
+        settings = new PackageSettings();
+        PackageSettingsByJobId[jobId] = settings;
+        return settings;
+    }
+
+    private void EnsurePackageSettings(string jobId)
+    {
+        if (PackageSettingsByJobId.ContainsKey(jobId)) return;
+        PackageSettingsByJobId[jobId] = new PackageSettings();
+    }
+
+    private async Task SaveAddOn()
+    {
+        Message = "";
+        IsError = false;
+
+        if (string.IsNullOrWhiteSpace(NewAddOnName))
+        {
+            Message = "Add-on name is required.";
+            IsError = true;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(NewAddOnCategory))
+        {
+            Message = "Category is required.";
+            IsError = true;
+            return;
+        }
+
+        if (SelectedPackages.Count == 0)
+        {
+            Message = "Select at least one service package.";
+            IsError = true;
+            return;
+        }
+
+        foreach (var jobId in SelectedPackages)
+        {
+            if (!PackageSettingsByJobId.TryGetValue(jobId, out var settings))
+            {
+                Message = "Invalid package settings.";
+                IsError = true;
+                return;
+            }
+
+            if (settings.Minutes < 0)
+            {
+                Message = "Minutes must be 0 or greater.";
+                IsError = true;
+                return;
+            }
+
+            if (settings.Price < 0)
+            {
+                Message = "Price must be 0 or greater.";
+                IsError = true;
+                return;
+            }
+        }
+
+        string addOnId;
+
+        if (EditingAddOnId is not null)
+        {
+            var addOn = Catalog.AddOns.FirstOrDefault(a => a.Id == EditingAddOnId);
+            if (addOn == null)
+            {
+                Message = "Add-on not found.";
+                IsError = true;
+                return;
+            }
+
+            addOn.Name = NewAddOnName.Trim();
+            addOn.Category = NewAddOnCategory.Trim();
+            addOn.Description = NewAddOnDescription.Trim();
+            addOnId = addOn.Id;
+
+            var existingRules = Catalog.Rules.Where(r => r.AddOnId == addOnId).ToList();
+            foreach (var rule in existingRules)
+            {
+                await Catalog.DeleteRuleAsync(rule.JobId, rule.AddOnId);
+            }
+
+            await Catalog.SaveAddOnAsync(addOn);
+        }
+        else
+        {
+            addOnId = $"ADD_{Catalog.AddOns.Count + 1:000}";
+            while (Catalog.AddOns.Any(a => a.Id.Equals(addOnId, StringComparison.OrdinalIgnoreCase)))
+            {
+                addOnId = $"ADD_{Catalog.AddOns.Count + 1:000}";
+            }
+
+            var addOn = new AddOnDefinition
+            {
+                Id = addOnId,
+                Name = NewAddOnName.Trim(),
+                Category = NewAddOnCategory.Trim(),
+                Description = NewAddOnDescription.Trim()
+            };
+            Catalog.AddOns.Add(addOn);
+            await Catalog.SaveAddOnAsync(addOn);
+        }
+
+        foreach (var jobId in SelectedPackages)
+        {
+            var settings = PackageSettingsByJobId[jobId];
+            var rule = new AddOnRule
+            {
+                AddOnId = addOnId,
+                JobId = jobId,
+                ExtraMinutes = settings.Minutes,
+                ExtraPriceIncVat = settings.Price,
+                PartNumber = settings.PartNumber.Trim()
+            };
+            Catalog.Rules.Add(rule);
+            await Catalog.SaveRuleAsync(rule);
+        }
+
+        Message = $"Add-on '{NewAddOnName.Trim()}' saved successfully!";
+        IsError = false;
+        ShowAddForm = false;
+        EditingAddOnId = null;
+    }
+
+    private List<AddOnRule> GetRulesForAddOn(string addOnId)
+        => Catalog.Rules.Where(r => r.AddOnId == addOnId).ToList();
+
+    private static bool IsServicePackagesCategory(string? category)
+        => string.Equals((category ?? "").Trim(), "Service Packages", StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeColor(string value)
+    {
+        var v = (value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(v))
+            return "";
+
+        if (!v.StartsWith("#", StringComparison.Ordinal))
+            v = "#" + v;
+
+        return v;
+    }
+
+    private string NormalizeCategory(string? category)
+    {
+        var c = (category ?? "").Trim();
+        return string.IsNullOrWhiteSpace(c) ? "Uncategorized" : c;
+    }
+
+    private List<string> GetAddOnCategories()
+    {
+        return Catalog.AddOns
+            .Select(a => NormalizeCategory(a.Category))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private async Task DeleteAddOn(string addOnId)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", "Are you sure you want to delete this add-on?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var addOn = Catalog.AddOns.FirstOrDefault(a => a.Id == addOnId);
+        if (addOn is null)
+        {
+            IsError = true;
+            Message = "Add-on not found.";
+            return;
+        }
+
+        var rules = Catalog.Rules.Where(r => r.AddOnId == addOnId).ToList();
+        foreach (var rule in rules)
+        {
+            await Catalog.DeleteRuleAsync(rule.JobId, rule.AddOnId);
+        }
+        await Catalog.DeleteAddOnAsync(addOnId);
+        IsError = false;
+        Message = $"Deleted '{addOn.Name}'.";
+    }
+}
+

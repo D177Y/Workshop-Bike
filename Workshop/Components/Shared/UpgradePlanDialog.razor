@@ -1,0 +1,293 @@
+@using Workshop.Models
+@using Syncfusion.Blazor.Popups
+@inject BillingService Billing
+@inject NavigationManager Nav
+@inject ILogger<UpgradePlanDialog> Logger
+
+<SfDialog Width="680px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          @bind-Visible="InternalVisible"
+          Header="@HeaderText">
+    <DialogTemplates>
+        <Content>
+            <div class="upgrade-dialog-content">
+                <p class="upgrade-intro">@IntroText</p>
+
+                @if (CurrentMechanicLimit > 0)
+                {
+                    <div class="upgrade-current">
+                        Current plan: <strong>@CurrentPlan</strong> (up to <strong>@CurrentMechanicLimit</strong> mechanics)
+                        @if (CurrentMechanicCount > 0)
+                        {
+                            <span> • currently using <strong>@CurrentMechanicCount</strong></span>
+                        }
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                {
+                    <div class="upgrade-error">@ErrorMessage</div>
+                }
+
+                @if (UpgradeOptions.Count == 0)
+                {
+                    <div class="upgrade-empty">
+                        No higher self-serve plans are available from your current plan.
+                        Please contact support for enterprise upgrades.
+                    </div>
+                }
+                else
+                {
+                    <div class="upgrade-options">
+                        @foreach (var option in UpgradeOptions)
+                        {
+                            <div class="upgrade-option">
+                                <div class="upgrade-option-head">
+                                    <div class="upgrade-name">@option.Name</div>
+                                    <div class="upgrade-price">@option.PriceLabel</div>
+                                </div>
+                                <div class="upgrade-cap">Up to @option.Limit mechanics</div>
+                                <div class="upgrade-desc">@option.Description</div>
+                                <button class="upgrade-btn"
+                                        type="button"
+                                        disabled="@IsSubmitting"
+                                        @onclick="() => StartCheckoutAsync(option.Tier)">
+                                    @(IsSubmitting ? "Starting checkout..." : $"Upgrade to {option.Name}")
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </Content>
+    </DialogTemplates>
+    <DialogButtons>
+        <DialogButton Content="Close" IsPrimary="false" OnClick="CloseDialogAsync" />
+    </DialogButtons>
+</SfDialog>
+
+<style>
+    .upgrade-dialog-content {
+        display: grid;
+        gap: 10px;
+    }
+
+    .upgrade-intro {
+        margin: 0;
+        color: #334155;
+    }
+
+    .upgrade-current {
+        border: 1px solid #bfdbfe;
+        background: #eff6ff;
+        color: #1e3a8a;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    .upgrade-error {
+        border: 1px solid #fecaca;
+        background: #fff1f2;
+        color: #991b1b;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    .upgrade-empty {
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        color: #334155;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    .upgrade-options {
+        display: grid;
+        gap: 10px;
+        margin-top: 4px;
+    }
+
+    .upgrade-option {
+        border: 1px solid #dbe1ea;
+        border-radius: 12px;
+        padding: 12px;
+        background: #ffffff;
+        display: grid;
+        gap: 6px;
+    }
+
+    .upgrade-option-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+    }
+
+    .upgrade-name {
+        font-size: 16px;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .upgrade-price {
+        font-weight: 700;
+        color: #1d4ed8;
+    }
+
+    .upgrade-cap {
+        font-size: 13px;
+        color: #0f172a;
+        font-weight: 600;
+    }
+
+    .upgrade-desc {
+        font-size: 13px;
+        color: #475569;
+    }
+
+    .upgrade-btn {
+        justify-self: start;
+        margin-top: 4px;
+        padding: 8px 14px;
+        border: none;
+        border-radius: 999px;
+        background: #0d6efd;
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .upgrade-btn:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+</style>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public int TenantId { get; set; }
+    [Parameter] public string CustomerEmail { get; set; } = "";
+    [Parameter] public PlanTier CurrentPlan { get; set; } = PlanTier.Standard;
+    [Parameter] public int CurrentMechanicLimit { get; set; }
+    [Parameter] public int CurrentMechanicCount { get; set; }
+    [Parameter] public string HeaderText { get; set; } = "Upgrade plan";
+    [Parameter] public string IntroText { get; set; } = "Choose a higher plan to increase your mechanic limit.";
+
+    private string ErrorMessage = "";
+    private bool IsSubmitting;
+    private bool InternalVisible
+    {
+        get => Visible;
+        set
+        {
+            if (Visible == value)
+                return;
+
+            Visible = value;
+            _ = VisibleChanged.InvokeAsync(value);
+        }
+    }
+
+    private static readonly IReadOnlyList<UpgradeOption> AllPlanOptions = new List<UpgradeOption>
+    {
+        new(PlanTier.Starter, "Starter", 1, "GBP 15 / month", "Great for single-mechanic workshops."),
+        new(PlanTier.Standard, "Standard", 6, "GBP 25 / month", "Best for growing workshops with multiple mechanics."),
+        new(PlanTier.Premium, "Premium", 36, "GBP 45 / month", "Scale up with larger teams and busier schedules.")
+    };
+
+    private IReadOnlyList<UpgradeOption> UpgradeOptions =>
+        AllPlanOptions
+            .Where(o => PlanRank(o.Tier) > PlanRank(CurrentPlan))
+            .OrderBy(o => PlanRank(o.Tier))
+            .ToList();
+
+    private async Task StartCheckoutAsync(PlanTier plan)
+    {
+        ErrorMessage = "";
+
+        if (TenantId <= 0)
+        {
+            ErrorMessage = "Unable to determine tenant for checkout.";
+            return;
+        }
+
+        var email = (CustomerEmail ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            ErrorMessage = "No billing email found. Please update your business profile email first.";
+            return;
+        }
+
+        var priceId = Billing.GetPriceId(plan);
+        if (string.IsNullOrWhiteSpace(priceId))
+        {
+            ErrorMessage = "This plan is not configured for self-serve checkout yet.";
+            return;
+        }
+
+        try
+        {
+            IsSubmitting = true;
+            var result = await Billing.UpgradeSubscriptionAsync(TenantId, email, plan, Nav.BaseUri);
+            if (!result.IsSuccess)
+            {
+                ErrorMessage = result.Message;
+                return;
+            }
+
+            await VisibleChanged.InvokeAsync(false);
+
+            if (result.RequiresRedirect)
+            {
+                if (string.IsNullOrWhiteSpace(result.RedirectUrl))
+                {
+                    ErrorMessage = "Checkout URL was not returned. Please try again.";
+                    return;
+                }
+
+                Nav.NavigateTo(result.RedirectUrl, forceLoad: true);
+                return;
+            }
+
+            // Reload so current plan/limits refresh everywhere immediately.
+            Nav.NavigateTo(Nav.Uri, forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to process plan upgrade for tenant {TenantId} and plan {Plan}.", TenantId, plan);
+            ErrorMessage = "Could not process upgrade right now. Please try again.";
+        }
+        finally
+        {
+            IsSubmitting = false;
+        }
+    }
+
+    private async Task CloseDialogAsync()
+    {
+        ErrorMessage = "";
+        IsSubmitting = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private static int PlanRank(PlanTier plan) => plan switch
+    {
+        PlanTier.Starter => 0,
+        PlanTier.Standard => 1,
+        PlanTier.Premium => 2,
+        PlanTier.Enterprise => 3,
+        _ => -1
+    };
+
+    private sealed record UpgradeOption(
+        PlanTier Tier,
+        string Name,
+        int Limit,
+        string PriceLabel,
+        string Description);
+}

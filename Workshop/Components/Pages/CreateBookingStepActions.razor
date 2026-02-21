@@ -1,0 +1,23 @@
+<div class="step-actions">
+    @if (ActiveStep > 0)
+    {
+        <button class="btn-secondary" @onclick="OnBack">Back</button>
+    }
+    @if (ActiveStep < LastStep)
+    {
+        <button class="btn-primary" @onclick="OnNext">Next</button>
+    }
+    else
+    {
+        <button class="btn-primary" @onclick="OnSubmit">@SubmitLabel</button>
+    }
+</div>
+
+@code {
+    [Parameter] public int ActiveStep { get; set; }
+    [Parameter] public int LastStep { get; set; } = 3;
+    [Parameter] public string SubmitLabel { get; set; } = "SCHEDULE";
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnNext { get; set; }
+    [Parameter] public EventCallback OnSubmit { get; set; }
+}

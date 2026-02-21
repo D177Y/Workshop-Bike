@@ -1,0 +1,137 @@
+@using Workshop.Models
+
+<div class="section-title">SERVICE DETAILS</div>
+<div class="step-section">
+    <div class="form-block">
+        <label>Select Store</label>
+        <select value="@SelectedStoreId"
+                class="@(ShowValidation && SelectedStoreId == 0 ? "input-invalid" : "")"
+                @onchange="OnStoreChanged"
+                required>
+            @foreach (var s in Stores)
+            {
+                <option value="@s.Id">@s.Name</option>
+            }
+        </select>
+    </div>
+
+    <div class="form-block">
+        <label>Select Mechanic</label>
+        <select value="@SelectedMechanicId" @onchange="OnMechanicChanged" required>
+            <option value="0">All</option>
+            @foreach (var m in Mechanics)
+            {
+                <option value="@m.Id">@m.Name</option>
+            }
+        </select>
+    </div>
+
+    <div class="form-block">
+        <label>Select Service</label>
+        <div class="job-picker @(ShowValidation && SelectedJobCount == 0 ? "input-invalid" : "")">
+            <input class="job-filter" placeholder="Filter jobs..." value="@JobFilter" @oninput="OnJobFilterInput" />
+            @foreach (var group in JobGroups)
+            {
+                <div class="job-group @((IsGroupOpen?.Invoke(group.Key) ?? false) ? "" : "group-collapsed")">
+                    <button type="button" class="job-group-header" @onclick="() => ToggleGroup.InvokeAsync(group.Key)">
+                        <span>@group.Key</span>
+                        <span>@((IsGroupOpen?.Invoke(group.Key) ?? false) ? "▾" : "▸")</span>
+                    </button>
+                    @if (IsGroupOpen?.Invoke(group.Key) ?? false)
+                    {
+                        @foreach (var job in group.Value)
+                        {
+                            <label class="job-item">
+                                <input type="checkbox"
+                                       checked="@(IsJobSelected?.Invoke(job.Id) ?? false)"
+                                       @onchange="e => ToggleJob.InvokeAsync(new JobToggleRequest(job, e))" />
+                                <span>@job.Name</span>
+                                <span class="job-meta">@job.DefaultMinutes mins · £@job.BasePriceIncVat.ToString("0.00")</span>
+                            </label>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (CanSelectPackageServices)
+    {
+        <div class="form-block">
+            <label>Select Additional Services</label>
+            <div class="job-picker">
+                <input class="job-filter" placeholder="Filter services..." value="@PackageServiceFilter" @oninput="OnPackageServiceFilterInput" />
+                @foreach (var group in PackageServiceGroups)
+                {
+                    <div class="job-group @((IsPackageServiceGroupOpen?.Invoke(group.Key) ?? false) ? "" : "group-collapsed")">
+                        <button type="button" class="job-group-header" @onclick="() => TogglePackageServiceGroup.InvokeAsync(group.Key)">
+                            <span>@group.Key</span>
+                            <span>@((IsPackageServiceGroupOpen?.Invoke(group.Key) ?? false) ? "▾" : "▸")</span>
+                        </button>
+                        @if (IsPackageServiceGroupOpen?.Invoke(group.Key) ?? false)
+                        {
+                            @foreach (var service in group.Value)
+                            {
+                                <label class="job-item">
+                                    <input type="checkbox"
+                                           checked="@(SelectedPackageServices?.Contains(service.Id) ?? false)"
+                                           @onchange="e => TogglePackageService.InvokeAsync(new PackageServiceToggleRequest(service.Id, e))" />
+                                    <span>@service.Name</span>
+                                    <span class="job-meta">@((GetPackageServiceMeta?.Invoke(service.Id)) ?? "")</span>
+                                </label>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="form-block">
+        <label>Notes</label>
+        <textarea rows="3" value="@JobNotes" @oninput="OnJobNotesInput"></textarea>
+    </div>
+</div>
+
+@code {
+    [Parameter] public bool ShowValidation { get; set; }
+    [Parameter] public int SelectedStoreId { get; set; }
+    [Parameter] public EventCallback<int> SelectedStoreIdChanged { get; set; }
+    [Parameter] public IEnumerable<Store> Stores { get; set; } = Array.Empty<Store>();
+    [Parameter] public int SelectedMechanicId { get; set; }
+    [Parameter] public EventCallback<int> SelectedMechanicIdChanged { get; set; }
+    [Parameter] public IEnumerable<Mechanic> Mechanics { get; set; } = Array.Empty<Mechanic>();
+    [Parameter] public string JobFilter { get; set; } = "";
+    [Parameter] public EventCallback<string> JobFilterChanged { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, List<JobDefinition>> JobGroups { get; set; } = new Dictionary<string, List<JobDefinition>>();
+    [Parameter] public Func<string, bool>? IsGroupOpen { get; set; }
+    [Parameter] public EventCallback<string> ToggleGroup { get; set; }
+    [Parameter] public Func<string, bool>? IsJobSelected { get; set; }
+    [Parameter] public EventCallback<JobToggleRequest> ToggleJob { get; set; }
+    [Parameter] public bool CanSelectPackageServices { get; set; }
+    [Parameter] public string PackageServiceFilter { get; set; } = "";
+    [Parameter] public EventCallback<string> PackageServiceFilterChanged { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, List<JobDefinition>> PackageServiceGroups { get; set; } = new Dictionary<string, List<JobDefinition>>();
+    [Parameter] public Func<string, bool>? IsPackageServiceGroupOpen { get; set; }
+    [Parameter] public EventCallback<string> TogglePackageServiceGroup { get; set; }
+    [Parameter] public ISet<string>? SelectedPackageServices { get; set; }
+    [Parameter] public EventCallback<PackageServiceToggleRequest> TogglePackageService { get; set; }
+    [Parameter] public Func<string, string>? GetPackageServiceMeta { get; set; }
+    [Parameter] public string JobNotes { get; set; } = "";
+    [Parameter] public EventCallback<string> JobNotesChanged { get; set; }
+    [Parameter] public int SelectedJobCount { get; set; }
+
+    private Task OnStoreChanged(ChangeEventArgs e) => SelectedStoreIdChanged.InvokeAsync(ParseInt(e));
+    private Task OnMechanicChanged(ChangeEventArgs e) => SelectedMechanicIdChanged.InvokeAsync(ParseInt(e));
+    private Task OnJobFilterInput(ChangeEventArgs e) => JobFilterChanged.InvokeAsync(ReadValue(e));
+    private Task OnPackageServiceFilterInput(ChangeEventArgs e) => PackageServiceFilterChanged.InvokeAsync(ReadValue(e));
+    private Task OnJobNotesInput(ChangeEventArgs e) => JobNotesChanged.InvokeAsync(ReadValue(e));
+
+    private static int ParseInt(ChangeEventArgs e)
+        => int.TryParse(e.Value?.ToString(), out var parsed) ? parsed : 0;
+
+    private static string ReadValue(ChangeEventArgs e) => e.Value?.ToString() ?? "";
+
+    public sealed record JobToggleRequest(JobDefinition Job, ChangeEventArgs Args);
+    public sealed record PackageServiceToggleRequest(string ServiceId, ChangeEventArgs Args);
+}

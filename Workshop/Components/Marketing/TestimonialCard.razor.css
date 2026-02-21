@@ -1,0 +1,30 @@
+.mk-testimonial-card {
+    border: 1px solid var(--mk-border);
+    border-radius: 16px;
+    background: #fff;
+    padding: 1.2rem;
+}
+
+.mk-testimonial-quote {
+    margin: 0;
+    color: #1e293b;
+    line-height: 1.65;
+    min-height: 84px;
+}
+
+.mk-testimonial-meta {
+    border-top: 1px solid var(--mk-border);
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+}
+
+.mk-testimonial-name {
+    margin: 0;
+    font-weight: 700;
+}
+
+.mk-testimonial-role {
+    margin: 0.25rem 0 0;
+    color: var(--mk-muted);
+    font-size: 0.86rem;
+}

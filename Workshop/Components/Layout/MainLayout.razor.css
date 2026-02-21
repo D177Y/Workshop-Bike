@@ -1,20 +1,321 @@
-#blazor-error-ui {
-    color-scheme: light only;
-    background: lightyellow;
-    bottom: 0;
-    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
-    box-sizing: border-box;
-    display: none;
-    left: 0;
-    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
-    position: fixed;
-    width: 100%;
+#app-shell {
+    min-height: 100vh;
+}
+
+.app-body {
+    min-height: calc(100vh - 64px);
+    position: relative;
+    display: flex;
+}
+
+.app-main {
+    min-height: calc(100vh - 64px);
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    z-index: 1;
+    padding: 25px;
+}
+
+::deep .app-toolbar {
+    height: 64px;
+    min-height: 64px;
+    border: none;
+    margin: 0;
+    padding: 0;
+    position: sticky;
+    top: 0;
     z-index: 1000;
 }
 
-    #blazor-error-ui .dismiss {
-        cursor: pointer;
-        position: absolute;
-        right: 0.75rem;
-        top: 0.5rem;
+::deep .app-toolbar,
+::deep .app-toolbar .e-toolbar-items,
+::deep .app-toolbar .e-toolbar-items .e-toolbar-item,
+::deep .app-toolbar .e-toolbar-items .e-toolbar-item .e-tbar-btn,
+::deep .app-toolbar .e-toolbar-items .e-toolbar-item .e-tbar-btn-text,
+::deep .app-toolbar .e-toolbar-items .e-toolbar-item .e-btn-icon,
+::deep .app-toolbar .e-toolbar-items .e-toolbar-item .e-icons,
+::deep .app-toolbar .e-toolbar-items .e-toolbar-item .e-btn,
+::deep .app-toolbar .app-title {
+    background: #000000;
+    color: #FFFFFF;
+}
+
+::deep .app-toolbar .e-toolbar-items {
+    height: 64px;
+}
+
+::deep .app-toolbar .e-toolbar-items .e-toolbar-item {
+    height: 64px;
+    display: flex;
+    align-items: center;
+}
+
+.app-title {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.app-sidebar {
+    flex: 0 0 290px;
+    width: 290px;
+    min-height: calc(100vh - 64px);
+    background: #f8f9fb;
+    border-right: 1px solid #e5e7eb;
+    position: relative;
+    z-index: 2;
+}
+
+.app-sidebar .app-menu {
+    position: sticky;
+    top: 64px;
+}
+
+.app-sidebar.smart-sticky-active .app-menu {
+    top: calc(var(--sidebar-smart-top, 64px) - var(--sidebar-smart-offset, 0px));
+}
+
+.app-sidebar.smart-sticky-short .app-menu {
+    top: var(--sidebar-smart-top, 64px);
+}
+
+#app-shell.sidebar-closed .app-sidebar {
+    display: none;
+}
+
+@media (max-width: 599px) {
+    #app-shell.sidebar-open .app-sidebar {
+        display: none;
     }
+}
+
+::deep .app-treeview .e-treeview,
+::deep .app-treeview .e-treeview .e-ul {
+    padding: 0;
+    margin: 0;
+}
+
+.friendly-error-shell {
+    min-height: calc(100vh - 150px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #ffffff;
+}
+
+.friendly-error {
+    max-width: 1220px;
+    margin: 0 auto;
+    padding: 28px 34px;
+    border-radius: 24px;
+    border: 1px solid #ffffff;
+    background: #ffffff;
+    display: grid;
+    grid-template-columns: minmax(360px, 560px) minmax(320px, 1fr);
+    gap: 24px;
+    align-items: center;
+}
+
+.friendly-error-figure {
+    min-height: 470px;
+    background: url("/images/oops-monkey.png");
+    background-repeat: no-repeat;
+    background-position: center bottom;
+    background-size: contain;
+}
+
+.friendly-error-content {
+    max-width: 540px;
+}
+
+.friendly-error-title {
+    margin: 0 0 8px;
+    color: #0f172a;
+    font-size: clamp(42px, 8vw, 68px);
+    line-height: 0.92;
+    letter-spacing: 0.01em;
+}
+
+.friendly-error-subtitle {
+    margin: 0 0 14px;
+    color: #0f172a;
+    font-size: clamp(32px, 5vw, 56px);
+    line-height: 0.94;
+    font-weight: 700;
+}
+
+.friendly-error p {
+    margin: 0 0 18px;
+    color: #334155;
+    font-size: 17px;
+    max-width: 520px;
+}
+
+.friendly-error-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 54px;
+    height: 28px;
+    padding: 0 10px;
+    margin-bottom: 12px;
+    border-radius: 999px;
+    background: #e7f0ff;
+    color: #0d6efd;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    font-size: 12px;
+}
+
+.friendly-error-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 28px;
+}
+
+.friendly-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    padding: 0 16px;
+    border-radius: 999px;
+    text-decoration: none;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.friendly-btn.primary {
+    background: #0d6efd;
+    color: #fff;
+}
+
+.friendly-btn.secondary {
+    background: #eef2f7;
+    color: #0f172a;
+}
+
+.friendly-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.friendly-error-status {
+    margin: 12px 0 0 !important;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.friendly-error-status.success {
+    color: #166534;
+}
+
+.friendly-error-status.error {
+    color: #b91c1c;
+}
+
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    padding: 24px;
+    border: none;
+    background: rgba(255, 255, 255, 0.96);
+}
+
+#blazor-error-ui .blazor-friendly-error {
+    width: min(1220px, 100%);
+    margin: 0 auto;
+    border-radius: 24px;
+    border: 1px solid #ffffff;
+    background: #ffffff;
+    padding: 28px 34px;
+    display: grid;
+    grid-template-columns: minmax(360px, 560px) minmax(320px, 1fr);
+    gap: 24px;
+    align-items: center;
+    position: relative;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+#blazor-error-ui .blazor-friendly-figure {
+    min-height: 470px;
+    background: url("/images/blazor-error-monkey.png");
+    background-repeat: no-repeat;
+    background-position: center bottom;
+    background-size: contain;
+}
+
+#blazor-error-ui .blazor-friendly-content {
+    max-width: 540px;
+}
+
+#blazor-error-ui .blazor-friendly-content .friendly-error-subtitle {
+    font-size: clamp(24px, 3.2vw, 40px);
+    line-height: 0.94;
+}
+
+#blazor-error-ui .dismiss {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #334155;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+#blazor-error-ui .dismiss:hover {
+    background: #f8fafc;
+}
+
+@media (max-width: 980px) {
+    .friendly-error-shell {
+        min-height: auto;
+    }
+
+    .friendly-error {
+        grid-template-columns: 1fr;
+        padding: 22px;
+    }
+
+    .friendly-error-figure {
+        min-height: 360px;
+    }
+
+    .friendly-error-title {
+        font-size: clamp(34px, 8vw, 56px);
+    }
+
+    .friendly-error-subtitle {
+        font-size: clamp(28px, 7vw, 44px);
+    }
+
+    #blazor-error-ui .blazor-friendly-error {
+        grid-template-columns: 1fr;
+        padding: 22px;
+        top: 0;
+        transform: none;
+    }
+
+    #blazor-error-ui .blazor-friendly-figure {
+        min-height: 360px;
+    }
+
+    #blazor-error-ui .blazor-friendly-content .friendly-error-subtitle {
+        font-size: clamp(22px, 6vw, 34px);
+    }
+}

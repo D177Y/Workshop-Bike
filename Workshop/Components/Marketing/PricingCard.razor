@@ -1,0 +1,38 @@
+@namespace Workshop.Components.Marketing
+@using Microsoft.AspNetCore.Components
+
+<article class="mk-pricing-card @(IsPopular ? "mk-pricing-card-popular" : string.Empty) mk-reveal">
+    @if (IsPopular)
+    {
+        <span class="mk-pricing-popular">Most popular</span>
+    }
+
+    <h3>@Name</h3>
+    <p class="mk-pricing-desc">@Description</p>
+
+    <p class="mk-pricing-price">@CurrentPrice <span>/month</span></p>
+
+    <ul>
+        @foreach (var item in Features)
+        {
+            <li>@item</li>
+        }
+    </ul>
+
+    <a class="mk-btn @(IsPopular ? "mk-btn-secondary" : "mk-btn-primary") mk-pricing-cta @(ExtraCtaTopSpace ? "mk-pricing-cta-extra-top" : string.Empty)" href="@CtaHref">@CtaText</a>
+</article>
+
+@code {
+    [Parameter] public string Name { get; set; } = string.Empty;
+    [Parameter] public string Description { get; set; } = string.Empty;
+    [Parameter] public string MonthlyPrice { get; set; } = string.Empty;
+    [Parameter] public string AnnualPrice { get; set; } = string.Empty;
+    [Parameter] public bool AnnualBilling { get; set; }
+    [Parameter] public bool IsPopular { get; set; }
+    [Parameter] public IReadOnlyList<string> Features { get; set; } = Array.Empty<string>();
+    [Parameter] public string CtaText { get; set; } = "Start free trial";
+    [Parameter] public string CtaHref { get; set; } = "/signup";
+    [Parameter] public bool ExtraCtaTopSpace { get; set; }
+
+    private string CurrentPrice => AnnualBilling && !string.IsNullOrWhiteSpace(AnnualPrice) ? AnnualPrice : MonthlyPrice;
+}

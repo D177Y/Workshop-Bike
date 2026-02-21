@@ -1,0 +1,390 @@
+@page "/manage-service-categories"
+@attribute [Authorize]
+@using Workshop.Models
+@using Workshop.Services
+@inject JobCatalogService Catalog
+@inject SuggestedCatalogService SuggestedCatalog
+@inject Workshop.Data.TenantContext TenantContext
+
+<h3>Manage Service Categories</h3>
+
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="@(IsError ? "error-message" : "success-message")">@Message</div>
+}
+
+<div class="editor-section">
+    <h4>@(EditingRootOriginalName is not null ? "Edit Category 1" : "Add Category 1")</h4>
+    <div class="row">
+        <input type="text" @bind="RootNameInput" placeholder="Category 1 name" />
+        <input type="text" @bind="RootColorInput" placeholder="#RRGGBB" />
+        <button class="btn btn-primary" @onclick="SaveRootAsync">Save</button>
+        @if (EditingRootOriginalName is not null)
+        {
+            <button class="btn btn-secondary" @onclick="ResetRootEditor">Cancel</button>
+        }
+    </div>
+</div>
+
+<div class="row" style="margin-bottom:12px;">
+    <button class="btn btn-primary" @onclick="ImportSuggestedCategoriesAsync">Import Suggested Categories</button>
+</div>
+
+@foreach (var root in Category1Rows)
+{
+    var subRows = GetCategory2Rows(root);
+    <section class="category-card">
+        <div class="head-row">
+            <button class="btn btn-secondary" @onclick="() => ToggleExpanded(root)">
+                @(IsExpanded(root) ? "Hide" : "Show")
+            </button>
+            <strong>@root</strong>
+            <span class="muted">@GetColor(root)</span>
+            <button class="btn btn-secondary" @onclick="() => EditRoot(root)">Edit</button>
+            <button class="btn btn-danger" @onclick="() => DeleteRootAsync(root)">Delete</button>
+        </div>
+
+        @if (IsExpanded(root))
+        {
+            <div class="sub-list">
+                @foreach (var sub in subRows)
+                {
+                    <div class="sub-row">
+                        <span>@sub</span>
+                        <button class="btn btn-secondary" @onclick="() => EditSub(root, sub)">Edit</button>
+                        <button class="btn btn-danger" @onclick="() => DeleteSubAsync(root, sub)">Delete</button>
+                    </div>
+                }
+
+                <div class="row">
+                    <input type="text" @bind="SubNameInput" placeholder="Category 2 name" />
+                    <button class="btn btn-primary" @onclick="() => SaveSubAsync(root)">@(EditingSubOriginalName is not null ? "Update" : "Add")</button>
+                    @if (EditingSubOriginalName is not null)
+                    {
+                        <button class="btn btn-secondary" @onclick="ResetSubEditor">Cancel</button>
+                    }
+                </div>
+            </div>
+        }
+    </section>
+}
+
+<style>
+    .editor-section, .category-card { margin-bottom: 16px; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
+    .row, .head-row, .sub-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .sub-list { margin-top: 10px; padding: 10px; border-radius: 6px; background: #f8fafc; }
+    .muted { color: #64748b; font-size: 12px; }
+    input { padding: 6px; }
+    .btn { padding: 6px 10px; border: none; border-radius: 999px; cursor: pointer; }
+    .btn-primary { background: #0d6efd; color: #fff; }
+    .btn-secondary { background: #64748b; color: #fff; }
+    .btn-danger { background: #b91c1c; color: #fff; }
+    .error-message { color: #b91c1c; margin: 10px 0; }
+    .success-message { color: #166534; margin: 10px 0; }
+</style>
+
+@code {
+    private string Message = "";
+    private bool IsError;
+
+    private string RootNameInput = "";
+    private string RootColorInput = "#94a3b8";
+    private string? EditingRootOriginalName;
+
+    private string SubNameInput = "";
+    private string? EditingSubRootName;
+    private string? EditingSubOriginalName;
+
+    private readonly HashSet<string> Expanded = new(StringComparer.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Catalog.EnsureInitializedAsync();
+        EnsureSeededStructure();
+    }
+
+    private List<string> Category1Rows => Catalog.ServiceCategoryHierarchy.Keys
+        .Union(Catalog.Categories, StringComparer.OrdinalIgnoreCase)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private List<string> GetCategory2Rows(string category1)
+    {
+        if (!Catalog.ServiceCategoryHierarchy.TryGetValue(category1, out var items))
+            return new List<string>();
+
+        return items
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private bool IsExpanded(string category1) => Expanded.Contains(category1);
+
+    private void ToggleExpanded(string category1)
+    {
+        if (!Expanded.Add(category1))
+            Expanded.Remove(category1);
+    }
+
+    private string GetColor(string category1)
+    {
+        if (Catalog.CategoryColors.TryGetValue(category1, out var color))
+            return color;
+        return "#94a3b8";
+    }
+
+    private void EnsureSeededStructure()
+    {
+        if (Catalog.ServiceCategoryHierarchy.Count > 0)
+            return;
+
+        var hierarchy = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var category1 in Catalog.Categories)
+            hierarchy[category1] = new List<string>();
+
+        foreach (var job in Catalog.Jobs)
+        {
+            var category1 = NormalizeCategory1(job.Category);
+            var category2 = NormalizeCategory2(job.Category2);
+            if (!hierarchy.TryGetValue(category1, out var sub))
+            {
+                sub = new List<string>();
+                hierarchy[category1] = sub;
+            }
+
+            if (!string.IsNullOrWhiteSpace(category2)
+                && !sub.Any(v => v.Equals(category2, StringComparison.OrdinalIgnoreCase)))
+            {
+                sub.Add(category2);
+            }
+        }
+
+        foreach (var entry in hierarchy)
+            entry.Value.Sort(StringComparer.OrdinalIgnoreCase);
+
+        Catalog.ReplaceServiceCategoryHierarchy(hierarchy);
+    }
+
+    private async Task SaveRootAsync()
+    {
+        Message = "";
+        IsError = false;
+
+        var newName = NormalizeCategory1(RootNameInput);
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            Message = "Category 1 name is required.";
+            IsError = true;
+            return;
+        }
+
+        var hierarchy = new Dictionary<string, List<string>>(Catalog.ServiceCategoryHierarchy, StringComparer.OrdinalIgnoreCase);
+        var colors = new Dictionary<string, string>(Catalog.CategoryColors, StringComparer.OrdinalIgnoreCase);
+
+        if (EditingRootOriginalName is not null
+            && !EditingRootOriginalName.Equals(newName, StringComparison.OrdinalIgnoreCase))
+        {
+            if (hierarchy.ContainsKey(newName) || colors.ContainsKey(newName))
+            {
+                Message = "Category 1 already exists.";
+                IsError = true;
+                return;
+            }
+
+            if (hierarchy.TryGetValue(EditingRootOriginalName, out var existingChildren))
+                hierarchy.Remove(EditingRootOriginalName);
+            else
+                existingChildren = new List<string>();
+
+            var oldColor = colors.TryGetValue(EditingRootOriginalName, out var oldColorHex)
+                ? oldColorHex
+                : "#94a3b8";
+            colors.Remove(EditingRootOriginalName);
+            colors[newName] = NormalizeColor(RootColorInput, oldColor);
+            hierarchy[newName] = existingChildren;
+
+            foreach (var job in Catalog.Jobs.Where(j => j.Category.Equals(EditingRootOriginalName, StringComparison.OrdinalIgnoreCase)))
+            {
+                job.Category = newName;
+                await Catalog.SaveJobAsync(job);
+            }
+        }
+        else
+        {
+            if (!hierarchy.ContainsKey(newName))
+                hierarchy[newName] = new List<string>();
+
+            colors[newName] = NormalizeColor(RootColorInput, GetColor(newName));
+        }
+
+        Catalog.CategoryColors.Clear();
+        foreach (var entry in colors)
+            Catalog.CategoryColors[entry.Key] = entry.Value;
+
+        Catalog.ReplaceServiceCategoryHierarchy(hierarchy);
+        await Catalog.SaveSettingsAsync();
+        await Catalog.ReloadAsync();
+
+        Message = "Saved category.";
+        ResetRootEditor();
+    }
+
+    private void EditRoot(string category1)
+    {
+        EditingRootOriginalName = category1;
+        RootNameInput = category1;
+        RootColorInput = GetColor(category1);
+        Expanded.Add(category1);
+    }
+
+    private void ResetRootEditor()
+    {
+        EditingRootOriginalName = null;
+        RootNameInput = "";
+        RootColorInput = "#94a3b8";
+    }
+
+    private async Task DeleteRootAsync(string category1)
+    {
+        var hasJobs = Catalog.Jobs.Any(j => j.Category.Equals(category1, StringComparison.OrdinalIgnoreCase));
+        if (hasJobs)
+        {
+            Message = "Cannot delete a Category 1 that is in use by services.";
+            IsError = true;
+            return;
+        }
+
+        var hierarchy = new Dictionary<string, List<string>>(Catalog.ServiceCategoryHierarchy, StringComparer.OrdinalIgnoreCase);
+        hierarchy.Remove(category1);
+        Catalog.ReplaceServiceCategoryHierarchy(hierarchy);
+
+        Catalog.CategoryColors.Remove(category1);
+        await Catalog.SaveSettingsAsync();
+        await Catalog.ReloadAsync();
+        Message = "Deleted category.";
+        IsError = false;
+        Expanded.Remove(category1);
+    }
+
+    private void EditSub(string category1, string category2)
+    {
+        EditingSubRootName = category1;
+        EditingSubOriginalName = category2;
+        SubNameInput = category2;
+        Expanded.Add(category1);
+    }
+
+    private async Task SaveSubAsync(string category1)
+    {
+        Message = "";
+        IsError = false;
+
+        var root = EditingSubRootName ?? category1;
+        var newSub = NormalizeCategory2(SubNameInput);
+        if (string.IsNullOrWhiteSpace(newSub))
+        {
+            Message = "Category 2 name is required.";
+            IsError = true;
+            return;
+        }
+
+        var hierarchy = new Dictionary<string, List<string>>(Catalog.ServiceCategoryHierarchy, StringComparer.OrdinalIgnoreCase);
+        if (!hierarchy.TryGetValue(root, out var existing))
+            existing = new List<string>();
+
+        if (EditingSubOriginalName is not null)
+            existing.RemoveAll(v => v.Equals(EditingSubOriginalName, StringComparison.OrdinalIgnoreCase));
+
+        if (existing.Any(v => v.Equals(newSub, StringComparison.OrdinalIgnoreCase)))
+        {
+            Message = "Category 2 already exists under this Category 1.";
+            IsError = true;
+            return;
+        }
+
+        existing.Add(newSub);
+        existing = existing.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(v => v, StringComparer.OrdinalIgnoreCase).ToList();
+        hierarchy[root] = existing;
+        Catalog.ReplaceServiceCategoryHierarchy(hierarchy);
+
+        if (EditingSubOriginalName is not null)
+        {
+            foreach (var job in Catalog.Jobs.Where(j =>
+                         j.Category.Equals(root, StringComparison.OrdinalIgnoreCase)
+                         && (j.Category2 ?? "").Equals(EditingSubOriginalName, StringComparison.OrdinalIgnoreCase)))
+            {
+                job.Category2 = newSub;
+                await Catalog.SaveJobAsync(job);
+            }
+        }
+
+        await Catalog.SaveSettingsAsync();
+        await Catalog.ReloadAsync();
+        Message = "Saved sub-category.";
+        ResetSubEditor();
+    }
+
+    private void ResetSubEditor()
+    {
+        EditingSubRootName = null;
+        EditingSubOriginalName = null;
+        SubNameInput = "";
+    }
+
+    private async Task DeleteSubAsync(string category1, string category2)
+    {
+        var hasJobs = Catalog.Jobs.Any(j =>
+            j.Category.Equals(category1, StringComparison.OrdinalIgnoreCase)
+            && (j.Category2 ?? "").Equals(category2, StringComparison.OrdinalIgnoreCase));
+        if (hasJobs)
+        {
+            Message = "Cannot delete a Category 2 that is in use by services.";
+            IsError = true;
+            return;
+        }
+
+        var hierarchy = new Dictionary<string, List<string>>(Catalog.ServiceCategoryHierarchy, StringComparer.OrdinalIgnoreCase);
+        if (!hierarchy.TryGetValue(category1, out var sub))
+            return;
+
+        sub = sub.Where(v => !v.Equals(category2, StringComparison.OrdinalIgnoreCase)).ToList();
+        hierarchy[category1] = sub;
+        Catalog.ReplaceServiceCategoryHierarchy(hierarchy);
+        await Catalog.SaveSettingsAsync();
+        await Catalog.ReloadAsync();
+        Message = "Deleted sub-category.";
+        IsError = false;
+    }
+
+    private async Task ImportSuggestedCategoriesAsync()
+    {
+        Message = "";
+        IsError = false;
+        var result = await SuggestedCatalog.ImportSuggestedAsync(TenantContext.TenantId, SuggestedImportMode.CategoriesOnly);
+        await Catalog.ReloadAsync();
+        Message = $"Imported suggested categories. Added: {result.CategoriesAdded}, Updated: {result.CategoriesUpdated}.";
+    }
+
+    private static string NormalizeCategory1(string? value)
+    {
+        var normalized = (value ?? "").Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? "" : normalized;
+    }
+
+    private static string NormalizeCategory2(string? value)
+        => (value ?? "").Trim();
+
+    private static string NormalizeColor(string? value, string fallback)
+    {
+        var normalized = (value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return fallback;
+
+        if (!normalized.StartsWith("#", StringComparison.Ordinal))
+            normalized = "#" + normalized;
+
+        return normalized;
+    }
+}

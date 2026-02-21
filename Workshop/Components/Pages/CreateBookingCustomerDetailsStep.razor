@@ -1,0 +1,83 @@
+@using Workshop.Models
+
+<div class="section-title">CUSTOMER DETAILS</div>
+<div class="step-section">
+    <div class="form-block">
+        <label>Customer</label>
+        <div style="display:grid; gap:8px; margin-top:6px;">
+            <div>
+                <label>Account Number</label>
+                <input type="text" value="@CustomerAccountNumber" @oninput="OnCustomerAccountNumberInput" />
+            </div>
+            <div>
+                <label>First Name</label>
+                <input type="text" value="@CustomerFirstName" class="@(ShowValidation && string.IsNullOrWhiteSpace(CustomerFirstName) ? "input-invalid" : "")" required @oninput="OnCustomerFirstNameInput" />
+            </div>
+            <div>
+                <label>Last Name</label>
+                <input type="text" value="@CustomerLastName" class="@(ShowValidation && string.IsNullOrWhiteSpace(CustomerLastName) ? "input-invalid" : "")" required @oninput="OnCustomerLastNameInput" />
+            </div>
+            <div>
+                <label>Phone</label>
+                <input type="text" value="@CustomerPhone" class="@(ShowValidation && string.IsNullOrWhiteSpace(CustomerPhone) ? "input-invalid" : "")" required @oninput="OnCustomerPhoneInput" />
+            </div>
+            <div>
+                <label>Email</label>
+                <input type="email" value="@CustomerEmail" class="@(ShowValidation && string.IsNullOrWhiteSpace(CustomerEmail) ? "input-invalid" : "")" required @oninput="OnCustomerEmailInput" />
+            </div>
+        </div>
+        <div class="customer-actions">
+            <button type="button" class="btn-secondary" @onclick="LoadCustomerBikes">Load customer bikes</button>
+            <button type="button" class="btn-secondary" @onclick="ClearBikeSelection">Clear selected bike</button>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(CustomerBikeStatus))
+        {
+            <div class="customer-status @(CustomerBikeStatusIsError ? "error" : "success")">@CustomerBikeStatus</div>
+        }
+    </div>
+
+    <div class="form-block bike-form-block">
+        <label>Bike details</label>
+        <div class="bike-selection-host @(ShowValidation && string.IsNullOrWhiteSpace(BikeDetails) ? "input-invalid" : "")">
+            <CustomerBikeSelector Bikes="@CustomerBikes"
+                                  @bind-SelectedBikeId="SelectedBikeId"
+                                  SelectedBikeDetailsChanged="OnSelectedBikeDetailsChanged"
+                                  OnBikesChanged="OnBikesChanged"
+                                  Title="Select saved bike or add a new bike"
+                                  EmptyStateText="No bikes found for this customer yet. Add a bike to continue."
+                                  ErrorCssClass="customer-status error" />
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public bool ShowValidation { get; set; }
+    [Parameter] public string CustomerAccountNumber { get; set; } = "";
+    [Parameter] public EventCallback<string> CustomerAccountNumberChanged { get; set; }
+    [Parameter] public string CustomerFirstName { get; set; } = "";
+    [Parameter] public EventCallback<string> CustomerFirstNameChanged { get; set; }
+    [Parameter] public string CustomerLastName { get; set; } = "";
+    [Parameter] public EventCallback<string> CustomerLastNameChanged { get; set; }
+    [Parameter] public string CustomerPhone { get; set; } = "";
+    [Parameter] public EventCallback<string> CustomerPhoneChanged { get; set; }
+    [Parameter] public string CustomerEmail { get; set; } = "";
+    [Parameter] public EventCallback<string> CustomerEmailChanged { get; set; }
+    [Parameter] public string BikeDetails { get; set; } = "";
+    [Parameter] public List<CustomerBikeRow> CustomerBikes { get; set; } = new();
+    [Parameter] public string? SelectedBikeId { get; set; }
+    [Parameter] public EventCallback<string?> SelectedBikeIdChanged { get; set; }
+    [Parameter] public EventCallback<string> OnSelectedBikeDetailsChanged { get; set; }
+    [Parameter] public EventCallback OnBikesChanged { get; set; }
+    [Parameter] public EventCallback LoadCustomerBikes { get; set; }
+    [Parameter] public EventCallback ClearBikeSelection { get; set; }
+    [Parameter] public string CustomerBikeStatus { get; set; } = "";
+    [Parameter] public bool CustomerBikeStatusIsError { get; set; }
+
+    private Task OnCustomerAccountNumberInput(ChangeEventArgs e) => CustomerAccountNumberChanged.InvokeAsync(ReadValue(e));
+    private Task OnCustomerFirstNameInput(ChangeEventArgs e) => CustomerFirstNameChanged.InvokeAsync(ReadValue(e));
+    private Task OnCustomerLastNameInput(ChangeEventArgs e) => CustomerLastNameChanged.InvokeAsync(ReadValue(e));
+    private Task OnCustomerPhoneInput(ChangeEventArgs e) => CustomerPhoneChanged.InvokeAsync(ReadValue(e));
+    private Task OnCustomerEmailInput(ChangeEventArgs e) => CustomerEmailChanged.InvokeAsync(ReadValue(e));
+
+    private static string ReadValue(ChangeEventArgs e) => e.Value?.ToString() ?? "";
+}

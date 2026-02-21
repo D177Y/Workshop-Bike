@@ -1,11 +1,18 @@
 ﻿@rendermode InteractiveServer
 @page "/create-booking"
+@attribute [Authorize]
 @using Workshop.Models
 @using Workshop.Services
 @using Syncfusion.Blazor.Calendars
+@using Syncfusion.Blazor.Grids
+@using Syncfusion.Blazor.Navigations
 @inject WorkshopData Data
+@inject CustomerProfileService CustomerProfiles
+@inject QuoteWorkflowService QuoteWorkflow
 @inject JobCatalogService Catalog
 @inject SchedulingService Scheduler
+@inject TenantSetupService SetupService
+@inject UserAccessService UserAccess
 @inject NavigationManager Nav
 
 <style>
@@ -34,102 +41,659 @@
         opacity: 1 !important;
         cursor: not-allowed !important;
     }
+
+    .booking-layout {
+        display: grid;
+        grid-template-columns: 1fr 260px;
+        gap: 24px;
+        align-items: start;
+        padding-top: 8px;
+    }
+
+    .booking-main {
+        display: grid;
+        gap: 26px;
+        width: 100%;
+        max-width: 980px;
+        margin: 0 auto;
+        justify-items: stretch;
+    }
+
+    .booking-summary {
+        border: none;
+        padding: 0;
+        border-radius: 0;
+        background: transparent;
+        position: sticky;
+        top: 50px;
+        display: grid;
+        gap: 10px;
+        font-size: 12px;
+        margin-right: 50px;
+    }
+
+    .step-section {
+        display: grid;
+        gap: 36px;
+        padding: 8px 0 6px;
+        justify-items: stretch;
+    }
+
+    .step-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin-top: 8px;
+        margin-bottom: 24px;
+    }
+
+    .helper-text {
+        font-size: 12px;
+        color: #666;
+        margin-top: 6px;
+    }
+
+    .job-picker {
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        padding: 25px;
+        width: 100%;
+        max-width: 520px;
+        background: #fff;
+        box-sizing: border-box;
+    }
+
+    .job-filter {
+        width: 100%;
+        padding: 6px 8px;
+        border: 1px solid #c7c7c7;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        box-sizing: border-box;
+    }
+
+    .input-invalid,
+    .input-invalid:focus {
+        border-color: #dc2626 !important;
+        box-shadow: 0 0 0 1px rgba(220,38,38,0.4);
+    }
+
+    .job-picker.input-invalid {
+        border-color: #dc2626;
+        box-shadow: 0 0 0 1px rgba(220,38,38,0.4);
+    }
+
+    .input-invalid .e-input {
+        border-color: #dc2626 !important;
+        box-shadow: 0 0 0 1px rgba(220,38,38,0.4);
+    }
+
+    .input-invalid,
+    .input-invalid:focus {
+        border-color: #dc2626 !important;
+        box-shadow: 0 0 0 1px rgba(220,38,38,0.4);
+    }
+
+    .job-picker.input-invalid {
+        border-color: #dc2626;
+        box-shadow: 0 0 0 1px rgba(220,38,38,0.4);
+    }
+
+    .input-invalid .e-input {
+        border-color: #dc2626 !important;
+        box-shadow: 0 0 0 1px rgba(220,38,38,0.4);
+    }
+
+    .job-group {
+        border-top: 1px solid #eee;
+        padding-top: 6px;
+        margin-top: 6px;
+    }
+
+    .job-group-header {
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: none;
+        padding: 4px 0;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .job-item {
+        display: grid;
+        grid-template-columns: 18px 1fr auto;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        font-size: 13px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .job-item input[type="checkbox"] {
+        margin: 0;
+    }
+
+    .job-meta {
+        color: #666;
+        white-space: nowrap;
+    }
+
+    .group-collapsed .job-group-header {
+        opacity: 0.8;
+    }
+
+    .btn-primary {
+        background: #0d6efd;
+        color: white;
+        border: none;
+        padding: 10px 22px;
+        border-radius: 999px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+
+    .btn-secondary {
+        background: #6b7280;
+        color: white;
+        border: none;
+        padding: 10px 22px;
+        border-radius: 999px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+
+    .booking-title {
+        text-align: center;
+        font-size: 18px;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+        color: #4b5563;
+        margin: 24px 0 20px;
+    }
+
+    .section-title {
+        text-align: center;
+        font-size: 14px;
+        letter-spacing: 0.04em;
+        font-weight: 700;
+        color: #4b5563;
+        margin: 6px 0 12px;
+    }
+
+    .form-block {
+        display: grid;
+        gap: 10px;
+        width: 100%;
+        max-width: 520px;
+        justify-items: start;
+    }
+
+    .form-block label {
+        margin-bottom: 8px;
+        display: inline-block;
+    }
+
+    .booking-main select,
+    .booking-main input[type="text"],
+    .booking-main input[type="email"],
+    .booking-main textarea {
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        padding: 8px 10px;
+        width: 260px;
+        font-size: 13px;
+        box-sizing: border-box;
+        background: #fff;
+    }
+
+    .booking-main textarea {
+        width: 100%;
+        max-width: 520px;
+    }
+
+    .job-picker {
+        width: 100%;
+        max-width: 520px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 25px;
+        background: #fff;
+    }
+
+    .job-group {
+        border-top: 1px solid #f0f1f3;
+        padding-top: 6px;
+        margin-top: 6px;
+    }
+
+    .job-group-header {
+        font-size: 12px;
+        color: #111827;
+    }
+
+    .job-item {
+        font-size: 12px;
+    }
+
+    .job-meta {
+        color: #6b7280;
+    }
+
+    .booking-summary h4 {
+        text-align: center;
+        margin: 4px 0 8px;
+        font-size: 12px;
+        color: #4b5563;
+        letter-spacing: 0.04em;
+    }
+
+    .summary-block {
+        border: 1px solid #acadb0;
+        border-radius: 10px;
+        padding: 25px;
+        background: #fff;
+        display: grid;
+        gap: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .summary-center {
+        text-align: center;
+    }
+
+    .summary-spacer {
+        height: 10px;
+    }
+
+    .summary-metrics {
+        margin-top: 8px;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .stepper-wrap {
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: center;
+    }
+
+    .stepper-wrap .e-stepper {
+        width: 100%;
+        max-width: 900px;
+    }
+
+    .booking-locked {
+        max-width: 780px;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        background: #ffffff;
+        padding: 20px;
+        display: grid;
+        gap: 14px;
+    }
+
+    .booking-locked h3 {
+        margin: 0;
+    }
+
+    .booking-locked .lead {
+        margin: 0;
+        color: #475569;
+    }
+
+    .setup-checklist {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 10px;
+    }
+
+    .setup-checklist li {
+        display: grid;
+        grid-template-columns: 24px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 10px;
+        background: #f8fafc;
+    }
+
+    .setup-checklist li.done {
+        border-color: #86efac;
+        background: #f0fdf4;
+    }
+
+    .setup-checklist a {
+        text-decoration: none;
+        color: #0d6efd;
+        font-weight: 600;
+    }
+
+    .customer-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: 4px;
+    }
+
+    .customer-actions .btn-secondary {
+        padding: 8px 14px;
+    }
+
+    .customer-status {
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .customer-status.success {
+        border: 1px solid #86efac;
+        background: #f0fdf4;
+        color: #166534;
+    }
+
+    .customer-status.error {
+        border: 1px solid #fca5a5;
+        background: #fff1f2;
+        color: #991b1b;
+    }
+
+    .bike-selection-host {
+        width: 100%;
+        max-width: 980px;
+        min-width: 0;
+        display: grid;
+        gap: 10px;
+        overflow-x: auto;
+    }
+
+    .bike-selection-host .bike-selection-wrap {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .bike-form-block {
+        max-width: 980px;
+    }
+
+    .bike-panel-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .bike-panel-head h5 {
+        margin: 0;
+        font-size: 15px;
+        color: #334155;
+    }
+
+    .bike-row-actions {
+        display: inline-flex;
+        gap: 6px;
+    }
+
+    .grid-action-btn {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+
+    .grid-action-btn.danger {
+        border-color: #fecaca;
+        color: #b91c1c;
+        background: #fff1f2;
+    }
+
+    .selected-bike-banner {
+        border: 1px solid #bfdbfe;
+        border-radius: 8px;
+        background: #eff6ff;
+        color: #1e3a8a;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .bike-editor {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        background: #f8fafc;
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+    }
+
+    .bike-editor h5 {
+        margin: 0;
+        font-size: 15px;
+        color: #0f172a;
+    }
+
+    .bike-editor-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .bike-editor-grid .field {
+        display: grid;
+        gap: 5px;
+    }
+
+    .bike-editor-grid label {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        color: #334155;
+    }
+
+    .bike-editor-grid input {
+        width: 100% !important;
+    }
+
+    .bike-editor-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    @@media (max-width: 960px) {
+        .bike-editor-grid {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 
-<h3>Create booking</h3>
-
-<div style="display:grid; gap:12px; max-width:720px;">
-    <div>
-        <label>Store</label><br />
-        <select @bind="SelectedStoreId">
-            @foreach (var s in Data.Stores)
+@if (!SetupStatus.CanCreateBooking)
+{
+    <div class="booking-locked">
+        <h3>Create booking is locked</h3>
+        <p class="lead">Finish setup first, then booking will unlock automatically.</p>
+        <ul class="setup-checklist">
+            @foreach (var step in SetupStatus.Steps.Take(3))
             {
-                <option value="@s.Id">@s.Name</option>
+                <li class="@(step.IsComplete ? "done" : "")">
+                    <span>@(step.IsComplete ? "OK" : "->")</span>
+                    <span>@step.Title</span>
+                    @if (!step.IsComplete)
+                    {
+                        <a href="@step.ActionUrl">@step.ActionText</a>
+                    }
+                </li>
             }
-        </select>
+        </ul>
+        <div><a href="/app">Go to setup guide</a></div>
     </div>
-
-    <div>
-        <label>Mechanic</label><br />
-        <select @bind="SelectedMechanicId">
-            <option value="0">All</option>
-            @foreach (var m in MechanicsForSelectedStore)
-            {
-                <option value="@m.Id">@m.Name</option>
-            }
-        </select>
+}
+else if (!HasStoreAccess)
+{
+    <div class="booking-locked">
+        <h3>Create booking is locked</h3>
+        <p class="lead">Your account does not currently have access to any stores.</p>
+        <div>Please contact an administrator to assign store access.</div>
     </div>
+}
+else
+{
+<div class="booking-layout">
+    <div class="booking-main">
+        <div class="booking-title">WORKSHOP SERVICE BOOKING</div>
+        <div class="stepper-wrap">
+            <SfStepper Linear="true" ReadOnly="true" @bind-ActiveStep="ActiveStep" StepClicked="OnStepClicked">
+                <StepperSteps>
+                    <StepperStep Text="1" Label="Service Details"></StepperStep>
+                    <StepperStep Text="2" Label="Service Date"></StepperStep>
+                    <StepperStep Text="3" Label="Customer Details"></StepperStep>
+                    <StepperStep Text="4" Label="Confirm"></StepperStep>
+                </StepperSteps>
+            </SfStepper>
+        </div>
 
-    <div>
-        <label>Job</label><br />
-        <select @bind="SelectedJobId">
-            @foreach (var j in Catalog.Jobs)
-            {
-                <option value="@j.Id">@j.Name (@j.DefaultMinutes mins, £@j.BasePriceIncVat)</option>
-            }
-        </select>
-    </div>
-
-    <div>
-        <label>Add ons</label><br />
-        @foreach (var a in Catalog.AddOns)
+        @if (ActiveStep == 0)
         {
-            <div>
-                <input type="checkbox"
-                       checked="@SelectedAddOns.Contains(a.Id)"
-                       @onchange="e => ToggleAddOn(a.Id, e)" />
-                <span>@a.Name</span>
-            </div>
+            <CreateBookingServiceDetailsStep ShowValidation="@(ShowValidation && ActiveStep == 0)"
+                                             SelectedStoreId="SelectedStoreId"
+                                             SelectedStoreIdChanged="SetSelectedStoreId"
+                                             Stores="StoresForCurrentUser"
+                                             SelectedMechanicId="SelectedMechanicId"
+                                             SelectedMechanicIdChanged="SetSelectedMechanicId"
+                                             Mechanics="MechanicsForSelectedStore"
+                                             JobFilter="JobFilter"
+                                             JobFilterChanged="SetJobFilter"
+                                             JobGroups="JobGroups"
+                                             IsGroupOpen="IsGroupOpen"
+                                             ToggleGroup="ToggleGroup"
+                                             IsJobSelected="IsJobSelected"
+                                             ToggleJob="OnServiceDetailsJobToggle"
+                                             CanSelectPackageServices="CanSelectPackageServices"
+                                             PackageServiceFilter="PackageServiceFilter"
+                                             PackageServiceFilterChanged="SetPackageServiceFilter"
+                                             PackageServiceGroups="PackageServiceGroups"
+                                             IsPackageServiceGroupOpen="IsPackageServiceGroupOpen"
+                                             TogglePackageServiceGroup="TogglePackageServiceGroup"
+                                             SelectedPackageServices="SelectedPackageServices"
+                                             TogglePackageService="OnServiceDetailsPackageToggle"
+                                             GetPackageServiceMeta="GetPackageServiceMeta"
+                                             JobNotes="JobNotes"
+                                             JobNotesChanged="SetJobNotes"
+                                             SelectedJobCount="SelectedJobIds.Count" />
         }
+        else if (ActiveStep == 1)
+        {
+            <CreateBookingServiceDateStep ShowValidation="@(ShowValidation && ActiveStep == 1)"
+                                          SelectedDate="EarliestDay"
+                                          OnDateChanged="OnEarliestDayChanged"
+                                          OnRenderDayCell="OnCalendarRenderDayCell" />
+        }
+        else if (ActiveStep == 2)
+        {
+            <CreateBookingCustomerDetailsStep ShowValidation="@(ShowValidation && ActiveStep == 2)"
+                                              CustomerAccountNumber="CustomerAccountNumber"
+                                              CustomerAccountNumberChanged="SetCustomerAccountNumber"
+                                              CustomerFirstName="CustomerFirstName"
+                                              CustomerFirstNameChanged="SetCustomerFirstName"
+                                              CustomerLastName="CustomerLastName"
+                                              CustomerLastNameChanged="SetCustomerLastName"
+                                              CustomerPhone="CustomerPhone"
+                                              CustomerPhoneChanged="SetCustomerPhone"
+                                              CustomerEmail="CustomerEmail"
+                                              CustomerEmailChanged="SetCustomerEmail"
+                                              BikeDetails="BikeDetails"
+                                              CustomerBikes="CustomerBikes"
+                                              @bind-SelectedBikeId="_selectedBikeId"
+                                              OnSelectedBikeDetailsChanged="OnSelectedBikeDetailsChanged"
+                                              OnBikesChanged="OnBookingBikesChangedAsync"
+                                              LoadCustomerBikes="LoadCustomerBikes"
+                                              ClearBikeSelection="ClearBikeSelection"
+                                              CustomerBikeStatus="_customerBikeStatus"
+                                              CustomerBikeStatusIsError="_customerBikeStatusIsError" />
+        }
+        else if (ActiveStep == 3)
+        {
+            <CreateBookingConfirmStep SummarySelectedDate="SummarySelectedDate"
+                                      SummaryJobs="SummaryJobs"
+                                      SummaryNotes="SummaryNotes"
+                                      SourceQuoteId="SourceQuoteId"
+                                      CalculatedMinutes="CalculatedMinutes"
+                                      CalculatedPrice="CalculatedPrice" />
+        }
+
+        <CreateBookingStepActions ActiveStep="ActiveStep"
+                                  LastStep="3"
+                                  SubmitLabel="SCHEDULE"
+                                  OnBack="PrevStep"
+                                  OnNext="NextStep"
+                                  OnSubmit="Create" />
+
+        @* message block removed *@
     </div>
 
-    <div>
-        <label>Earliest day</label><br />
-
-        <SfDatePicker TValue="DateTime?"
-                      Value="EarliestDay"
-                      Format="dd/MM/yyyy"
-                      StrictMode="true"
-                      AllowEdit="false"
-                      Placeholder="Select a day">
-            <DatePickerEvents TValue="DateTime?"
-                              ValueChange="@OnEarliestDayChanged"
-                              OnRenderDayCell="@OnCalendarRenderDayCell">
-            </DatePickerEvents>
-        </SfDatePicker>
-
-        <div style="font-size:12px; color:#666; margin-top:6px;">
-            We'll always schedule the earliest available slot on the selected day.
-        </div>
-    </div>
-
-    <div style="padding:10px; border:1px solid #ddd;">
-        <div><b>Calculated</b></div>
-        <div>Minutes: @CalculatedMinutes</div>
-        <div>Price inc VAT: £@CalculatedPrice.ToString("0.00")</div>
-    </div>
-
-    <div>
-        <button @onclick="Create">Auto schedule</button>
-    </div>
-
-    @if (!string.IsNullOrWhiteSpace(Message))
-    {
-        <div style="padding:10px; border:1px solid #ddd;">
-            @Message
-        </div>
-    }
+    <CreateBookingSummarySidebar SummaryEarliestDate="SummaryEarliestDate"
+                                 SummaryStore="SummaryStore"
+                                 SummaryMechanic="SummaryMechanic"
+                                 SummaryJobs="SummaryJobs"
+                                 SummaryNotes="SummaryNotes"
+                                 SummaryCustomer="SummaryCustomer"
+                                 SummaryPhone="SummaryPhone"
+                                 SummaryBike="SummaryBike"
+                                 SummarySelectedDate="SummarySelectedDate"
+                                 CalculatedMinutes="CalculatedMinutes"
+                                 CalculatedPrice="CalculatedPrice" />
 </div>
+}
 
 @code {
     private int _selectedStoreId;
-    private string _selectedJobId = "SVC_BRONZE";
     private int _selectedMechanicId = 0; // 0 = All
+    private List<string> SelectedJobIds = new();
+    private readonly CreateBookingStepState Wizard = new();
+    private string JobFilter = "";
+    private readonly HashSet<string> ExpandedGroups = new(StringComparer.OrdinalIgnoreCase);
+    private string PackageServiceFilter = "";
+    private readonly HashSet<string> ExpandedPackageServiceGroups = new(StringComparer.OrdinalIgnoreCase);
+    private int ActiveStep
+    {
+        get => Wizard.ActiveStep;
+        set => Wizard.SetActiveStep(value);
+    }
 
-    private readonly HashSet<string> SelectedAddOns = new(StringComparer.OrdinalIgnoreCase);
+    private bool ShowValidation
+    {
+        get => Wizard.ShowValidation;
+        set => Wizard.SetValidation(value);
+    }
+
+    private readonly HashSet<string> SelectedPackageServices = new(StringComparer.OrdinalIgnoreCase);
+    private TenantSetupStatus SetupStatus = TenantSetupStatus.Empty;
+    private UserAccessScope _userAccess = UserAccessScope.AllowAll();
 
     private DateTime? EarliestDay;
+    private DateTime? EarliestAvailableDay;
     private string Message = "";
+    private string CustomerAccountNumber = "";
+    private string CustomerFirstName = "";
+    private string CustomerLastName = "";
+    private string CustomerPhone = "";
+    private string CustomerEmail = "";
+    private string BikeDetails = "";
+    private string SourceQuoteId = "";
+    private string JobNotes = "";
+    private readonly List<CustomerBikeRow> CustomerBikes = new();
+    private string? _selectedBikeId;
+    private string _customerBikeStatus = "";
+    private bool _customerBikeStatusIsError;
 
     private int CalculatedMinutes;
     private decimal CalculatedPrice;
@@ -139,12 +703,17 @@
     
     // Days when the store is closed (for the month currently being rendered)
     private readonly HashSet<DateTime> ClosedDays = new();
+    private int _availabilityMonth;
+    private int _availabilityYear;
+    private bool _queryPrefillApplied;
 
     private int SelectedStoreId
     {
         get => _selectedStoreId;
         set
         {
+            if (value != 0 && !StoresForCurrentUser.Any(s => s.Id == value))
+                return;
             if (_selectedStoreId == value) return;
             _selectedStoreId = value;
 
@@ -154,9 +723,9 @@
                 _selectedMechanicId = 0;
 
             Recalc();
-            SetDefaultDayIfNeeded();
+            UpdateEarliestAvailableDay();
             RefreshMonthAvailability();
-            EnsureEarliestDayIsValid();
+            EnsureSelectedDayIsValid();
         }
     }
 
@@ -168,343 +737,11 @@
             if (_selectedMechanicId == value) return;
             _selectedMechanicId = value;
 
+            UpdateEarliestAvailableDay();
             RefreshMonthAvailability();
-            EnsureEarliestDayIsValid();
+            EnsureSelectedDayIsValid();
         }
     }
 
-    private string SelectedJobId
-    {
-        get => _selectedJobId;
-        set
-        {
-            if (_selectedJobId == value) return;
-            _selectedJobId = value;
-
-            Recalc();
-            RefreshMonthAvailability();
-            EnsureEarliestDayIsValid();
-        }
-    }
-
-    private IEnumerable<Mechanic> MechanicsForSelectedStore =>
-        Data.Mechanics.Where(m => m.StoreId == SelectedStoreId);
-
-    protected override void OnInitialized()
-    {
-        SelectedStoreId = Data.Stores.First().Id;
-
-        Recalc();
-        SetDefaultDayIfNeeded();
-        RefreshMonthAvailability();
-        EnsureEarliestDayIsValid();
-    }
-
-    private void SetDefaultDayIfNeeded()
-    {
-        if (EarliestDay.HasValue) return;
-
-        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
-        var now = DateTime.Now;
-
-        // Find the next open day
-        var candidateDay = now.Date;
-        
-        // If we're past closing time today, start from tomorrow
-        var todayClose = now.Date.Add(store.OpenTo);
-        if (now > todayClose)
-            candidateDay = candidateDay.AddDays(1);
-
-        // Find next day the store is actually open
-        for (int i = 0; i < 14; i++) // Check up to 2 weeks ahead
-        {
-            if (store.IsOpenOnDay(candidateDay))
-            {
-                EarliestDay = candidateDay;
-                return;
-            }
-            candidateDay = candidateDay.AddDays(1);
-        }
-
-        // Fallback (shouldn't happen unless store never opens)
-        EarliestDay = now.Date;
-    }
-
-    private void ToggleAddOn(string id, ChangeEventArgs e)
-    {
-        var isChecked = e?.Value is bool b && b;
-
-        if (isChecked) SelectedAddOns.Add(id);
-        else SelectedAddOns.Remove(id);
-
-        Recalc();
-        RefreshMonthAvailability();
-        EnsureEarliestDayIsValid();
-    }
-
-    private void Recalc()
-    {
-        var (mins, price, _) = Catalog.PriceAndTime(SelectedJobId, SelectedAddOns.ToList());
-        CalculatedMinutes = mins;
-        CalculatedPrice = price;
-    }
-
-    private void RefreshMonthAvailability()
-    {
-        UnavailableDays.Clear();
-        ClosedDays.Clear();
-
-        if (CalculatedMinutes <= 0) return;
-
-        var baseDay = (EarliestDay ?? DateTime.Today).Date;
-        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
-
-        var monthStart = new DateTime(baseDay.Year, baseDay.Month, 1);
-        var monthEnd = monthStart.AddMonths(1);
-
-        int? mechanicFilter = _selectedMechanicId == 0 ? null : _selectedMechanicId;
-
-        for (var d = monthStart; d < monthEnd; d = d.AddDays(1))
-        {
-            // Check if store is closed on this day
-            if (!store.IsOpenOnDay(d))
-            {
-                ClosedDays.Add(d.Date);
-                continue;
-            }
-
-            // Check if we can fit the job on this day
-            var canFit = Scheduler.CanFitOnDay(SelectedStoreId, CalculatedMinutes, d, mechanicFilter);
-            if (!canFit)
-                UnavailableDays.Add(d.Date);
-        }
-    }
-
-    private void EnsureEarliestDayIsValid()
-    {
-        if (!EarliestDay.HasValue)
-            return;
-
-        var day = EarliestDay.Value.Date;
-        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
-
-        // Check if the selected day is a closed day
-        if (ClosedDays.Contains(day))
-        {
-            var next = FindNextOpenDay(day);
-            if (next.HasValue)
-            {
-                EarliestDay = next.Value;
-                Message = "";
-                RefreshMonthAvailability();
-                return;
-            }
-            else
-            {
-                Message = "Store is closed on this day. Please select another day.";
-                return;
-            }
-        }
-
-        // First, try to move backward to find an earlier available day
-        var earlierDay = FindEarlierAvailableDay(day);
-        if (earlierDay.HasValue)
-        {
-            EarliestDay = earlierDay.Value;
-            Message = "";
-            RefreshMonthAvailability();
-            return;
-        }
-
-        // If current day is unavailable, move forward to next available day
-        if (UnavailableDays.Contains(day))
-        {
-            var next = FindNextAvailableDay(day);
-            if (next.HasValue)
-            {
-                EarliestDay = next.Value;
-                Message = "";
-                RefreshMonthAvailability();
-            }
-            else
-            {
-                Message = "No availability found in the current range. Try a different job, store, or mechanic.";
-            }
-        }
-    }
-
-    private DateTime? FindNextOpenDay(DateTime fromDay)
-    {
-        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
-        var start = fromDay.Date.AddDays(1);
-        var end = start.AddDays(14); // Check 2 weeks ahead
-
-        for (var d = start; d <= end; d = d.AddDays(1))
-        {
-            if (store.IsOpenOnDay(d))
-                return d.Date;
-        }
-
-        return null;
-    }
-
-    private DateTime? FindEarlierAvailableDay(DateTime fromDay)
-    {
-        var today = DateTime.Today;
-        var start = fromDay.Date.AddDays(-1); // Start checking one day before current
-        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
-
-        // Don't go earlier than today
-        if (start < today) return null;
-
-        int? mechanicFilter = _selectedMechanicId == 0 ? null : _selectedMechanicId;
-
-        // Search backward from current day to today
-        for (var d = start; d >= today; d = d.AddDays(-1))
-        {
-            // Skip closed days
-            if (!store.IsOpenOnDay(d))
-                continue;
-
-            if (Scheduler.CanFitOnDay(SelectedStoreId, CalculatedMinutes, d, mechanicFilter))
-                return d.Date;
-        }
-
-        return null;
-    }
-
-    private DateTime? FindNextAvailableDay(DateTime fromDay)
-    {
-        // Search up to 90 days ahead to keep it simple for now
-        var start = fromDay.Date;
-        var end = start.AddDays(90);
-        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
-
-        int? mechanicFilter = _selectedMechanicId == 0 ? null : _selectedMechanicId;
-
-        for (var d = start; d <= end; d = d.AddDays(1))
-        {
-            // Skip closed days
-            if (!store.IsOpenOnDay(d))
-                continue;
-
-            // Make sure month cache is valid for the day we are checking
-            // If we cross into a new month, rebuild UnavailableDays based on that month
-            var currentBase = (EarliestDay ?? DateTime.Today).Date;
-            if (d.Month != currentBase.Month || d.Year != currentBase.Year)
-            {
-                EarliestDay = d.Date;
-                RefreshMonthAvailability();
-            }
-
-            if (Scheduler.CanFitOnDay(SelectedStoreId, CalculatedMinutes, d, mechanicFilter))
-                return d.Date;
-        }
-
-        return null;
-    }
-
-    private void OnCalendarRenderDayCell(RenderDayCellEventArgs args)
-    {
-        var day = args.Date.Date;
-
-        // Check if it's a closed day first (takes priority)
-        if (ClosedDays.Contains(day))
-        {
-            args.IsDisabled = true;
-            args.CellData.ClassList = (args.CellData.ClassList ?? "") + " day-closed";
-        }
-        // Then check if it's unavailable due to booking capacity
-        else if (UnavailableDays.Contains(day))
-        {
-            args.IsDisabled = true;
-            args.CellData.ClassList = (args.CellData.ClassList ?? "") + " day-unavailable";
-        }
-    }
-
-    private void OnEarliestDayChanged(ChangedEventArgs<DateTime?> args)
-    {
-        var value = args.Value;
-
-        if (!value.HasValue)
-        {
-            EarliestDay = null;
-            return;
-        }
-
-        var picked = value.Value.Date;
-
-        // Check if the picked day is closed
-        if (ClosedDays.Contains(picked))
-        {
-            Message = "Store is closed on that day. Please select another day.";
-            return;
-        }
-
-        // Check if the picked day is unavailable due to capacity
-        if (UnavailableDays.Contains(picked))
-        {
-            Message = "No availability on that day for the selected job duration. Pick another day.";
-            return;
-        }
-
-        Message = "";
-        EarliestDay = picked;
-
-        RefreshMonthAvailability();
-    }
-
-    private void Create()
-    {
-        Message = "";
-
-        if (!EarliestDay.HasValue)
-        {
-            Message = "Pick an earliest day first.";
-            return;
-        }
-
-        var store = Data.Stores.First(s => s.Id == SelectedStoreId);
-
-        // Verify the selected day is not a closed day
-        if (!store.IsOpenOnDay(EarliestDay.Value))
-        {
-            Message = "Store is closed on that day. Please select another day.";
-            return;
-        }
-
-        var (mins, price, title) = Catalog.PriceAndTime(SelectedJobId, SelectedAddOns.ToList());
-
-        int? mechanicFilter = _selectedMechanicId == 0 ? null : _selectedMechanicId;
-
-        // earliest time is store opening time on selected day
-        var dayStart = EarliestDay.Value.Date.Add(store.OpenFrom);
-        var dayEnd = EarliestDay.Value.Date.Add(store.OpenTo);
-
-        var slot = Scheduler.FindFirstSlot(SelectedStoreId, mins, dayStart, mechanicFilter);
-
-        if (!slot.Found || slot.Start.Date != dayStart.Date || slot.End > dayEnd)
-        {
-            Message = "No availability on that day for the selected job duration.";
-            return;
-        }
-
-        var id = Data.NextBookingId();
-
-        Data.Bookings.Add(new Booking
-        {
-            Id = id,
-            StoreId = SelectedStoreId,
-            MechanicId = slot.MechanicId,
-            Title = title,
-            Start = slot.Start,
-            End = slot.End,
-            JobId = SelectedJobId,
-            AddOnIds = SelectedAddOns.ToArray(),
-            TotalMinutes = mins,
-            TotalPriceIncVat = price
-        });
-
-        Nav.NavigateTo($"/store/{SelectedStoreId}");
-    }
 }
+

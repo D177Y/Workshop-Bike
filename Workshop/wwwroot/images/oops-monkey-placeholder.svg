@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="900" viewBox="0 0 900 900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e8edf6"/>
+      <stop offset="100%" stop-color="#d9e2f1"/>
+    </linearGradient>
+  </defs>
+  <rect width="900" height="900" rx="48" fill="url(#bg)"/>
+  <circle cx="450" cy="325" r="165" fill="#f8b56f"/>
+  <circle cx="392" cy="300" r="26" fill="#0f172a"/>
+  <circle cx="508" cy="300" r="26" fill="#0f172a"/>
+  <ellipse cx="450" cy="390" rx="118" ry="82" fill="#ffffff"/>
+  <ellipse cx="450" cy="404" rx="90" ry="46" fill="#0f172a"/>
+  <text x="450" y="560" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" fill="#0f172a" font-weight="700">Add oops-monkey.png</text>
+  <text x="450" y="604" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" fill="#475569">Workshop/wwwroot/images/oops-monkey.png</text>
+</svg>

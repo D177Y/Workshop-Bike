@@ -1,0 +1,457 @@
+@rendermode InteractiveServer
+@page "/settings/integrations"
+@attribute [Authorize]
+@using Workshop.Models
+@using Workshop.Services
+@inject WorkshopData Data
+@inject UserAccessService UserAccess
+@inject IntegrationSettingsService IntegrationSettings
+@inject TimetasticSyncService TimetasticSync
+@inject ILogger<Integrations> Logger
+@inject NavigationManager Nav
+
+<style>
+    .integrations-page {
+        display: grid;
+        gap: 14px;
+        max-width: 1120px;
+    }
+
+    .integration-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: #fff;
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+    }
+
+    .integration-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .integration-head h4 {
+        margin: 0;
+    }
+
+    .integration-muted {
+        color: #64748b;
+        font-size: 13px;
+    }
+
+    .integration-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(240px, 1fr));
+        gap: 10px;
+    }
+
+    .integration-field {
+        display: grid;
+        gap: 5px;
+    }
+
+    .integration-field label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #334155;
+    }
+
+    .integration-field input {
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 7px 8px;
+        font-size: 13px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .integration-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .integration-table th,
+    .integration-table td {
+        border-top: 1px solid #edf2f7;
+        padding: 8px 6px;
+        text-align: left;
+    }
+
+    .integration-table th {
+        border-top: none;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #475569;
+        background: #f8fafc;
+    }
+
+    .integration-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .btn-primary,
+    .btn-secondary {
+        border: none;
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .btn-primary {
+        background: #0d6efd;
+        color: #fff;
+    }
+
+    .btn-secondary {
+        background: #6b7280;
+        color: #fff;
+    }
+
+    .integration-status {
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 13px;
+    }
+
+    .integration-status.success {
+        background: #f0fdf4;
+        border: 1px solid #86efac;
+        color: #166534;
+    }
+
+    .integration-status.error {
+        background: #fff1f2;
+        border: 1px solid #fda4af;
+        color: #9f1239;
+    }
+
+    @@media (max-width: 900px) {
+        .integration-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="integrations-page">
+    <h3>Integrations</h3>
+
+    @if (!string.IsNullOrWhiteSpace(StatusMessage))
+    {
+        <div class="integration-status @(StatusIsError ? "error" : "success")">@StatusMessage</div>
+    }
+
+    @if (!HasStoreAccess)
+    {
+        <div class="integration-card">
+            <strong>Integrations are locked</strong>
+            <div>Your account does not currently have access to any stores.</div>
+        </div>
+    }
+    else
+    {
+        <section class="integration-card">
+            <div class="integration-head">
+                <div>
+                    <h4>Timetastic</h4>
+                    <div class="integration-muted">
+                        Connect Timetastic to sync mechanic holiday/training time off into booking availability.
+                    </div>
+                </div>
+                <label style="display:inline-flex; align-items:center; gap:8px;">
+                    <input type="checkbox" @bind="Model.TimetasticEnabled" />
+                    <span>Enabled</span>
+                </label>
+            </div>
+
+            <div class="integration-grid">
+                <div class="integration-field">
+                    <label>API base URL</label>
+                    <input type="text" @bind="Model.TimetasticApiBaseUrl" />
+                </div>
+                <div class="integration-field">
+                    <label>API token</label>
+                    <input type="text" @bind="Model.TimetasticApiToken" placeholder="Paste Timetastic API token" />
+                </div>
+                <div class="integration-field">
+                    <label>Webhook secret</label>
+                    <input type="text" @bind="Model.TimetasticWebhookSecret" placeholder="Set the same secret in Timetastic" />
+                </div>
+                <div class="integration-field">
+                    <label>Webhook callback URL</label>
+                    <input type="text"
+                           @bind="Model.TimetasticWebhookCallbackUrl"
+                           placeholder="https://your-public-url/integrations/timetastic/webhook" />
+                </div>
+            </div>
+
+            @if (!WebhookCallbackIsPublicHttps)
+            {
+                <div class="integration-status error">
+                    Timetastic requires a fully-qualified public HTTPS webhook URL. <code>workshop.local</code>,
+                    <code>localhost</code>, and <code>http://</code> addresses will be rejected. Use your live domain
+                    or an HTTPS tunnel URL, then append <code>/integrations/timetastic/webhook</code>.
+                </div>
+            }
+
+            <div class="integration-muted">
+                App endpoint path: <code>/integrations/timetastic/webhook</code>
+            </div>
+
+            <div class="integration-muted">
+                Timetastic API authentication uses the API token only. Username/password is not required.
+            </div>
+
+            <div class="integration-muted">
+                Configure Timetastic webhooks to POST to the callback URL above and send the same secret in the `Timetastic-Secret` header.
+            </div>
+
+            <div class="integration-muted">
+                Last sync: @FormatUtc(Model.TimetasticLastSyncUtc) | Last webhook: @FormatUtc(Model.TimetasticLastWebhookReceivedUtc)
+            </div>
+
+            <div class="integration-muted">
+                Mechanic mapping: match each mechanic in this app to the person record used in Timetastic.
+            </div>
+
+            @foreach (var store in AccessibleStores)
+            {
+                var mechanics = AccessibleMechanics.Where(m => m.StoreId == store.Id).OrderBy(m => m.Name).ToList();
+                if (mechanics.Count == 0)
+                {
+                    continue;
+                }
+
+                <div>
+                    <h5 style="margin:10px 0 8px 0;">@store.Name</h5>
+                    <table class="integration-table">
+                        <thead>
+                            <tr>
+                                <th>Mechanic</th>
+                                <th>Timetastic User Name</th>
+                                <th>Timetastic User ID</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var mechanic in mechanics)
+                            {
+                                var mapping = GetOrCreateMapping(mechanic.Id);
+                                <tr>
+                                    <td>@mechanic.Name</td>
+                                    <td>
+                                        <input type="text"
+                                               @bind="mapping.TimetasticUserName"
+                                               style="width:100%; border:1px solid #d1d5db; border-radius:6px; padding:6px 8px;" />
+                                    </td>
+                                    <td>
+                                        <input type="text"
+                                               @bind="mapping.TimetasticUserId"
+                                               style="width:100%; border:1px solid #d1d5db; border-radius:6px; padding:6px 8px;" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            <div class="integration-actions">
+                <button type="button" class="btn-primary" @onclick="SaveAsync">Save integration settings</button>
+                <button type="button" class="btn-secondary" @onclick="SyncNowAsync" disabled="@IsSyncing">
+                    @(IsSyncing ? "Syncing..." : "Sync from Timetastic")
+                </button>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private UserAccessScope _access = UserAccessScope.AllowAll();
+    private IntegrationSettings Model = new();
+    private string StatusMessage = "";
+    private bool StatusIsError;
+    private bool IsSyncing;
+
+    private readonly Dictionary<int, TimetasticMechanicMapping> _mappingsByMechanicId = new();
+
+    private List<Store> AccessibleStores => Data.Stores
+        .Where(s => _access.CanAccessStore(s.Id))
+        .OrderBy(s => s.Name)
+        .ToList();
+
+    private List<Mechanic> AccessibleMechanics => Data.Mechanics
+        .Where(m => _access.CanAccessMechanic(m))
+        .OrderBy(m => m.Name)
+        .ToList();
+
+    private bool HasStoreAccess => AccessibleStores.Count > 0;
+    private string SuggestedWebhookCallbackUrl => $"{Nav.BaseUri.TrimEnd('/')}/integrations/timetastic/webhook";
+    private bool WebhookCallbackIsPublicHttps
+    {
+        get
+        {
+            var callbackUrl = (Model.TimetasticWebhookCallbackUrl ?? "").Trim();
+            if (!Uri.TryCreate(callbackUrl, UriKind.Absolute, out var uri))
+                return false;
+
+            if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            var host = (uri.Host ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(host))
+                return false;
+
+            if (uri.IsLoopback)
+                return false;
+
+            if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (host.EndsWith(".local", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            return true;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Data.EnsureInitializedAsync();
+            _access = await UserAccess.GetCurrentAsync();
+            Model = await IntegrationSettings.GetAsync();
+            if (string.IsNullOrWhiteSpace(Model.TimetasticWebhookCallbackUrl))
+                Model.TimetasticWebhookCallbackUrl = SuggestedWebhookCallbackUrl;
+            BuildMappings();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize integrations page.");
+            SetError("Could not load integration settings.");
+        }
+    }
+
+    private TimetasticMechanicMapping GetOrCreateMapping(int mechanicId)
+    {
+        if (_mappingsByMechanicId.TryGetValue(mechanicId, out var existing))
+            return existing;
+
+        var mapping = new TimetasticMechanicMapping { MechanicId = mechanicId };
+        _mappingsByMechanicId[mechanicId] = mapping;
+        return mapping;
+    }
+
+    private void BuildMappings()
+    {
+        _mappingsByMechanicId.Clear();
+
+        foreach (var mapping in Model.TimetasticMechanicMappings)
+        {
+            if (mapping.MechanicId <= 0)
+                continue;
+
+            _mappingsByMechanicId[mapping.MechanicId] = new TimetasticMechanicMapping
+            {
+                MechanicId = mapping.MechanicId,
+                TimetasticUserId = mapping.TimetasticUserId,
+                TimetasticUserName = mapping.TimetasticUserName
+            };
+        }
+
+        foreach (var mechanic in AccessibleMechanics)
+            GetOrCreateMapping(mechanic.Id);
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            Model.TimetasticMechanicMappings = _mappingsByMechanicId.Values
+                .Select(m => new TimetasticMechanicMapping
+                {
+                    MechanicId = m.MechanicId,
+                    TimetasticUserId = (m.TimetasticUserId ?? "").Trim(),
+                    TimetasticUserName = (m.TimetasticUserName ?? "").Trim()
+                })
+                .Where(m => AccessibleMechanics.Any(x => x.Id == m.MechanicId))
+                .Where(m => !string.IsNullOrWhiteSpace(m.TimetasticUserId) || !string.IsNullOrWhiteSpace(m.TimetasticUserName))
+                .ToList();
+
+            Model = await IntegrationSettings.SaveAsync(Model);
+            BuildMappings();
+            StatusMessage = "Integration settings saved.";
+            StatusIsError = false;
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.LogWarning(ex, "Integration settings validation failed.");
+            SetError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save integration settings.");
+            SetError("Could not save integration settings.");
+        }
+    }
+
+    private async Task SyncNowAsync()
+    {
+        if (IsSyncing)
+            return;
+
+        IsSyncing = true;
+        try
+        {
+            var scopedMechanicIds = AccessibleMechanics
+                .Select(m => m.Id)
+                .ToArray();
+
+            var result = await TimetasticSync.SyncTimeOffAsync(scopedMechanicIds);
+            if (!result.Success)
+            {
+                SetError(result.Message);
+                return;
+            }
+
+            await Data.ReloadAsync();
+            var unresolved = result.UnresolvedMechanics.Count > 0
+                ? $" Unresolved: {string.Join(", ", result.UnresolvedMechanics)}."
+                : "";
+            StatusMessage =
+                $"Sync complete. Imported: {result.CreatedCount}, updated: {result.UpdatedCount}, removed: {result.DeletedCount}, holidays considered: {result.ConsideredHolidayCount}.{unresolved}";
+            StatusIsError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Timetastic sync failed.");
+            SetError("Timetastic sync failed. Check API settings and mapping, then try again.");
+        }
+        finally
+        {
+            IsSyncing = false;
+        }
+    }
+
+    private void SetError(string message)
+    {
+        StatusMessage = message;
+        StatusIsError = true;
+    }
+
+    private static string FormatUtc(DateTime? utcTimestamp)
+    {
+        if (!utcTimestamp.HasValue)
+            return "Never";
+
+        return utcTimestamp.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+    }
+}

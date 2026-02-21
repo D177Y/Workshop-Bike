@@ -1,0 +1,71 @@
+@inherits LayoutComponentBase
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<HeadContent>
+    <link href="_content/Syncfusion.Blazor/styles/fluent2.css" rel="stylesheet" />
+</HeadContent>
+
+<div class="mk-shell">
+    <header class="mk-nav-wrap">
+        <nav class="mk-nav mk-container" aria-label="Main">
+            <a class="mk-brand" href="/">
+                <img class="mk-brand-mark-image" src="/favicon.ico" alt="" aria-hidden="true" />
+                <span class="mk-brand-text">VeloLabs</span>
+            </a>
+
+            <div class="mk-nav-links">
+                <a href="/features">Features</a>
+                <a href="/how-it-works">How It Works</a>
+                <a href="/pricing">Pricing</a>
+            </div>
+
+            <div class="mk-nav-actions">
+                <a class="mk-nav-signin" href="/login">Sign in</a>
+                <a class="mk-btn mk-btn-primary" href="/signup">Start free trial</a>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        @Body
+    </main>
+
+    <footer class="mk-footer">
+        <div class="mk-container mk-footer-grid">
+            <div>
+                <a class="mk-brand mk-footer-brand" href="/">
+                    <img class="mk-brand-mark-image" src="/favicon.ico" alt="" aria-hidden="true" />
+                    <span class="mk-brand-text">VeloLabs</span>
+                </a>
+                <p class="mk-footer-copy">Workshop scheduling software built for bike retailers.</p>
+            </div>
+            <div>
+                <h4>Product</h4>
+                <a href="/features">Features</a>
+                <a href="/pricing">Pricing</a>
+                <a href="/how-it-works">How It Works</a>
+            </div>
+            <div>
+                <h4>Company</h4>
+                <span>About</span>
+                <span>Blog</span>
+                <span>Contact</span>
+            </div>
+            <div>
+                <h4>Legal</h4>
+                <span>Privacy</span>
+                <span>Terms</span>
+            </div>
+        </div>
+        <div class="mk-container mk-footer-bottom">&copy; 2026 VeloLabs. All rights reserved.</div>
+    </footer>
+</div>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("marketingIcons.refresh");
+        await JS.InvokeVoidAsync("marketingReveals.refresh");
+    }
+}

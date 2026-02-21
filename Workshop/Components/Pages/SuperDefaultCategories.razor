@@ -1,0 +1,234 @@
+@page "/super/settings/default-categories"
+@attribute [Authorize(Roles = "SuperAdmin")]
+@using Workshop.Models
+@using Workshop.Services
+@inject SuggestedCatalogService SuggestedCatalog
+
+<h3>Default Categories</h3>
+
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="@(IsError ? "error-message" : "success-message")">@Message</div>
+}
+
+<div class="editor-section">
+    <h4>@(EditingRootId > 0 ? "Edit Category 1" : "Add Category 1")</h4>
+    <div class="row">
+        <input type="text" @bind="RootCategory1" placeholder="Category 1 name" />
+        <input type="text" @bind="RootColorHex" placeholder="#RRGGBB" />
+        <input type="number" @bind="RootSortOrder" min="0" />
+        <button class="btn btn-primary" @onclick="SaveRootAsync">Save</button>
+        @if (EditingRootId > 0)
+        {
+            <button class="btn btn-secondary" @onclick="ResetRootEditor">Cancel</button>
+        }
+    </div>
+</div>
+
+@foreach (var root in Category1Rows)
+{
+    var subRows = SubRows(root.Category1);
+    <section class="category-card">
+        <div class="head-row">
+            <button class="btn btn-secondary" @onclick="() => ToggleExpanded(root.Category1)">
+                @(IsExpanded(root.Category1) ? "Hide" : "Show")
+            </button>
+            <strong>@root.Category1</strong>
+            <span class="muted">@root.ColorHex</span>
+            <span class="muted">Sort: @root.SortOrder</span>
+            <button class="btn btn-secondary" @onclick="() => EditRoot(root)">Edit</button>
+            <button class="btn btn-danger" @onclick="() => DeleteCategoryAsync(root.Id)">Delete</button>
+        </div>
+
+        @if (IsExpanded(root.Category1))
+        {
+            <div class="sub-list">
+                @foreach (var sub in subRows)
+                {
+                    <div class="sub-row">
+                        <span>@sub.Category2</span>
+                        <span class="muted">Sort: @sub.SortOrder</span>
+                        <button class="btn btn-secondary" @onclick="() => EditSub(sub)">Edit</button>
+                        <button class="btn btn-danger" @onclick="() => DeleteCategoryAsync(sub.Id)">Delete</button>
+                    </div>
+                }
+
+                <div class="row">
+                    <input type="text" @bind="SubCategory2" placeholder="Category 2 name" />
+                    <input type="number" @bind="SubSortOrder" min="0" />
+                    <button class="btn btn-primary" @onclick="() => SaveSubAsync(root.Category1)">@(EditingSubId > 0 ? "Update" : "Add")</button>
+                    @if (EditingSubId > 0)
+                    {
+                        <button class="btn btn-secondary" @onclick="ResetSubEditor">Cancel</button>
+                    }
+                </div>
+            </div>
+        }
+    </section>
+}
+
+<style>
+    .editor-section, .category-card { margin-bottom: 16px; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
+    .row, .head-row, .sub-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    input { padding: 6px; }
+    .muted { color: #64748b; font-size: 12px; }
+    .sub-list { margin-top: 10px; padding: 10px; border-radius: 6px; background: #f8fafc; }
+    .btn { padding: 6px 10px; border: none; border-radius: 999px; cursor: pointer; }
+    .btn-primary { background: #0d6efd; color: #fff; }
+    .btn-secondary { background: #64748b; color: #fff; }
+    .btn-danger { background: #b91c1c; color: #fff; }
+    .error-message { color: #b91c1c; margin: 10px 0; }
+    .success-message { color: #166534; margin: 10px 0; }
+</style>
+
+@code {
+    private List<GlobalServiceCategory> Categories = new();
+    private string Message = "";
+    private bool IsError;
+
+    private int EditingRootId;
+    private string RootCategory1 = "";
+    private string RootColorHex = "#94a3b8";
+    private int RootSortOrder;
+
+    private int EditingSubId;
+    private string EditingSubCategory1 = "";
+    private string SubCategory2 = "";
+    private int SubSortOrder;
+
+    private readonly HashSet<string> ExpandedCategory1 = new(StringComparer.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private List<GlobalServiceCategory> Category1Rows =>
+        Categories
+            .Where(c => string.IsNullOrWhiteSpace(c.Category2))
+            .OrderBy(c => c.SortOrder)
+            .ThenBy(c => c.Category1, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private List<GlobalServiceCategory> SubRows(string category1) =>
+        Categories
+            .Where(c => c.Category1.Equals(category1, StringComparison.OrdinalIgnoreCase)
+                        && !string.IsNullOrWhiteSpace(c.Category2))
+            .OrderBy(c => c.SortOrder)
+            .ThenBy(c => c.Category2, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private bool IsExpanded(string category1) => ExpandedCategory1.Contains(category1);
+
+    private void ToggleExpanded(string category1)
+    {
+        if (!ExpandedCategory1.Add(category1))
+            ExpandedCategory1.Remove(category1);
+    }
+
+    private async Task LoadAsync()
+    {
+        Categories = await SuggestedCatalog.GetGlobalCategoriesAsync();
+    }
+
+    private async Task SaveRootAsync()
+    {
+        Message = "";
+        IsError = false;
+
+        if (string.IsNullOrWhiteSpace(RootCategory1))
+        {
+            Message = "Category 1 name is required.";
+            IsError = true;
+            return;
+        }
+
+        var model = new GlobalServiceCategory
+        {
+            Id = EditingRootId,
+            Category1 = RootCategory1.Trim(),
+            Category2 = "",
+            ColorHex = RootColorHex,
+            SortOrder = RootSortOrder
+        };
+
+        await SuggestedCatalog.SaveGlobalCategoryAsync(model);
+        Message = "Saved default category.";
+        await LoadAsync();
+        ResetRootEditor();
+    }
+
+    private void EditRoot(GlobalServiceCategory category)
+    {
+        EditingRootId = category.Id;
+        RootCategory1 = category.Category1;
+        RootColorHex = category.ColorHex;
+        RootSortOrder = category.SortOrder;
+        Message = "";
+        IsError = false;
+    }
+
+    private void ResetRootEditor()
+    {
+        EditingRootId = 0;
+        RootCategory1 = "";
+        RootColorHex = "#94a3b8";
+        RootSortOrder = 0;
+    }
+
+    private void EditSub(GlobalServiceCategory category)
+    {
+        EditingSubId = category.Id;
+        EditingSubCategory1 = category.Category1;
+        SubCategory2 = category.Category2;
+        SubSortOrder = category.SortOrder;
+        ExpandedCategory1.Add(category.Category1);
+        Message = "";
+        IsError = false;
+    }
+
+    private async Task SaveSubAsync(string category1)
+    {
+        Message = "";
+        IsError = false;
+
+        var targetCategory1 = EditingSubId > 0 ? EditingSubCategory1 : category1;
+        if (string.IsNullOrWhiteSpace(targetCategory1) || string.IsNullOrWhiteSpace(SubCategory2))
+        {
+            Message = "Category 2 name is required.";
+            IsError = true;
+            return;
+        }
+
+        var root = Category1Rows.FirstOrDefault(c => c.Category1.Equals(targetCategory1, StringComparison.OrdinalIgnoreCase));
+        var model = new GlobalServiceCategory
+        {
+            Id = EditingSubId,
+            Category1 = targetCategory1.Trim(),
+            Category2 = SubCategory2.Trim(),
+            ColorHex = root?.ColorHex ?? "#94a3b8",
+            SortOrder = SubSortOrder
+        };
+
+        await SuggestedCatalog.SaveGlobalCategoryAsync(model);
+        Message = "Saved sub-category.";
+        await LoadAsync();
+        ResetSubEditor();
+    }
+
+    private void ResetSubEditor()
+    {
+        EditingSubId = 0;
+        EditingSubCategory1 = "";
+        SubCategory2 = "";
+        SubSortOrder = 0;
+    }
+
+    private async Task DeleteCategoryAsync(int id)
+    {
+        await SuggestedCatalog.DeleteGlobalCategoryAsync(id);
+        Message = "Deleted category.";
+        IsError = false;
+        await LoadAsync();
+    }
+}

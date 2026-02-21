@@ -1,0 +1,117 @@
+@page "/"
+@layout MarketingLayout
+@attribute [AllowAnonymous]
+
+<Section>
+    <div class="mk-home-hero">
+        <div class="mk-reveal">
+            <h1 class="mk-title">Workshop scheduling, <span>sorted.</span></h1>
+            <p class="mk-subtitle">Manage mechanics, capacity, bookings and job cards all in one place. Built for bike retailers who need their workshop running smoothly.</p>
+            <div class="mk-links-row">
+                <a href="/signup" class="mk-btn mk-btn-primary">Start free trial</a>
+                <a href="/how-it-works" class="mk-btn mk-btn-secondary">See how it works</a>
+            </div>
+        </div>
+
+        <div class="mk-home-panel mk-card mk-reveal mk-reveal-delay-1" aria-label="Workshop dashboard preview">
+            <div class="mk-home-panel-head">
+                <span class="mk-dot"></span>
+                <span class="mk-dot"></span>
+                <span class="mk-dot"></span>
+                <span>Workshop Dashboard</span>
+            </div>
+            <div class="mk-home-panel-body">
+                <div class="mk-home-row mk-home-row-top">
+                    <strong>Today's jobs</strong>
+                    <span>6 active</span>
+                </div>
+                <div class="mk-home-row"><p>Full Service <small>James T.</small></p><b>In Progress</b></div>
+                <div class="mk-home-row"><p>Brake Bleed <small>Sarah K.</small></p><b>Quoted</b></div>
+                <div class="mk-home-row"><p>Wheel Build <small>James T.</small></p><b>Completed</b></div>
+            </div>
+        </div>
+    </div>
+</Section>
+
+<section class="mk-city-strip">
+    <div class="mk-container">
+        <span>Trusted by workshops in</span>
+        <div>
+            <b>London</b>
+            <b>Bristol</b>
+            <b>Manchester</b>
+            <b>Edinburgh</b>
+            <b>Cardiff</b>
+            <b>Birmingham</b>
+        </div>
+    </div>
+</section>
+
+<Section>
+    <div class="mk-center-head">
+        <h2>Why workshops choose VeloLabs</h2>
+    </div>
+
+    <div class="mk-benefits-grid">
+        <article class="mk-card mk-benefit mk-reveal">
+            <span class="mk-icon-chip"><IconGlyph Name="zap" /></span>
+            <h3>1-minute setup</h3>
+            <p>Add your store, mechanics, and services. You'll be taking bookings today.</p>
+        </article>
+        <article class="mk-card mk-benefit mk-reveal mk-reveal-delay-1">
+            <span class="mk-icon-chip"><IconGlyph Name="clock" /></span>
+            <h3>Real-time capacity</h3>
+            <p>See who's available and when. No more overbooking or guesswork.</p>
+        </article>
+        <article class="mk-card mk-benefit mk-reveal mk-reveal-delay-2">
+            <span class="mk-icon-chip"><IconGlyph Name="calendar" /></span>
+            <h3>Workshop-first scheduling</h3>
+            <p>Built around how bike workshops actually operate and not a generic calendar.</p>
+        </article>
+    </div>
+</Section>
+
+<Section Soft="true">
+    <div class="mk-feature-stack">
+        <FeatureRow Icon="users"
+                    Title="Mechanic management made easy"
+                    Description="Assign mechanics to jobs based on skill and availability. Sync time-off from Timetastic so your schedule is always accurate." />
+
+        <FeatureRow Icon="wrench"
+                    Title="From quote to completed job"
+                    Description="Handle intake, quote, booking confirmation, job card, and customer updates in one flow."
+                    Reversed="true" />
+
+        <FeatureRow Icon="bar"
+                    Title="Multi-store visibility"
+                    Description="Run multiple locations from a single dashboard and track capacity and bookings across every workshop." />
+    </div>
+</Section>
+
+<Section>
+    <div class="mk-center-head">
+        <h2>What workshop managers say</h2>
+    </div>
+    <div class="mk-testimonial-grid">
+        <TestimonialCard Quote="We went from sticky notes to a proper system in an afternoon. The capacity view alone saved us hours each week."
+                         Name="Tom Reynolds"
+                         Role="Workshop Manager"
+                         Store="Pedal & Chain, Bristol" />
+        <TestimonialCard Quote="Our mechanics actually like using it. That says everything."
+                         Name="Laura Chen"
+                         Role="Service Desk Lead"
+                         Store="CycleCraft, London" />
+        <TestimonialCard Quote="Customers get updates without us chasing. The job card flow is exactly what we needed."
+                         Name="Mark Davies"
+                         Role="Owner"
+                         Store="Summit Bikes, Edinburgh" />
+    </div>
+</Section>
+
+<Section Soft="true">
+    <div class="mk-final-cta">
+        <h2>Ready to run your workshop better?</h2>
+        <p>Start your free trial today. No credit card required.</p>
+        <a class="mk-btn mk-btn-primary" href="/signup">Start free trial</a>
+    </div>
+</Section>

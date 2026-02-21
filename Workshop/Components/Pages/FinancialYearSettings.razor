@@ -1,0 +1,155 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@page "/settings/financial-year"
+@attribute [Authorize]
+@using Syncfusion.Blazor.Calendars
+@using Workshop.Services
+@inject FinancialYearService FinancialYears
+@inject ILogger<FinancialYearSettings> Logger
+
+<div class="financial-year-page">
+    <header class="page-head">
+        <h3>Financial Year</h3>
+        <p>Set the month/day boundaries for your business financial year.</p>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(_statusMessage))
+    {
+        <div class="status @(_statusIsError ? "error" : "success")">@_statusMessage</div>
+    }
+
+    <section class="settings-card">
+        <div class="field-grid">
+            <div class="field">
+                <label>Financial year start</label>
+                <SfDatePicker TValue="DateTime?"
+                              @bind-Value="_startSampleDate"
+                              Format="dd/MM/yyyy"
+                              StrictMode="true"
+                              AllowEdit="false"
+                              Placeholder="Select financial year start"
+                              Width="260px">
+                    <DatePickerEvents TValue="DateTime?" ValueChange="OnStartDateChanged"></DatePickerEvents>
+                </SfDatePicker>
+            </div>
+            <div class="field">
+                <label>Financial year end</label>
+                <SfDatePicker TValue="DateTime?"
+                              @bind-Value="_endSampleDate"
+                              Format="dd/MM/yyyy"
+                              StrictMode="true"
+                              AllowEdit="false"
+                              Placeholder="Select financial year end"
+                              Width="260px">
+                    <DatePickerEvents TValue="DateTime?" ValueChange="OnEndDateChanged"></DatePickerEvents>
+                </SfDatePicker>
+            </div>
+        </div>
+
+        @if (_currentRange is not null)
+        {
+            <div class="preview-pill">
+                This financial year resolves to:
+                @_currentRange.Value.StartDate.ToString("dd MMM yyyy")
+                -
+                @_currentRange.Value.EndDate.ToString("dd MMM yyyy")
+            </div>
+        }
+
+        <div class="actions">
+            <button type="button" class="btn-primary" @onclick="SaveAsync">Save financial year</button>
+        </div>
+    </section>
+</div>
+
+@code {
+    private DateTime? _startSampleDate;
+    private DateTime? _endSampleDate;
+    private FinancialYearRange? _currentRange;
+    private string _statusMessage = "";
+    private bool _statusIsError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await LoadFromSettingsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize financial year settings page.");
+            _statusMessage = "Could not load financial year settings.";
+            _statusIsError = true;
+        }
+    }
+
+    private async Task LoadFromSettingsAsync()
+    {
+        var settings = await FinancialYears.GetSettingsAsync();
+        var year = DateTime.Today.Year;
+
+        _startSampleDate = FinancialYearService.CreateDate(year, settings.StartMonth, settings.StartDay);
+        var endYear = FinancialYearService.IsEndInFollowingYear(settings) ? year + 1 : year;
+        _endSampleDate = FinancialYearService.CreateDate(endYear, settings.EndMonth, settings.EndDay);
+        _currentRange = FinancialYearService.ResolveRange(settings, DateTime.Today);
+    }
+
+    private Task OnStartDateChanged(ChangedEventArgs<DateTime?> args)
+    {
+        _startSampleDate = args.Value?.Date;
+        RefreshPreview();
+        return Task.CompletedTask;
+    }
+
+    private Task OnEndDateChanged(ChangedEventArgs<DateTime?> args)
+    {
+        _endSampleDate = args.Value?.Date;
+        RefreshPreview();
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!_startSampleDate.HasValue || !_endSampleDate.HasValue)
+        {
+            _statusMessage = "Please select both start and end dates.";
+            _statusIsError = true;
+            return;
+        }
+
+        try
+        {
+            await FinancialYears.SaveSettingsAsync(new FinancialYearBoundarySettings(
+                _startSampleDate.Value.Month,
+                _startSampleDate.Value.Day,
+                _endSampleDate.Value.Month,
+                _endSampleDate.Value.Day));
+
+            await LoadFromSettingsAsync();
+            _statusMessage = "Financial year settings saved.";
+            _statusIsError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save financial year settings.");
+            _statusMessage = "Could not save financial year settings.";
+            _statusIsError = true;
+        }
+    }
+
+    private void RefreshPreview()
+    {
+        if (!_startSampleDate.HasValue || !_endSampleDate.HasValue)
+        {
+            _currentRange = null;
+            return;
+        }
+
+        var pending = new FinancialYearBoundarySettings(
+            _startSampleDate.Value.Month,
+            _startSampleDate.Value.Day,
+            _endSampleDate.Value.Month,
+            _endSampleDate.Value.Day);
+
+        _currentRange = FinancialYearService.ResolveRange(pending, DateTime.Today);
+    }
+}

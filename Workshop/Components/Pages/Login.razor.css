@@ -1,0 +1,226 @@
+.mk-login-grid {
+    max-width: none;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 448px 384px;
+    gap: 3rem;
+    align-items: stretch;
+    justify-content: center;
+}
+
+.mk-login-card,
+.mk-login-aside {
+    padding: 2.5rem;
+}
+
+.mk-login-card {
+    width: 448px;
+    height: 470px;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.mk-login-aside {
+    width: 384px;
+    height: 470px;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.mk-login-card h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+}
+
+.mk-login-card > p {
+    margin: 0.65rem 0 1.5rem;
+    color: var(--mk-muted);
+    font-size: 0.875rem;
+}
+
+.mk-login-form {
+    display: grid;
+    gap: 0;
+}
+
+.mk-login-form .mk-field:first-of-type {
+    margin-top: 1.25rem;
+}
+
+.mk-login-form .mk-field + .mk-field {
+    margin-top: 1.25rem;
+}
+
+.mk-field {
+    display: grid;
+    gap: 0.42rem;
+}
+
+.mk-field label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--mk-text);
+}
+
+.mk-field label span {
+    color: #ef4444;
+}
+
+.mk-field input {
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 12px;
+    border: 1px solid var(--mk-border);
+    background: #fff;
+    color: var(--mk-text);
+    padding: 0.7rem 0.85rem;
+    font: inherit;
+}
+
+.mk-password-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.mk-password-wrap input {
+    padding-right: 2.6rem;
+    margin: 0;
+}
+
+.mk-password-toggle {
+    position: absolute;
+    right: 0.55rem;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 0;
+    background: transparent;
+    color: var(--mk-muted);
+    width: 1.75rem;
+    height: 1.75rem;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.mk-password-icon {
+    width: 1rem;
+    height: 1rem;
+}
+
+.mk-login-error {
+    color: #b91c1c;
+    font-size: 0.9rem;
+}
+
+.mk-login-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    margin-top: 1.25rem;
+}
+
+.mk-check-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--mk-muted);
+    font-size: 0.875rem;
+}
+
+.mk-check-wrap input {
+    margin: 0;
+}
+
+.mk-login-row a,
+.mk-login-foot a {
+    color: var(--mk-brand);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.mk-login-row a {
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.mk-login-submit {
+    width: 100%;
+    min-height: 42px;
+    margin-top: 1.25rem;
+}
+
+.mk-login-foot {
+    margin: 1.25rem 0 0;
+    text-align: center;
+    color: var(--mk-muted);
+    font-size: 0.875rem;
+}
+
+.mk-login-aside {
+    display: grid;
+    align-content: center;
+    background: #f8fafd;
+    box-shadow: none;
+}
+
+.mk-login-aside h2 {
+    margin: 0 0 1.25rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.mk-login-aside ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 1rem;
+}
+
+.mk-login-aside li {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    gap: 0.75rem;
+    color: var(--mk-muted);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.mk-dot-check {
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 999px;
+    background: var(--mk-brand-soft);
+    color: var(--mk-brand);
+    display: inline-grid;
+    place-items: center;
+}
+
+.mk-check-icon {
+    width: 12px;
+    height: 12px;
+    display: block;
+}
+
+.mk-field input::placeholder {
+    font-size: 0.875rem;
+}
+
+@media (max-width: 960px) {
+    .mk-login-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .mk-login-card,
+    .mk-login-aside {
+        width: 100%;
+        height: auto;
+    }
+}

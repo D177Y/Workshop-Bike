@@ -1,0 +1,28 @@
+@namespace Workshop.Components.Marketing
+@using Microsoft.AspNetCore.Components
+
+<i data-lucide="@LucideName" class="mk-lucide-icon" aria-hidden="true"></i>
+
+@code {
+    [Parameter] public string? Name { get; set; }
+
+    private string LucideName => (Name ?? string.Empty).Trim().ToLowerInvariant() switch
+    {
+        "zap" => "zap",
+        "clock" => "clock",
+        "calendar" => "calendar",
+        "store" => "store",
+        "users" => "users",
+        "package" => "package",
+        "clipboard" => "clipboard",
+        "wrench" => "wrench",
+        "plug" => "plug",
+        "mail" => "mail",
+        "bar" => "bar-chart-3",
+        "shield" => "shield",
+        "eye" => "eye",
+        "eye-off" => "eye-off",
+        "check" => "check",
+        _ => "circle"
+    };
+}

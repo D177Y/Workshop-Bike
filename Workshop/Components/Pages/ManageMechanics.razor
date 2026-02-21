@@ -1,0 +1,1719 @@
+@rendermode InteractiveServer
+@page "/manage-mechanics"
+@attribute [Authorize]
+@using Microsoft.JSInterop
+@using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
+@inject IJSRuntime JS
+@using Workshop.Models
+@using Workshop.Services
+@using Workshop.Data
+@using Syncfusion.Blazor.Grids
+@using Syncfusion.Blazor.Popups
+@inject IDbContextFactory<WorkshopDbContext> DbFactory
+@inject WorkshopData Data
+@inject JobCatalogService Catalog
+@inject AuthenticationStateProvider AuthStateProvider
+@inject Workshop.Data.TenantContext TenantContext
+@inject ILogger<ManageMechanics> Logger
+@using TooltipPosition = Syncfusion.Blazor.Popups.Position
+
+<style>
+    .mechanic-card {
+        border: 1px solid #ddd;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 6px;
+        background: #f9f9f9;
+    }
+
+    .mechanic-card h4 {
+        margin-top: 0;
+        margin-bottom: 10px;
+    }
+
+    .day-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+    }
+
+    .form-section {
+        margin-bottom: 15px;
+    }
+
+    .form-section label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 5px;
+    }
+
+    .label-inline {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .required-star {
+        color: #dc3545;
+        margin-left: 2px;
+        font-weight: 700;
+    }
+
+    .field-tip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        font-size: 11px;
+        font-weight: 700;
+        color: #0d6efd;
+        border: 1px solid #0d6efd;
+        cursor: help;
+        line-height: 1;
+        user-select: none;
+    }
+
+    .mechanic-tooltip.e-tooltip-wrap.e-popup {
+        background-color: #fff !important;
+        border: 1px solid #fff;
+        border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    }
+
+    .mechanic-tooltip.e-tooltip-wrap .e-tip-content {
+        color: #2f2f2f;
+        background-color: #fff !important;
+        padding: 10px 12px;
+        font-size: 14px;
+        line-height: 1.35;
+    }
+
+    .mechanic-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-top,
+    .mechanic-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-bottom,
+    .mechanic-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-left,
+    .mechanic-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-right {
+        border-color: transparent;
+    }
+
+    .mechanic-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-top {
+        border-bottom-color: #fff !important;
+    }
+
+    .mechanic-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-bottom {
+        border-top-color: #fff !important;
+    }
+
+    .mechanic-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-left {
+        border-right-color: #fff !important;
+    }
+
+    .mechanic-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-right {
+        border-left-color: #fff !important;
+    }
+
+    .mechanic-tooltip.e-tooltip-wrap .e-arrow-tip-inner.e-tip-top,
+    .mechanic-tooltip.e-tooltip-wrap .e-arrow-tip-inner.e-tip-bottom,
+    .mechanic-tooltip.e-tooltip-wrap .e-arrow-tip-inner.e-tip-left,
+    .mechanic-tooltip.e-tooltip-wrap .e-arrow-tip-inner.e-tip-right {
+        color: #fff !important;
+    }
+
+    .time-input {
+        padding: 5px;
+        margin-right: 10px;
+    }
+
+    .btn {
+        padding: 8px 16px;
+        margin-right: 8px;
+        border: none;
+        border-radius: 999px;
+        cursor: pointer;
+    }
+
+    .btn-primary {
+        background: #0d6efd;
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #0b5ed7;
+    }
+
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-secondary:hover {
+        background: #545b62;
+    }
+
+    .btn-success {
+        background: #0d6efd;
+        color: white;
+    }
+
+    .btn-success:hover {
+        background: #0b5ed7;
+    }
+
+    .btn-danger {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background: #5a6268;
+    }
+
+    .grid-btn {
+        width: 64px;
+        height: 24px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .job-picker {
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        padding: 16px;
+        width: 100%;
+        max-width: 520px;
+        background: #fff;
+        box-sizing: border-box;
+    }
+
+    .job-filter {
+        width: 100%;
+        padding: 6px 8px;
+        border: 1px solid #c7c7c7;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        box-sizing: border-box;
+    }
+
+    .job-group {
+        border-top: 1px solid #eee;
+        padding-top: 6px;
+        margin-top: 6px;
+    }
+
+    .job-group-header {
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: none;
+        padding: 4px 0;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .job-item {
+        display: grid;
+        grid-template-columns: 18px 1fr auto;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        font-size: 13px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .job-meta {
+        color: #666;
+        white-space: nowrap;
+    }
+
+    .group-collapsed .job-group-header {
+        opacity: 0.8;
+    }
+
+    .quick-select-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
+    .quick-select-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #4b5563;
+        margin-right: 4px;
+    }
+
+    .quick-select-btn {
+        padding: 4px 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 999px;
+        background: #fff;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .quick-select-btn.active {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+    }
+
+    .add-mechanic-section {
+        border: 2px dashed #0066cc;
+        padding: 20px;
+        margin-bottom: 30px;
+        border-radius: 6px;
+        background: #f0f8ff;
+    }
+
+    .error-message {
+        color: #dc3545;
+        margin-top: 10px;
+        margin-bottom: 14px;
+        padding: 10px;
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 4px;
+    }
+
+    .success-message {
+        color: #155724;
+        margin-top: 10px;
+        margin-bottom: 14px;
+        padding: 10px;
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 4px;
+    }
+
+    .skill-editor-row {
+        display: grid;
+        grid-template-columns: 20px 1fr;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 0;
+        cursor: grab;
+        user-select: none;
+    }
+
+    .skill-editor-row.dragging {
+        opacity: 0.6;
+    }
+
+    .drag-handle {
+        cursor: grab;
+        color: #6b7280;
+        user-select: none;
+        font-size: 18px;
+        line-height: 1;
+    }
+
+    .editor-name {
+        width: 100%;
+        padding: 4px;
+        box-sizing: border-box;
+    }
+</style>
+
+<h3>Manage Mechanics</h3>
+
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="@(IsError ? "error-message" : "success-message")">
+        @Message
+    </div>
+}
+
+@if (ShowAddForm)
+{
+    <div class="add-mechanic-section">
+        <h4>@(EditingMechanicId.HasValue ? "Edit Mechanic" : "Add New Mechanic")</h4>
+
+        <div class="form-section">
+            <label>Name <span class="required-star">*</span></label>
+            <input type="text" @bind="NewMechanicName" style="width: 300px; padding: 5px;" placeholder="Enter name" />
+        </div>
+
+        <div class="form-section">
+            <label>
+                <span class="label-inline">
+                    Store
+                    <SfTooltip CssClass="mechanic-tooltip"
+                               Content="Select the store your mechanic works in. If you want a mechanic to work in more than one store, simply add them more than once and set different working days for each location."
+                               Position="@TooltipPosition.TopRight">
+                        <span class="field-tip" tabindex="0" role="button" aria-label="Store help">?</span>
+                    </SfTooltip>
+                </span>
+            </label>
+            <select @bind="SelectedStoreId">
+                @foreach (var s in Data.Stores.OrderBy(s => s.Name))
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+
+        <div class="form-section">
+            <label>
+                <span class="label-inline">
+                    Skill Level
+                    <SfTooltip CssClass="mechanic-tooltip"
+                               Content="Skill level is a quick way of setting which service jobs a mechanic is allowed to be booked in for, great for when you have new starters in the workshop. Setting your mechanic's skill level to Advanced allows all service jobs, and choosing Custom lets you select the services manually."
+                               Position="@TooltipPosition.TopRight">
+                        <span class="field-tip" tabindex="0" role="button" aria-label="Skill Level help">?</span>
+                    </SfTooltip>
+                </span>
+            </label>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <select value="@NewSkillLevel" @onchange="OnSkillLevelChanged">
+                    @foreach (var level in GetMechanicSkillLevels())
+                    {
+                        <option value="@level">@level</option>
+                    }
+                </select>
+                <button class="btn btn-secondary" type="button" @onclick="OpenSkillEditor">Add/Edit</button>
+            </div>
+        </div>
+
+        @if (IsCustomSkillLevel(NewSkillLevel))
+        {
+            <div class="form-section">
+                <label>Custom Jobs</label>
+                @if (!CustomSelectableJobs.Any())
+                {
+                    <div style="color:#666;">No jobs found. Create jobs first in Manage Jobs.</div>
+                }
+                else
+                {
+                    <div class="job-picker">
+                        <div class="quick-select-row">
+                            <span class="quick-select-label">Quick select:</span>
+                            <button type="button"
+                                    class="quick-select-btn @(ActiveQuickSelect == QuickSelectAllLabel ? "active" : "")"
+                                    @onclick="ToggleSelectAllCustomJobs">Select All</button>
+                            @foreach (var level in GetQuickSelectSkillLevels())
+                            {
+                                <button type="button"
+                                        class="quick-select-btn @(ActiveQuickSelect == level ? "active" : "")"
+                                        @onclick="() => ToggleSelectJobsBySkillLevel(level)">@level</button>
+                            }
+                        </div>
+                        <input class="job-filter" placeholder="Filter jobs..." @bind="CustomJobFilter" />
+                        @foreach (var group in CustomJobGroups)
+                        {
+                            <div class="job-group @(IsCustomGroupOpen(group.Key) ? "" : "group-collapsed")">
+                                <button type="button" class="job-group-header" @onclick="() => ToggleCustomGroup(group.Key)">
+                                    <span>@group.Key</span>
+                                    <span>@(IsCustomGroupOpen(group.Key) ? "▾" : "▸")</span>
+                                </button>
+                                @if (IsCustomGroupOpen(group.Key))
+                                {
+                                    @foreach (var job in group.Value)
+                                    {
+                                        <label class="job-item">
+                                            <input type="checkbox"
+                                                   checked="@NewCustomJobIds.Contains(job.Id)"
+                                                   @onchange="e => ToggleCustomJob(job.Id, e)" />
+                                            <span>@job.Name</span>
+                                            <span class="job-meta">@job.DefaultMinutes mins · £@job.BasePriceIncVat.ToString("0.00")</span>
+                                        </label>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="form-section">
+            <label>
+                <span class="label-inline">
+                    Mobile Number
+                    <SfTooltip CssClass="mechanic-tooltip"
+                               Content="Set a mobile number if you want to receive SMS notifications whenever a service is booked."
+                               Position="@TooltipPosition.TopRight">
+                        <span class="field-tip" tabindex="0" role="button" aria-label="Mobile Number help">?</span>
+                    </SfTooltip>
+                </span>
+            </label>
+            <input type="text" @bind="NewMobileNumber" style="width: 200px; padding: 5px;" placeholder="Enter mobile number" />
+        </div>
+
+        <div class="form-section">
+            <label>
+                <span class="label-inline">
+                    Email Address
+                    <SfTooltip CssClass="mechanic-tooltip"
+                               Content="Set an email address if you want to receive email notifications whenever a service is booked."
+                               Position="@TooltipPosition.TopRight">
+                        <span class="field-tip" tabindex="0" role="button" aria-label="Email Address help">?</span>
+                    </SfTooltip>
+                </span>
+            </label>
+            <input type="email" @bind="NewEmail" style="width: 260px; padding: 5px;" placeholder="Enter email" />
+        </div>
+
+        <div class="form-section">
+            <label>Default Start Time</label>
+            <input type="time" @bind="DefaultOpenFrom" class="time-input" list="time-options" />
+        </div>
+
+        <div class="form-section">
+            <label>Default Finish Time</label>
+            <input type="time" @bind="DefaultOpenTo" class="time-input" list="time-options" />
+        </div>
+
+        <div class="form-section">
+            <label>Days Working</label>
+            <div>
+                @foreach (var day in Enum.GetValues<DayOfWeek>())
+                {
+                    var hours = GetDayHours(day);
+                    var isWorking = NewDaysWorking.Contains(day);
+                    <div class="day-row">
+                        <input type="checkbox"
+                               id="workday-@day"
+                               checked="@isWorking"
+                               @onchange="e => ToggleDay(day, e)" />
+                        <label for="workday-@day" style="min-width: 90px;">@day</label>
+                        <input type="time" @bind="hours.OpenFrom" class="time-input" disabled="@(!isWorking)" list="time-options" />
+                        <span>to</span>
+                        <input type="time" @bind="hours.OpenTo" class="time-input" disabled="@(!isWorking)" list="time-options" />
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="form-section">
+            <label>Max Bookable Per Day</label>
+            <div class="day-row">
+                <input type="number" @bind="MaxBookableHours" min="0" style="width: 70px; padding: 5px;" />
+                <span>hours</span>
+                <input type="number" @bind="MaxBookableMinutes" min="0" max="59" style="width: 70px; padding: 5px;" />
+                <span>mins</span>
+            </div>
+        </div>
+
+        <div>
+            <button class="btn btn-success" @onclick="SaveMechanic">@(EditingMechanicId.HasValue ? "Update Mechanic" : "Add Mechanic")</button>
+            <button class="btn btn-secondary" @onclick="CancelAddEdit">Cancel</button>
+        </div>
+    </div>
+}
+else
+{
+    <div style="margin-bottom: 20px;">
+        <button class="btn btn-primary" @onclick="ShowAddMechanicForm">+ Add New Mechanic</button>
+    </div>
+}
+
+<SfDialog Width="520px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          @bind-Visible="IsSkillDialogVisible"
+          Header="Manage Skill Levels">
+    <DialogTemplates>
+        <Content>
+            <div style="display:grid; gap:10px;">
+                @if (!string.IsNullOrWhiteSpace(SkillEditorMessage))
+                {
+                    <div style="color:#dc3545;">@SkillEditorMessage</div>
+                }
+
+                <div style="font-weight:600;">Existing skill levels</div>
+                <div id="mechanics-skill-editor-list" @ref="SkillListRef">
+                    @for (var i = 0; i < SkillEditorItems.Count; i++)
+                    {
+                        var itemIndex = i;
+                        var item = SkillEditorItems[i];
+                        <div class="skill-editor-row"
+                             data-index="@i"
+                             draggable="true">
+                            <span class="drag-handle" aria-label="Drag to reorder">≡</span>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <input type="text" @bind="item.Name" class="editor-name" />
+                                <button class="e-btn e-flat"
+                                        style="color:#dc3545;"
+                                        type="button"
+                                        @onclick="() => RemoveSkillEditorItem(itemIndex)">Delete</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div style="margin-top:6px; font-weight:600;">Add new skill level</div>
+                <div class="skill-editor-row">
+                    <span class="drag-handle" style="visibility:hidden;">≡</span>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="text" @bind="NewSkillEditorName" class="editor-name" placeholder="Skill level name" />
+                        <button class="e-btn e-flat" type="button" @onclick="AddSkillEditorItem">Add</button>
+                    </div>
+                </div>
+            </div>
+        </Content>
+    </DialogTemplates>
+    <DialogButtons>
+        <DialogButton Content="Cancel" IsPrimary="false" OnClick="CloseSkillEditor" />
+    </DialogButtons>
+</SfDialog>
+
+<UpgradePlanDialog @bind-Visible="IsUpgradeDialogVisible"
+                   TenantId="@(TenantContext.TenantId)"
+                   CustomerEmail="@BillingEmail"
+                   CurrentPlan="@CurrentPlan"
+                   CurrentMechanicLimit="@CurrentMechanicLimit"
+                   CurrentMechanicCount="@Data.Mechanics.Count"
+                   HeaderText="Mechanic limit reached"
+                   IntroText="@UpgradeDialogIntroText" />
+
+<datalist id="time-options">
+    <option value="06:00"></option>
+    <option value="06:30"></option>
+    <option value="07:00"></option>
+    <option value="07:30"></option>
+    <option value="08:00"></option>
+    <option value="08:30"></option>
+    <option value="09:00"></option>
+    <option value="09:30"></option>
+    <option value="10:00"></option>
+    <option value="10:30"></option>
+    <option value="11:00"></option>
+    <option value="11:30"></option>
+    <option value="12:00"></option>
+    <option value="12:30"></option>
+    <option value="13:00"></option>
+    <option value="13:30"></option>
+    <option value="14:00"></option>
+    <option value="14:30"></option>
+    <option value="15:00"></option>
+    <option value="15:30"></option>
+    <option value="16:00"></option>
+    <option value="16:30"></option>
+    <option value="17:00"></option>
+    <option value="17:30"></option>
+    <option value="18:00"></option>
+    <option value="18:30"></option>
+    <option value="19:00"></option>
+    <option value="19:30"></option>
+    <option value="20:00"></option>
+    <option value="20:30"></option>
+    <option value="21:00"></option>
+    <option value="21:30"></option>
+    <option value="22:00"></option>
+</datalist>
+
+<h4>Mechanics by Store</h4>
+
+@foreach (var store in Data.Stores.OrderBy(s => s.Name))
+{
+    var mechanics = Data.Mechanics.Where(m => m.StoreId == store.Id).OrderBy(m => m.Name).ToList();
+    <div style="margin-bottom: 20px;">
+        <h4>@store.Name (@mechanics.Count)</h4>
+        @if (mechanics.Count == 0)
+        {
+            <div style="color: #666;">No mechanics assigned.</div>
+        }
+        else
+        {
+            <SfGrid DataSource="mechanics" AllowPaging="true" Width="100%">
+                <GridPageSettings PageSize="8"></GridPageSettings>
+                <GridColumns>
+                    <GridColumn Field="@nameof(Mechanic.Name)" HeaderText="Name" Width="170"></GridColumn>
+                    <GridColumn HeaderText="Mobile" Width="150">
+                        <Template>
+                            @{
+                                var mech = (Mechanic)context;
+                            }
+                            @(string.IsNullOrWhiteSpace(mech.MobileNumber) ? "Not set" : mech.MobileNumber)
+                        </Template>
+                    </GridColumn>
+                    <GridColumn HeaderText="Email" Width="220">
+                        <Template>
+                            @{
+                                var mech = (Mechanic)context;
+                            }
+                            @(string.IsNullOrWhiteSpace(mech.Email) ? "Not set" : mech.Email)
+                        </Template>
+                    </GridColumn>
+                    <GridColumn HeaderText="Max/Day" Width="100">
+                        <Template>
+                            @{
+                                var mech = (Mechanic)context;
+                            }
+                            @FormatMaxBookable(mech.MaxBookableHoursPerDay)
+                        </Template>
+                    </GridColumn>
+                    <GridColumn Field="@nameof(Mechanic.SkillLevel)" HeaderText="Skill Level" Width="120"></GridColumn>
+                    <GridColumn HeaderText="Custom Jobs" Width="200">
+                        <Template>
+                            @{
+                                var mech = (Mechanic)context;
+                            }
+                            @(IsCustomSkillLevel(mech.SkillLevel) ? FormatCustomJobs(mech) : "-")
+                        </Template>
+                    </GridColumn>
+                    <GridColumn HeaderText="Working Hours" Width="260">
+                        <Template>
+                            @{
+                                var mech = (Mechanic)context;
+                                var groupedHours = GetGroupedMechanicHours(mech).ToList();
+                            }
+                            @if (!groupedHours.Any())
+                            {
+                                <span style="color:#dc3545;">No days set</span>
+                            }
+                            else
+                            {
+                                <div>
+                                    @foreach (var line in groupedHours)
+                                    {
+                                        <div>@line</div>
+                                    }
+                                </div>
+                            }
+                        </Template>
+                    </GridColumn>
+                    <GridColumn HeaderText="Actions" Width="160">
+                        <Template>
+                            @{
+                                var mech = (Mechanic)context;
+                            }
+                            <button class="btn btn-primary grid-btn" @onclick="() => EditMechanic(mech.Id)">Edit</button>
+                            <button class="btn btn-danger grid-btn" style="margin-right:0;" @onclick="() => DeleteMechanic(mech.Id)">Delete</button>
+                        </Template>
+                    </GridColumn>
+                </GridColumns>
+            </SfGrid>
+        }
+    </div>
+}
+
+@code {
+    private string _message = "";
+    private bool _scrollToTopRequested;
+    private bool IsError;
+    private bool ShowAddForm;
+    private int? EditingMechanicId;
+
+    private int _selectedStoreId;
+    private string NewMechanicName = "";
+    private string NewMobileNumber = "";
+    private string NewEmail = "";
+    private TimeOnly? DefaultOpenFrom = new(9, 0);
+    private TimeOnly? DefaultOpenTo = new(17, 30);
+    private HashSet<DayOfWeek> NewDaysWorking = new();
+    private Dictionary<DayOfWeek, DayHours> NewHoursByDay = new();
+    private int MaxBookableHours = 6;
+    private int MaxBookableMinutes = 0;
+    private string NewSkillLevel = "";
+    private HashSet<string> NewCustomJobIds = new(StringComparer.OrdinalIgnoreCase);
+    private List<JobDefinition> CustomSelectableJobs = new();
+    private string CustomJobFilter = "";
+    private readonly HashSet<string> CustomExpandedGroups = new(StringComparer.OrdinalIgnoreCase);
+    private string? ActiveQuickSelect;
+    private const string QuickSelectAllLabel = "ALL";
+    private string? LastPresetSelection;
+
+    private bool IsSkillDialogVisible;
+    private string SkillEditorMessage = "";
+    private List<SkillEditorItem> SkillEditorItems = new();
+    private string NewSkillEditorName = "";
+    private DotNetObjectReference<ManageMechanics>? SkillDotNetRef;
+    private ElementReference SkillListRef;
+    private bool ShouldInitSkillDnd;
+    private bool IsUpgradeDialogVisible;
+    private PlanTier CurrentPlan = PlanTier.Standard;
+    private int CurrentMechanicLimit = 6;
+    private string BillingEmail = "";
+    private string UpgradeDialogIntroText = "You have reached your plan limit. Upgrade to add more mechanics.";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await EnsureTenantContextAsync();
+        await EnsureDataStateAsync();
+    }
+
+    private string Message
+    {
+        get => _message;
+        set
+        {
+            if (_message == value) return;
+            _message = value;
+            _scrollToTopRequested = !string.IsNullOrWhiteSpace(value);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_scrollToTopRequested)
+        {
+            _scrollToTopRequested = false;
+            await JS.InvokeVoidAsync("window.scrollTo", 0, 0);
+        }
+
+        if (ShouldInitSkillDnd)
+        {
+            ShouldInitSkillDnd = false;
+            await EnsureSkillDndAsync();
+        }
+    }
+
+    private sealed class DayHours
+    {
+        public TimeOnly? OpenFrom { get; set; }
+        public TimeOnly? OpenTo { get; set; }
+    }
+
+    private sealed class SkillEditorItem
+    {
+        public SkillEditorItem(string name)
+        {
+            OriginalName = name;
+            Name = name;
+        }
+
+        public string OriginalName { get; }
+        public string Name { get; set; }
+    }
+
+    private int SelectedStoreId
+    {
+        get => _selectedStoreId;
+        set
+        {
+            if (_selectedStoreId == value) return;
+            _selectedStoreId = value;
+            if (ShowAddForm)
+                ApplyStoreDefaults(value);
+        }
+    }
+
+    private async Task ShowAddMechanicForm()
+    {
+        await EnsureDataStateAsync();
+
+        if (Data.Stores.Count == 0)
+        {
+            ShowAddForm = false;
+            EditingMechanicId = null;
+            Message = "Please create a store before you can create a mechanic.";
+            IsError = true;
+            return;
+        }
+
+        if (IsMechanicLimitReached())
+        {
+            ShowAddForm = false;
+            EditingMechanicId = null;
+            OpenUpgradeDialog();
+            return;
+        }
+
+        ShowAddForm = true;
+        EditingMechanicId = null;
+        NewMechanicName = "";
+        NewMobileNumber = "";
+        NewEmail = "";
+        NewSkillLevel = GetDefaultMechanicSkillLevel();
+        NewCustomJobIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        MaxBookableHours = 6;
+        MaxBookableMinutes = 0;
+        Message = "";
+        IsError = false;
+
+        SelectedStoreId = Data.Stores.First().Id;
+    }
+
+    private async Task EditMechanic(int mechanicId)
+    {
+        await EnsureDataStateAsync();
+
+        var mech = Data.Mechanics.FirstOrDefault(m => m.Id == mechanicId);
+        if (mech == null)
+        {
+            Message = "Mechanic not found.";
+            IsError = true;
+            return;
+        }
+
+        ShowAddForm = true;
+        EditingMechanicId = mechanicId;
+        NewMechanicName = mech.Name;
+        NewMobileNumber = mech.MobileNumber;
+        NewEmail = mech.Email;
+        NewSkillLevel = NormalizeSkillLevel(mech.SkillLevel);
+        if (string.IsNullOrWhiteSpace(NewSkillLevel))
+            NewSkillLevel = GetDefaultMechanicSkillLevel();
+        NewCustomJobIds = new HashSet<string>(
+            mech.CustomAllowedJobIds.Where(id => CustomSelectableJobs.Any(j => j.Id.Equals(id, StringComparison.OrdinalIgnoreCase))),
+            StringComparer.OrdinalIgnoreCase);
+
+        SelectedStoreId = mech.StoreId;
+
+        var (hours, minutes) = SplitHours(mech.MaxBookableHoursPerDay);
+        MaxBookableHours = hours;
+        MaxBookableMinutes = minutes;
+
+        NewDaysWorking = new HashSet<DayOfWeek>(GetMechanicWorkingDays(mech));
+        NewHoursByDay = new Dictionary<DayOfWeek, DayHours>();
+
+        foreach (var day in NewDaysWorking)
+        {
+            if (mech.HoursByDay.TryGetValue(day, out var dayHours))
+            {
+                NewHoursByDay[day] = new DayHours
+                {
+                    OpenFrom = TimeOnly.FromTimeSpan(dayHours.OpenFrom),
+                    OpenTo = TimeOnly.FromTimeSpan(dayHours.OpenTo)
+                };
+            }
+        }
+
+        if (NewDaysWorking.Count > 0)
+        {
+            var first = NewDaysWorking.First();
+            if (mech.HoursByDay.TryGetValue(first, out var firstHours))
+            {
+                DefaultOpenFrom = TimeOnly.FromTimeSpan(firstHours.OpenFrom);
+                DefaultOpenTo = TimeOnly.FromTimeSpan(firstHours.OpenTo);
+            }
+        }
+    }
+
+    private void CancelAddEdit()
+    {
+        ShowAddForm = false;
+        EditingMechanicId = null;
+        Message = "";
+    }
+
+    private Task OpenSkillEditor()
+    {
+        SkillEditorItems = Catalog.SkillLevels
+            .Select(level => new SkillEditorItem(level))
+            .ToList();
+        SkillEditorMessage = "";
+        NewSkillEditorName = "";
+        IsSkillDialogVisible = true;
+        ShouldInitSkillDnd = true;
+        return Task.CompletedTask;
+    }
+
+    private void CloseSkillEditor()
+    {
+        IsSkillDialogVisible = false;
+        SkillEditorMessage = "";
+    }
+
+    private async Task AddSkillEditorItem()
+    {
+        var name = (NewSkillEditorName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+
+        if (name.Equals("All", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("Custom", StringComparison.OrdinalIgnoreCase))
+        {
+            SkillEditorMessage = "'All' and 'Custom' are reserved values.";
+            return;
+        }
+
+        if (!SkillEditorItems.Any(i => i.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            SkillEditorItems.Add(new SkillEditorItem(name));
+
+        NewSkillEditorName = "";
+        await SaveSkillEdits(closeDialog: false);
+    }
+
+    private async Task RemoveSkillEditorItem(int index)
+    {
+        if (index < 0 || index >= SkillEditorItems.Count)
+            return;
+
+        SkillEditorItems.RemoveAt(index);
+        SkillEditorMessage = "";
+        await SaveSkillEdits(closeDialog: false);
+    }
+
+    private async Task SaveSkillEdits(bool closeDialog = true)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in SkillEditorItems)
+        {
+            item.Name = (item.Name ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(item.Name))
+            {
+                SkillEditorMessage = "Skill levels cannot be empty.";
+                return;
+            }
+
+            if (item.Name.Equals("All", StringComparison.OrdinalIgnoreCase) ||
+                item.Name.Equals("Custom", StringComparison.OrdinalIgnoreCase))
+            {
+                SkillEditorMessage = "'All' and 'Custom' are reserved values.";
+                return;
+            }
+
+            if (!names.Add(item.Name))
+            {
+                SkillEditorMessage = "Skill levels must be unique.";
+                return;
+            }
+        }
+
+        if (SkillEditorItems.Count == 0)
+        {
+            SkillEditorMessage = "At least one skill level is required.";
+            return;
+        }
+
+        var renameMap = SkillEditorItems
+            .Where(i => !i.OriginalName.Equals(i.Name, StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(i => i.OriginalName, i => i.Name, StringComparer.OrdinalIgnoreCase);
+
+        var existingLevels = Catalog.SkillLevels.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var newLevels = SkillEditorItems.Select(i => i.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var removed = existingLevels.Except(newLevels, StringComparer.OrdinalIgnoreCase).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var usedByJobs = Catalog.Jobs
+            .Where(j => !string.IsNullOrWhiteSpace(j.SkillLevel) &&
+                        !j.SkillLevel.Equals("All", StringComparison.OrdinalIgnoreCase) &&
+                        removed.Contains(j.SkillLevel))
+            .Select(j => j.SkillLevel)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var usedByMechanics = Data.Mechanics
+            .Where(m => !string.IsNullOrWhiteSpace(m.SkillLevel) &&
+                        !m.SkillLevel.Equals("Custom", StringComparison.OrdinalIgnoreCase) &&
+                        removed.Contains(m.SkillLevel))
+            .Select(m => m.SkillLevel)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (usedByJobs.Count > 0 || usedByMechanics.Count > 0)
+        {
+            var inUseLevels = usedByJobs
+                .Concat(usedByMechanics)
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+            SkillEditorMessage = $"Cannot remove skill levels in use: {string.Join(", ", inUseLevels)}";
+            return;
+        }
+
+        Catalog.SkillLevels.Clear();
+        foreach (var item in SkillEditorItems)
+            Catalog.SkillLevels.Add(item.Name);
+
+        await Catalog.SaveSettingsAsync();
+
+        foreach (var job in Catalog.Jobs)
+        {
+            if (renameMap.TryGetValue(job.SkillLevel, out var renamed))
+            {
+                job.SkillLevel = renamed;
+                await Catalog.SaveJobAsync(job);
+            }
+        }
+
+        foreach (var mech in Data.Mechanics)
+        {
+            if (renameMap.TryGetValue(mech.SkillLevel, out var renamed))
+            {
+                mech.SkillLevel = renamed;
+                await Data.SaveMechanicAsync(mech);
+            }
+        }
+
+        if (renameMap.TryGetValue(NewSkillLevel, out var newSkillLevel))
+            NewSkillLevel = newSkillLevel;
+        else if (!IsCustomSkillLevel(NewSkillLevel) &&
+                 !Catalog.SkillLevels.Any(s => s.Equals(NewSkillLevel, StringComparison.OrdinalIgnoreCase)))
+            NewSkillLevel = GetDefaultMechanicSkillLevel();
+
+        SkillEditorItems = SkillEditorItems
+            .Select(i => new SkillEditorItem(i.Name))
+            .ToList();
+        if (closeDialog)
+            IsSkillDialogVisible = false;
+        SkillEditorMessage = "";
+    }
+
+    private async Task EnsureSkillDndAsync()
+    {
+        try
+        {
+            SkillDotNetRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("workshopStatusDnd.init", SkillListRef, SkillDotNetRef, "ReorderSkillLevel", ".skill-editor-row");
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Mechanic skill editor drag-and-drop initialization failed.");
+        }
+    }
+
+    [JSInvokable]
+    public async Task ReorderSkillLevel(int fromIndex, int toIndex)
+    {
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= SkillEditorItems.Count || toIndex >= SkillEditorItems.Count)
+            return;
+
+        if (fromIndex == toIndex)
+            return;
+
+        var item = SkillEditorItems[fromIndex];
+        SkillEditorItems.RemoveAt(fromIndex);
+        if (toIndex > fromIndex) toIndex--;
+        SkillEditorItems.Insert(toIndex, item);
+        StateHasChanged();
+        await SaveSkillEdits(closeDialog: false);
+    }
+
+    private void ToggleDay(DayOfWeek day, ChangeEventArgs e)
+    {
+        var isChecked = e?.Value is bool b && b;
+
+        if (isChecked)
+        {
+            NewDaysWorking.Add(day);
+            EnsureDayHours(day);
+        }
+        else
+        {
+            NewDaysWorking.Remove(day);
+            NewHoursByDay.Remove(day);
+        }
+    }
+
+    private void ToggleCustomJob(string jobId, ChangeEventArgs e)
+    {
+        var isChecked = e?.Value switch
+        {
+            bool b => b,
+            string s => s.Equals("true", StringComparison.OrdinalIgnoreCase)
+                     || s.Equals("on", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
+        if (isChecked) NewCustomJobIds.Add(jobId);
+        else NewCustomJobIds.Remove(jobId);
+
+        if (!string.IsNullOrWhiteSpace(ActiveQuickSelect))
+        {
+            ActiveQuickSelect = null;
+            LastPresetSelection = null;
+        }
+    }
+
+    private async Task OnSkillLevelChanged(ChangeEventArgs e)
+    {
+        NewSkillLevel = NormalizeSkillLevel(e?.Value?.ToString());
+        if (string.IsNullOrWhiteSpace(NewSkillLevel))
+            NewSkillLevel = GetDefaultMechanicSkillLevel();
+
+        await LoadCustomSelectableJobsAsync();
+
+        if (IsCustomSkillLevel(NewSkillLevel))
+        {
+            if (!string.IsNullOrWhiteSpace(LastPresetSelection))
+            {
+                ActiveQuickSelect = LastPresetSelection;
+                if (LastPresetSelection == QuickSelectAllLabel)
+                    SelectAllCustomJobs();
+                else
+                    SelectJobsBySkillLevel(LastPresetSelection);
+            }
+        }
+        else
+        {
+            ActiveQuickSelect = NewSkillLevel;
+            LastPresetSelection = NewSkillLevel;
+            SelectJobsBySkillLevel(NewSkillLevel);
+        }
+    }
+
+    private async Task SaveMechanic()
+    {
+        Message = "";
+        IsError = false;
+
+        if (string.IsNullOrWhiteSpace(NewMechanicName))
+        {
+            Message = "Mechanic name is required.";
+            IsError = true;
+            return;
+        }
+
+        if (NewDaysWorking.Count == 0)
+        {
+            Message = "Please select at least one day the mechanic works.";
+            IsError = true;
+            return;
+        }
+
+        if (DefaultOpenFrom is null || DefaultOpenTo is null)
+        {
+            Message = "Invalid default hours.";
+            IsError = true;
+            return;
+        }
+
+        var defaultOpenFrom = DefaultOpenFrom.Value.ToTimeSpan();
+        var defaultOpenTo = DefaultOpenTo.Value.ToTimeSpan();
+        if (defaultOpenFrom >= defaultOpenTo)
+        {
+            Message = "Default closing time must be after opening time.";
+            IsError = true;
+            return;
+        }
+
+        if (MaxBookableHours < 0 || MaxBookableMinutes < 0 || MaxBookableMinutes > 59)
+        {
+            Message = "Max bookable hours/minutes must be valid.";
+            IsError = true;
+            return;
+        }
+
+        var maxBookable = MaxBookableHours + (MaxBookableMinutes / 60.0);
+        if (maxBookable <= 0)
+        {
+            Message = "Max bookable per day must be greater than 0.";
+            IsError = true;
+            return;
+        }
+
+        var normalizedSkillLevel = NormalizeSkillLevel(NewSkillLevel);
+        if (string.IsNullOrWhiteSpace(normalizedSkillLevel))
+            normalizedSkillLevel = GetDefaultMechanicSkillLevel();
+        NewSkillLevel = normalizedSkillLevel;
+
+        if (IsCustomSkillLevel(normalizedSkillLevel) && NewCustomJobIds.Count == 0)
+        {
+            Message = "Select at least one custom job.";
+            IsError = true;
+            return;
+        }
+
+        var hoursByDay = new Dictionary<DayOfWeek, StoreDayHours>();
+        foreach (var day in NewDaysWorking)
+        {
+            if (!NewHoursByDay.TryGetValue(day, out var hours))
+                hours = new DayHours { OpenFrom = DefaultOpenFrom, OpenTo = DefaultOpenTo };
+
+            if (hours.OpenFrom is null || hours.OpenTo is null)
+            {
+                Message = $"Invalid hours for {day}.";
+                IsError = true;
+                return;
+            }
+
+            var openFrom = hours.OpenFrom.Value.ToTimeSpan();
+            var openTo = hours.OpenTo.Value.ToTimeSpan();
+            if (openFrom >= openTo)
+            {
+                Message = $"Closing time must be after opening time for {day}.";
+                IsError = true;
+                return;
+            }
+
+            hoursByDay[day] = new StoreDayHours(openFrom, openTo);
+        }
+
+        try
+        {
+            if (EditingMechanicId.HasValue)
+            {
+                var mech = Data.Mechanics.FirstOrDefault(m => m.Id == EditingMechanicId.Value);
+                if (mech == null)
+                {
+                    Message = "Mechanic not found.";
+                    IsError = true;
+                    return;
+                }
+
+                mech.Name = NewMechanicName.Trim();
+                mech.StoreId = SelectedStoreId;
+                mech.MobileNumber = NewMobileNumber.Trim();
+                mech.Email = NewEmail.Trim();
+                mech.MaxBookableHoursPerDay = maxBookable;
+                mech.DaysWorking = new HashSet<DayOfWeek>(NewDaysWorking);
+                mech.HoursByDay = hoursByDay;
+                mech.SkillLevel = normalizedSkillLevel;
+                mech.CustomAllowedJobIds = IsCustomSkillLevel(normalizedSkillLevel)
+                    ? new HashSet<string>(NewCustomJobIds, StringComparer.OrdinalIgnoreCase)
+                    : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                await Data.SaveMechanicAsync(mech);
+                Message = $"Mechanic '{mech.Name}' updated successfully!";
+                IsError = false;
+            }
+            else
+            {
+                if (IsMechanicLimitReached())
+                {
+                    ShowAddForm = false;
+                    EditingMechanicId = null;
+                    OpenUpgradeDialog();
+                    return;
+                }
+
+                var mech = new Mechanic
+                {
+                    Name = NewMechanicName.Trim(),
+                    StoreId = SelectedStoreId,
+                    MobileNumber = NewMobileNumber.Trim(),
+                    Email = NewEmail.Trim(),
+                    MaxBookableHoursPerDay = maxBookable,
+                    DaysWorking = new HashSet<DayOfWeek>(NewDaysWorking),
+                    HoursByDay = hoursByDay,
+                    SkillLevel = normalizedSkillLevel,
+                    CustomAllowedJobIds = IsCustomSkillLevel(normalizedSkillLevel)
+                        ? new HashSet<string>(NewCustomJobIds, StringComparer.OrdinalIgnoreCase)
+                        : new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                };
+
+                await Data.SaveMechanicAsync(mech);
+                Message = $"Mechanic '{mech.Name}' added successfully!";
+                IsError = false;
+            }
+
+            ShowAddForm = false;
+            EditingMechanicId = null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.LogWarning(ex, "Mechanic save blocked by plan limit.");
+            ShowAddForm = false;
+            EditingMechanicId = null;
+            OpenUpgradeDialog(ex.Message);
+            IsError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Mechanic save failed.");
+            Message = "We hit a bump while saving this mechanic. Please try again. If it keeps happening, email support@velolabs.co.uk.";
+            IsError = true;
+        }
+    }
+
+    private async Task DeleteMechanic(int mechanicId)
+    {
+        var mechanic = Data.Mechanics.FirstOrDefault(m => m.Id == mechanicId);
+        if (mechanic is null)
+        {
+            Message = "Mechanic not found.";
+            IsError = true;
+            return;
+        }
+
+        var bookingsCount = Data.Bookings.Count(b => b.MechanicId == mechanicId);
+        if (bookingsCount > 0)
+        {
+            var confirmedWithBookings = await JS.InvokeAsync<bool>(
+                "confirm",
+                "This mechanic has active bookings, if you delete them all bookings will be lost. Please move all bookings to another mechanic before deleting. Are you sure you want to delete this mechanic?");
+            if (!confirmedWithBookings)
+                return;
+        }
+        else
+        {
+            var confirmed = await JS.InvokeAsync<bool>("confirm", "Are you sure you want to delete this mechanic?");
+            if (!confirmed)
+                return;
+        }
+
+        await Data.DeleteMechanicAsync(mechanicId);
+        Message = $"Mechanic '{mechanic.Name}' deleted successfully.";
+        IsError = false;
+    }
+
+    private void ApplyStoreDefaults(int storeId)
+    {
+        var store = Data.Stores.FirstOrDefault(s => s.Id == storeId);
+        if (store is null)
+            return;
+
+        var storeDays = GetStoreOpenDays(store).ToList();
+
+        NewDaysWorking = new HashSet<DayOfWeek>(storeDays);
+        NewHoursByDay = new Dictionary<DayOfWeek, DayHours>();
+
+        foreach (var day in storeDays)
+        {
+            if (store.TryGetHours(day, out var openFrom, out var openTo))
+            {
+                NewHoursByDay[day] = new DayHours
+                {
+                    OpenFrom = TimeOnly.FromTimeSpan(openFrom),
+                    OpenTo = TimeOnly.FromTimeSpan(openTo)
+                };
+            }
+        }
+
+        if (storeDays.Count > 0 && store.TryGetHours(storeDays[0], out var defaultFrom, out var defaultTo))
+        {
+            DefaultOpenFrom = TimeOnly.FromTimeSpan(defaultFrom);
+            DefaultOpenTo = TimeOnly.FromTimeSpan(defaultTo);
+        }
+    }
+
+    private DayHours GetDayHours(DayOfWeek day)
+    {
+        if (NewHoursByDay.TryGetValue(day, out var hours))
+            return hours;
+
+        hours = new DayHours { OpenFrom = DefaultOpenFrom, OpenTo = DefaultOpenTo };
+        NewHoursByDay[day] = hours;
+        return hours;
+    }
+
+    private void EnsureDayHours(DayOfWeek day)
+    {
+        if (NewHoursByDay.ContainsKey(day)) return;
+        NewHoursByDay[day] = new DayHours { OpenFrom = DefaultOpenFrom, OpenTo = DefaultOpenTo };
+    }
+
+    private IEnumerable<DayOfWeek> GetStoreOpenDays(Store store)
+    {
+        IEnumerable<DayOfWeek> days = store.HoursByDay.Count > 0
+            ? store.HoursByDay.Keys
+            : store.DaysOpen;
+        return days.OrderBy(d => (int)d);
+    }
+
+    private IEnumerable<DayOfWeek> GetMechanicWorkingDays(Mechanic mech)
+        => mech.HoursByDay.Count > 0 ? mech.HoursByDay.Keys.OrderBy(d => (int)d) : mech.DaysWorking.OrderBy(d => (int)d);
+
+    private string FormatMechanicHours(Mechanic mech, DayOfWeek day)
+    {
+        if (mech.HoursByDay.TryGetValue(day, out var hours))
+            return $"{hours.OpenFrom:hh\\:mm} - {hours.OpenTo:hh\\:mm}";
+
+        return "Closed";
+    }
+
+    private string FormatMaxBookable(double hours)
+    {
+        var totalMinutes = (int)Math.Round(hours * 60);
+        var h = totalMinutes / 60;
+        var m = totalMinutes % 60;
+        return m == 0 ? $"{h}h" : $"{h}h {m}m";
+    }
+
+    private (int hours, int minutes) SplitHours(double hours)
+    {
+        var totalMinutes = (int)Math.Round(hours * 60);
+        var h = totalMinutes / 60;
+        var m = totalMinutes % 60;
+        return (h, m);
+    }
+
+    private string FormatCustomJobs(Mechanic mech)
+    {
+        if (mech.CustomAllowedJobIds.Count == 0) return "None";
+
+        var names = CustomSelectableJobs
+            .Where(j => mech.CustomAllowedJobIds.Contains(j.Id))
+            .Select(j => j.Name)
+            .ToList();
+
+        if (names.Count > 0)
+            return string.Join(", ", names);
+
+        // Fall back to current catalog cache in case this grid renders before the custom job list refresh.
+        names = Catalog.Jobs
+            .Where(j => mech.CustomAllowedJobIds.Contains(j.Id))
+            .Select(j => j.Name)
+            .ToList();
+
+        return names.Count > 0 ? string.Join(", ", names) : "None";
+    }
+
+    private IEnumerable<string> GetGroupedMechanicHours(Mechanic mech)
+    {
+        var days = GetMechanicWorkingDays(mech)
+            .OrderBy(GetDisplayDayOrder)
+            .ToList();
+
+        if (!days.Any())
+            yield break;
+
+        var rangeStart = days[0];
+        var previousDay = days[0];
+        var previousHours = FormatMechanicHours(mech, days[0]);
+
+        for (int i = 1; i < days.Count; i++)
+        {
+            var currentDay = days[i];
+            var currentHours = FormatMechanicHours(mech, currentDay);
+            var isConsecutive = GetDisplayDayOrder(currentDay) == GetDisplayDayOrder(previousDay) + 1;
+
+            if (isConsecutive && currentHours == previousHours)
+            {
+                previousDay = currentDay;
+                continue;
+            }
+
+            yield return $"{FormatDayRange(rangeStart, previousDay)} {previousHours}";
+            rangeStart = currentDay;
+            previousDay = currentDay;
+            previousHours = currentHours;
+        }
+
+        yield return $"{FormatDayRange(rangeStart, previousDay)} {previousHours}";
+    }
+
+    private static int GetDisplayDayOrder(DayOfWeek day)
+        => day == DayOfWeek.Sunday ? 6 : ((int)day - 1);
+
+    private static string FormatDayRange(DayOfWeek start, DayOfWeek end)
+    {
+        var startText = start.ToString()[..3];
+        var endText = end.ToString()[..3];
+        return start == end ? $"{startText}" : $"{startText} - {endText}";
+    }
+
+    private string GetDefaultMechanicSkillLevel()
+    {
+        if (Catalog.SkillLevels.Count == 0)
+            return "Advanced";
+
+        if (Catalog.SkillLevels.Any(s => s.Equals("Advanced", StringComparison.OrdinalIgnoreCase)))
+            return Catalog.SkillLevels.First(s => s.Equals("Advanced", StringComparison.OrdinalIgnoreCase));
+
+        return Catalog.SkillLevels.Last();
+    }
+
+    private IEnumerable<string> GetMechanicSkillLevels()
+    {
+        var orderedLevels = Catalog.SkillLevels
+            .Select(NormalizeSkillLevel)
+            .Where(level => !string.IsNullOrWhiteSpace(level))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!orderedLevels.Contains("Custom", StringComparer.OrdinalIgnoreCase))
+            orderedLevels.Add("Custom");
+
+        if (!string.IsNullOrWhiteSpace(NewSkillLevel) &&
+            !orderedLevels.Contains(NewSkillLevel, StringComparer.OrdinalIgnoreCase))
+        {
+            orderedLevels.Add(NewSkillLevel);
+        }
+
+        return orderedLevels;
+    }
+
+    private static string NormalizeSkillLevel(string? skillLevel)
+        => (skillLevel ?? "").Trim();
+
+    private static bool IsCustomSkillLevel(string? skillLevel)
+        => NormalizeSkillLevel(skillLevel).Equals("Custom", StringComparison.OrdinalIgnoreCase);
+
+    private async Task EnsureTenantContextAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var tenantClaim = authState.User.FindFirst("tenant_id")?.Value;
+        if (int.TryParse(tenantClaim, out var tenantId))
+            TenantContext.SetTenantId(tenantId);
+    }
+
+    private async Task EnsureDataStateAsync()
+    {
+        await EnsureTenantContextAsync();
+        await Data.EnsureInitializedAsync();
+        await Catalog.EnsureInitializedAsync();
+        await Data.ReloadAsync();
+        await Catalog.ReloadAsync();
+        await RefreshTenantPlanAsync();
+        await LoadCustomSelectableJobsAsync();
+    }
+
+    private async Task RefreshTenantPlanAsync()
+    {
+        var tenantId = TenantContext.TenantId;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var tenant = await db.Tenants
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == tenantId);
+
+        if (tenant is null)
+        {
+            CurrentPlan = PlanTier.Standard;
+            CurrentMechanicLimit = 6;
+            BillingEmail = "";
+            return;
+        }
+
+        CurrentPlan = tenant.Plan;
+        CurrentMechanicLimit = tenant.MaxMechanics > 0 ? tenant.MaxMechanics : 6;
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var emailClaim = authState.User.FindFirst(ClaimTypes.Email)?.Value;
+        BillingEmail = !string.IsNullOrWhiteSpace(emailClaim)
+            ? emailClaim.Trim()
+            : (tenant.ContactEmail ?? "").Trim();
+    }
+
+    private bool IsMechanicLimitReached()
+        => CurrentMechanicLimit > 0 && Data.Mechanics.Count >= CurrentMechanicLimit;
+
+    private void OpenUpgradeDialog(string? detail = null)
+    {
+        var baseMessage = $"You have reached your current plan limit of {CurrentMechanicLimit} mechanics.";
+        UpgradeDialogIntroText = string.IsNullOrWhiteSpace(detail)
+            ? $"{baseMessage} Upgrade your plan to add more mechanics."
+            : $"{baseMessage} {detail}";
+        IsUpgradeDialogVisible = true;
+    }
+
+    private async Task LoadCustomSelectableJobsAsync()
+    {
+        var tenantId = TenantContext.TenantId;
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var jobs = await db.JobDefinitions
+            .Where(j => j.TenantId == tenantId)
+            .OrderBy(j => j.Name)
+            .ToListAsync();
+
+        // If DB query returns empty but in-memory catalog has jobs, keep the UI usable.
+        if (jobs.Count == 0 && Catalog.Jobs.Count > 0)
+            jobs = Catalog.Jobs.OrderBy(j => j.Name).ToList();
+
+        CustomSelectableJobs = jobs;
+        if (CustomExpandedGroups.Count == 0 && jobs.Count > 0)
+        {
+            var first = CustomJobGroups.Keys.FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(first))
+                CustomExpandedGroups.Add(first);
+        }
+    }
+
+    private IReadOnlyDictionary<string, List<JobDefinition>> CustomJobGroups
+    {
+        get
+        {
+            var filtered = CustomSelectableJobs
+                .Where(j => string.IsNullOrWhiteSpace(CustomJobFilter) || j.Name.Contains(CustomJobFilter, StringComparison.OrdinalIgnoreCase))
+                .GroupBy(j => j.Category)
+                .ToDictionary(g => g.Key, g => g.OrderBy(j => j.Name).ToList(), StringComparer.OrdinalIgnoreCase);
+
+            var ordered = new List<KeyValuePair<string, List<JobDefinition>>>();
+            if (filtered.TryGetValue("Service Packages", out var packages))
+            {
+                ordered.Add(new KeyValuePair<string, List<JobDefinition>>("Service Packages", packages));
+                filtered.Remove("Service Packages");
+            }
+
+            foreach (var group in filtered.OrderBy(g => g.Key))
+                ordered.Add(group);
+
+            return ordered.ToDictionary(k => k.Key, v => v.Value, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool IsCustomGroupOpen(string key)
+    {
+        if (!string.IsNullOrWhiteSpace(CustomJobFilter))
+            return true;
+
+        if (CustomExpandedGroups.Count == 0)
+            return key.Equals("Service Packages", StringComparison.OrdinalIgnoreCase);
+
+        return CustomExpandedGroups.Contains(key);
+    }
+
+    private void ToggleCustomGroup(string key)
+    {
+        if (CustomExpandedGroups.Count == 0)
+            CustomExpandedGroups.Add("Service Packages");
+
+        if (CustomExpandedGroups.Contains(key))
+            CustomExpandedGroups.Remove(key);
+        else
+            CustomExpandedGroups.Add(key);
+    }
+
+    private void SelectAllCustomJobs()
+        => NewCustomJobIds = CustomSelectableJobs
+            .Select(j => j.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private IEnumerable<string> GetQuickSelectSkillLevels()
+        => Catalog.SkillLevels
+            .Select(NormalizeSkillLevel)
+            .Where(level => !string.IsNullOrWhiteSpace(level))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private void SelectJobsBySkillLevel(string level)
+    {
+        var selected = CustomSelectableJobs
+            .Where(job => JobAllowedBySkillLevel(job, level))
+            .Select(job => job.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        NewCustomJobIds = selected;
+    }
+
+    private void ToggleSelectAllCustomJobs()
+    {
+        if (ActiveQuickSelect == QuickSelectAllLabel)
+        {
+            ActiveQuickSelect = null;
+            LastPresetSelection = null;
+            NewCustomJobIds.Clear();
+            return;
+        }
+
+        ActiveQuickSelect = QuickSelectAllLabel;
+        LastPresetSelection = QuickSelectAllLabel;
+        SelectAllCustomJobs();
+    }
+
+    private void ToggleSelectJobsBySkillLevel(string level)
+    {
+        if (ActiveQuickSelect == level)
+        {
+            ActiveQuickSelect = null;
+            LastPresetSelection = null;
+            NewCustomJobIds.Clear();
+            return;
+        }
+
+        ActiveQuickSelect = level;
+        LastPresetSelection = level;
+        SelectJobsBySkillLevel(level);
+    }
+
+    private bool JobAllowedBySkillLevel(JobDefinition job, string level)
+    {
+        var jobSkillLevel = NormalizeSkillLevel(job.SkillLevel);
+        if (jobSkillLevel.Equals("All", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var targetIndex = GetSkillIndex(level);
+        var jobIndex = GetSkillIndex(jobSkillLevel);
+        if (targetIndex < 0 || jobIndex < 0)
+            return false;
+
+        return targetIndex >= jobIndex;
+    }
+
+    private int GetSkillIndex(string level)
+        => Catalog.SkillLevels.FindIndex(l => l.Equals(level, StringComparison.OrdinalIgnoreCase));
+}

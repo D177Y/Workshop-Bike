@@ -1,0 +1,196 @@
+﻿.setup-shell {
+    display: grid;
+    gap: 18px;
+    max-width: 980px;
+    padding: 8px 0 24px;
+}
+
+.lead {
+    margin: 0;
+    color: #475569;
+    font-size: 15px;
+}
+
+.progress-card,
+.steps-card,
+.unlock-card,
+.next-step-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 16px;
+}
+
+.progress-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.progress-head h2,
+.steps-card h2,
+.unlock-card h2 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.progress-count {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.progress-track {
+    width: 100%;
+    height: 10px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #22c55e 0%, #16a34a 100%);
+    transition: width 240ms ease;
+}
+
+.step-list {
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.step-item {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.step-item.done {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+
+.step-item.todo {
+    background: #f8fafc;
+}
+
+.step-state {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: #0f172a;
+    background: #e2e8f0;
+}
+
+.step-item.done .step-state {
+    background: #22c55e;
+    color: #ffffff;
+}
+
+.step-title {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.step-desc {
+    margin-top: 2px;
+    color: #475569;
+    font-size: 13px;
+}
+
+.pill {
+    display: inline-block;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 12px;
+    text-decoration: none;
+}
+
+.pill.done {
+    color: #166534;
+    background: #dcfce7;
+}
+
+.pill.action {
+    color: #ffffff;
+    background: #0d6efd;
+}
+
+.unlock-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.unlock-item {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px;
+    display: grid;
+    gap: 8px;
+}
+
+.unlock-item.open {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.unlock-item.locked {
+    opacity: 0.8;
+    background: #f8fafc;
+}
+
+.unlock-title {
+    font-weight: 700;
+}
+
+.unlock-item a {
+    color: #0d6efd;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.next-step-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.next-step-card.done {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+
+.next-step-card a {
+    color: #0d6efd;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+@media (max-width: 700px) {
+    .step-item {
+        grid-template-columns: 28px 1fr;
+    }
+
+    .step-action {
+        grid-column: 1 / -1;
+    }
+
+    .next-step-card {
+        display: grid;
+    }
+}
+

@@ -1,0 +1,2846 @@
+﻿@rendermode InteractiveServer
+@page "/manage-jobs"
+@attribute [Authorize]
+@using System.Globalization
+@using Microsoft.JSInterop
+@using Workshop.Models
+@using Workshop.Services
+@using Syncfusion.Blazor.Grids
+@using Syncfusion.Blazor.Popups
+@using TooltipPosition = Syncfusion.Blazor.Popups.Position
+@inject JobCatalogService Catalog
+@inject WorkshopData Data
+@inject SuggestedCatalogService SuggestedCatalog
+@inject Workshop.Data.TenantContext TenantContext
+@inject IJSRuntime JS
+@inject ILogger<ManageJobs> Logger
+
+<style>
+    .form-section {
+        margin-bottom: 15px;
+    }
+
+    .form-section label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 5px;
+    }
+
+    .label-inline {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .field-tip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        font-size: 11px;
+        font-weight: 700;
+        color: #0d6efd;
+        border: 1px solid #0d6efd;
+        cursor: help;
+        line-height: 1;
+        user-select: none;
+    }
+
+    .required-asterisk {
+        color: #dc3545;
+        margin-left: 4px;
+    }
+
+    .job-tooltip.e-tooltip-wrap.e-popup {
+        background-color: #fff !important;
+        border: 1px solid #fff;
+        border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    }
+
+    .job-tooltip.e-tooltip-wrap .e-tip-content {
+        color: #2f2f2f;
+        background-color: #fff !important;
+        padding: 10px 12px;
+        font-size: 14px;
+        line-height: 1.35;
+    }
+
+    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-top,
+    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-bottom,
+    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-left,
+    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-right {
+        border-color: transparent;
+    }
+
+    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-top {
+        border-bottom-color: #fff !important;
+    }
+
+    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-bottom {
+        border-top-color: #fff !important;
+    }
+
+    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-left {
+        border-right-color: #fff !important;
+    }
+
+    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-right {
+        border-left-color: #fff !important;
+    }
+
+    .job-tooltip.e-tooltip-wrap .e-arrow-tip-inner.e-tip-top,
+    .job-tooltip.e-tooltip-wrap .e-arrow-tip-inner.e-tip-bottom,
+    .job-tooltip.e-tooltip-wrap .e-arrow-tip-inner.e-tip-left,
+    .job-tooltip.e-tooltip-wrap .e-arrow-tip-inner.e-tip-right {
+        color: #fff !important;
+    }
+
+    .inline-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .catalog-editor-row {
+        display: grid;
+        grid-template-columns: 20px 220px 1fr;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 0;
+        cursor: grab;
+        user-select: none;
+    }
+
+    .skill-editor-row {
+        display: grid;
+        grid-template-columns: 20px 1fr;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 0;
+        cursor: grab;
+        user-select: none;
+    }
+
+    .catalog-editor-row.dragging,
+    .skill-editor-row.dragging {
+        opacity: 0.6;
+    }
+
+    .drag-handle {
+        cursor: grab;
+        color: #6b7280;
+        user-select: none;
+        font-size: 18px;
+        line-height: 1;
+    }
+
+    .editor-name {
+        width: 100%;
+        padding: 4px;
+        box-sizing: border-box;
+    }
+
+    .editor-color {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .editor-hex {
+        width: 100px;
+        padding: 4px;
+        box-sizing: border-box;
+    }
+
+    .btn {
+        padding: 8px 16px;
+        margin-right: 8px;
+        border: none;
+        border-radius: 999px;
+        cursor: pointer;
+    }
+
+    .btn-primary {
+        background: #0d6efd;
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #0b5ed7;
+    }
+
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-secondary:hover {
+        background: #545b62;
+    }
+
+    .btn-success {
+        background: #0d6efd;
+        color: white;
+    }
+
+    .btn-success:hover {
+        background: #0b5ed7;
+    }
+
+    .btn-danger {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background: #5a6268;
+    }
+
+    .grid-btn {
+        width: 64px;
+        height: 24px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .add-job-section {
+        border: 2px dashed #0066cc;
+        padding: 20px;
+        margin-bottom: 30px;
+        border-radius: 6px;
+        background: #f0f8ff;
+    }
+
+    .error-message {
+        color: #dc3545;
+        margin-top: 10px;
+        margin-bottom: 14px;
+        padding: 10px;
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 4px;
+    }
+
+    .success-message {
+        color: #155724;
+        margin-top: 10px;
+        margin-bottom: 14px;
+        padding: 10px;
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 4px;
+    }
+
+    .grid-inline-input,
+    .grid-inline-select {
+        width: 100%;
+        padding: 4px;
+        background: transparent;
+        outline: none;
+        box-sizing: border-box;
+    }
+
+    .e-grid .grid-inline-input {
+        border: none !important;
+        box-shadow: none !important;
+    }
+
+    .grid-inline-select {
+        border: 1px solid #d1d5db !important;
+        border-radius: 4px;
+    }
+
+    .grid-inline-input.numeric {
+        width: 90px !important;
+        margin: 0 auto;
+        display: block;
+        text-align: center;
+    }
+
+    .grid-inline-color {
+        width: 100%;
+        height: 32px;
+        border: none;
+        background: transparent;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    .package-override-table {
+        display: grid;
+        gap: 8px;
+        max-width: 640px;
+    }
+
+    .package-override-header,
+    .package-override-row {
+        display: grid;
+        grid-template-columns: 24px 1fr 120px 120px;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .package-override-header {
+        font-weight: 600;
+        color: #334155;
+    }
+
+    .package-override-row input {
+        width: 100%;
+        padding: 5px;
+        box-sizing: border-box;
+    }
+
+    .package-rates-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+        min-width: 0;
+    }
+
+    .package-rates-summary {
+        display: block;
+        max-width: 100%;
+        white-space: pre-line;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        line-height: 1.35;
+    }
+
+    .package-checklist-builder {
+        display: grid;
+        gap: 8px;
+        max-width: 760px;
+    }
+
+    .package-checklist-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .package-checklist-toolbar input,
+    .package-checklist-toolbar select {
+        padding: 5px;
+    }
+
+    .package-checklist-list {
+        display: grid;
+        gap: 0;
+        border: 1px solid #dbe3ee;
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+    }
+
+    .package-checklist-row {
+        display: grid;
+        grid-template-columns: 20px minmax(220px, 1fr) 130px auto;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 10px;
+        border-top: 1px solid #edf2f7;
+        cursor: grab;
+    }
+
+    .package-checklist-main {
+        min-width: 0;
+    }
+
+    .package-checklist-name {
+        display: block;
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .package-checklist-description {
+        display: block;
+        font-size: 12px;
+        color: #64748b;
+        margin-top: 2px;
+        overflow-wrap: anywhere;
+    }
+
+    .package-checklist-row:first-child {
+        border-top: none;
+    }
+
+    .package-checklist-row.dragging {
+        opacity: 0.65;
+    }
+
+    .package-checklist-type {
+        font-size: 12px;
+        color: #64748b;
+    }
+
+    .package-checklist-empty {
+        font-size: 13px;
+        color: #64748b;
+        border: 1px dashed #cbd5e1;
+        border-radius: 8px;
+        padding: 10px;
+        background: #f8fafc;
+    }
+
+    .package-checklist-service-picker {
+        border: 1px solid #dbe3ee;
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px;
+        display: grid;
+        gap: 6px;
+    }
+
+    .package-checklist-service-filter {
+        width: 100%;
+        padding: 6px 8px;
+        border: 1px solid #c7c7c7;
+        border-radius: 4px;
+        box-sizing: border-box;
+    }
+
+    .package-checklist-service-group {
+        border-top: 1px solid #eef2f7;
+        padding-top: 4px;
+    }
+
+    .package-checklist-service-group:first-of-type {
+        border-top: none;
+        padding-top: 0;
+    }
+
+    .package-checklist-service-group-header {
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: none;
+        padding: 4px 2px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .package-checklist-service-group.group-collapsed .package-checklist-service-group-header {
+        opacity: 0.8;
+    }
+
+    .package-checklist-service-item {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        font-size: 13px;
+    }
+</style>
+
+<h3>Manage Services</h3>
+
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="@(IsError ? "error-message" : "success-message")">
+        @Message
+    </div>
+}
+
+@if (ShowAddForm)
+{
+    <div class="add-job-section">
+        <h4>@(EditingJobId is not null
+            ? (IsServicePackagesEditor ? "Edit Service Package" : "Edit Service")
+            : (IsServicePackagesEditor ? "Add New Service Package" : "Add New Service"))</h4>
+
+        <div class="form-section">
+            <label>Name<span class="required-asterisk">*</span></label>
+            <input type="text" required @bind="NewJobName" style="width: 320px; padding: 5px;" placeholder="Enter job name" />
+        </div>
+
+        <div class="form-section">
+            <label>Time (minutes)<span class="required-asterisk">*</span></label>
+            <input type="number"
+                   min="1"
+                   required
+                   @bind="NewJobMinutesInput"
+                   style="width: 120px; padding: 5px;"
+                   placeholder="Enter minutes" />
+        </div>
+
+        <div class="form-section">
+            <label>Pricing Mode<span class="required-asterisk">*</span></label>
+            <select @bind="NewJobPricingMode" style="width: 220px; padding: 5px;">
+                <option value="@ServicePricingMode.AutoRate">Auto rate</option>
+                <option value="@ServicePricingMode.FixedPrice">Fixed price</option>
+                <option value="@ServicePricingMode.EstimatedPrice">Estimated price</option>
+            </select>
+        </div>
+
+        @if (NewJobPricingMode == ServicePricingMode.AutoRate)
+        {
+            <div class="form-section">
+                <label>Hourly Rate Tier</label>
+                <select @bind="NewJobAutoPricingTier" style="width: 220px; padding: 5px;">
+                    <option value="@ServiceHourlyRateTier.Default">Default</option>
+                    <option value="@ServiceHourlyRateTier.Discounted">Discounted</option>
+                    <option value="@ServiceHourlyRateTier.LossLeader">Loss leader</option>
+                </select>
+                <div style="font-size:12px; color:#666; margin-top:4px;">
+                    Auto-calculated price: £@GetDraftDefaultPrice().ToString("0.00")
+                </div>
+            </div>
+        }
+        else if (NewJobPricingMode == ServicePricingMode.EstimatedPrice)
+        {
+            <div class="form-section">
+                <label>Estimated Price<span class="required-asterisk">*</span></label>
+                <input type="number"
+                       min="0"
+                       step="0.01"
+                       required
+                       @bind="NewJobEstimatedPriceInput"
+                       style="width: 140px; padding: 5px;"
+                       placeholder="Enter estimate" />
+            </div>
+        }
+        else
+        {
+            <div class="form-section">
+                <label>Price<span class="required-asterisk">*</span></label>
+                <input type="number"
+                       min="0"
+                       step="0.01"
+                       required
+                       @bind="NewJobPriceInput"
+                       style="width: 140px; padding: 5px;"
+                       placeholder="Enter price" />
+            </div>
+        }
+
+        @if (!IsServicePackagesEditor)
+        {
+            <div class="form-section">
+                <label>Service Packages</label>
+                @if (ServicePackages.Count == 0)
+                {
+                    <div style="color:#666;">No service packages found yet. Add a service package first.</div>
+                }
+                else
+                {
+                    var draftDefaultMinutes = GetDraftDefaultMinutes();
+                    var draftDefaultPrice = GetDraftDefaultPrice();
+                    <div class="package-override-table">
+                        <div class="package-override-header">
+                            <span></span>
+                            <span>Package</span>
+                            <span>Minutes</span>
+                            <span>Price</span>
+                        </div>
+                        @foreach (var package in ServicePackages)
+                        {
+                            var entry = GetPackageOverrideInput(package.Id);
+                            <div class="package-override-row">
+                                <input type="checkbox"
+                                       checked="@entry.Enabled"
+                                       @onchange="e => OnPackageOverrideAvailabilityChanged(entry, e, draftDefaultMinutes, draftDefaultPrice)" />
+                                <span>@package.Name</span>
+                                <input type="number" min="0" @bind="entry.Minutes" disabled="@(!entry.Enabled)" />
+                                <input type="number" min="0" step="0.01" @bind="entry.PriceInput" disabled="@(!entry.Enabled)" />
+                            </div>
+                        }
+                    </div>
+                    <div style="font-size:12px; color:#666; margin-top:6px;">
+                        Tick a package to make this service available as an additional service in that package.
+                        Unticked packages are unavailable and use 0 mins / GBP 0.00.
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="form-section">
+            <label>
+                <span class="label-inline">
+                    Part Number
+                    <SfTooltip CssClass="job-tooltip"
+                               Content="Set this if you or your EPOS system uses a unique identifier for this service."
+                               Position="@TooltipPosition.TopRight">
+                        <span class="field-tip" tabindex="0" role="button" aria-label="Part Number help">?</span>
+                    </SfTooltip>
+                </span>
+            </label>
+            <input type="text" @bind="NewJobPartNumber" style="width: 200px; padding: 5px;" placeholder="Enter part number" />
+        </div>
+
+        <div class="form-section">
+            <label>
+                <span class="label-inline">
+                    Category
+                    <span class="required-asterisk" aria-hidden="true">*</span>
+                    <SfTooltip CssClass="job-tooltip"
+                               Content="Use categories to organise your available service jobs, it makes them easier to navigate and by colouring your categories, easier to read whats happening on your calendars at a glance."
+                               Position="@TooltipPosition.TopRight">
+                        <span class="field-tip" tabindex="0" role="button" aria-label="Category help">?</span>
+                    </SfTooltip>
+                </span>
+            </label>
+            <div class="inline-row">
+                @if (IsServicePackagesEditor)
+                {
+                    <select @bind="NewJobCategory" disabled>
+                        <option value="@ServicePackagesCategory">@ServicePackagesCategory</option>
+                    </select>
+                    <span style="font-size: 12px; color: #666;">
+                        Service packages always use the Service Packages category.
+                    </span>
+                }
+                else
+                {
+                    <select @bind="NewJobCategory">
+                        @foreach (var c in GetIndividualCategoryOptions())
+                        {
+                            <option value="@c">@c</option>
+                        }
+                    </select>
+                    <a class="btn btn-secondary" href="/manage-service-categories">Manage</a>
+                }
+            </div>
+        </div>
+
+        <div class="form-section">
+            <label>Category 2</label>
+            @if (IsServicePackagesEditor)
+            {
+                <input type="text"
+                       value=""
+                       style="width: 220px; padding: 5px;"
+                       placeholder="Not used for service packages"
+                       disabled />
+            }
+            else
+            {
+                <input type="text"
+                       @bind="NewJobCategory2"
+                       list="category2-options"
+                       style="width: 220px; padding: 5px;"
+                       placeholder="Optional sub-category" />
+                <datalist id="category2-options">
+                    @foreach (var option in Catalog.GetCategory2Options(NewJobCategory))
+                    {
+                        <option value="@option"></option>
+                    }
+                </datalist>
+            }
+        </div>
+
+        <div class="form-section">
+            <label>
+                <span class="label-inline">
+                    Skill Level
+                    <span class="required-asterisk" aria-hidden="true">*</span>
+                    <SfTooltip CssClass="job-tooltip"
+                               Content="This allows you to determine what skill level of mechanic is allowed to carry out this service. Used primerrily to restrict more complex services form new mechanics. Typically bike builders are restricted to building bikes, beginners add on basic services and warranty work, intermediate you might add all but the most challenging services leaving advanced who can carry out all services."
+                               Position="@TooltipPosition.TopRight">
+                        <span class="field-tip" tabindex="0" role="button" aria-label="Skill Level help">?</span>
+                    </SfTooltip>
+                </span>
+            </label>
+            <div class="inline-row">
+                <select @bind="NewJobSkillLevel">
+                    <option value="All">All</option>
+                    @foreach (var level in Catalog.SkillLevels)
+                    {
+                        <option value="@level">@level</option>
+                    }
+                </select>
+                <button class="btn btn-secondary" type="button" @onclick="OpenSkillEditor">Add/Edit</button>
+            </div>
+            <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                Higher levels can do lower-level jobs. New levels are added at the top of the ladder.
+            </div>
+        </div>
+
+        <div class="form-section">
+            <label>Description</label>
+            <textarea @bind="NewJobDescription" rows="4" style="width: 520px; padding: 5px;"></textarea>
+        </div>
+
+        @if (IsServicePackagesEditor)
+        {
+            <div class="form-section">
+                <label>Package Checklist</label>
+                <div class="package-checklist-builder">
+                    <div class="package-checklist-toolbar">
+                        <select @bind="ChecklistImportSourcePackageId">
+                            <option value="">Copy from existing package...</option>
+                            @foreach (var package in ImportablePackageTemplates)
+                            {
+                                <option value="@package.Id">@package.Name</option>
+                            }
+                        </select>
+                        <button class="btn btn-secondary"
+                                type="button"
+                                @onclick="ImportChecklistFromExistingPackage"
+                                disabled="@string.IsNullOrWhiteSpace(ChecklistImportSourcePackageId)">
+                            Import list
+                        </button>
+                    </div>
+
+                    <div class="package-checklist-service-picker">
+                        <input class="package-checklist-service-filter"
+                               placeholder="Filter services..."
+                               @bind="ChecklistServiceFilter" />
+                        @foreach (var group in ChecklistServiceGroups)
+                        {
+                            <div class="package-checklist-service-group @(IsChecklistServiceGroupOpen(group.Key) ? "" : "group-collapsed")">
+                                <button type="button"
+                                        class="package-checklist-service-group-header"
+                                        @onclick="() => ToggleChecklistServiceGroup(group.Key)">
+                                    <span>@(IsChecklistServiceGroupOpen(group.Key) ? "▾" : "▸") @group.Key (@group.Value.Count)</span>
+                                </button>
+                                @if (IsChecklistServiceGroupOpen(group.Key))
+                                {
+                                    @foreach (var service in group.Value)
+                                    {
+                                        <div class="package-checklist-service-item">
+                                            <span>@service.Name</span>
+                                            <button class="btn btn-secondary"
+                                                    type="button"
+                                                    style="margin-right:0;"
+                                                    @onclick="() => AddChecklistLinkedService(service.Id)">
+                                                Add
+                                            </button>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <div class="package-checklist-toolbar">
+                        <input type="text"
+                               @bind="ChecklistManualStepName"
+                               style="width: 260px;"
+                               placeholder="Manual step name" />
+                        <input type="text"
+                               @bind="ChecklistManualStepDescription"
+                               style="width: 320px;"
+                               placeholder="Manual step description (optional)" />
+                        <button class="btn btn-secondary" type="button" @onclick="AddChecklistManualStep">Add manual step</button>
+                    </div>
+
+                    @if (PackageChecklistEditorItems.Count == 0)
+                    {
+                        <div class="package-checklist-empty">No checklist items yet. Add linked services or manual steps.</div>
+                    }
+                    else
+                    {
+                        <div id="jobs-package-checklist-list" @ref="PackageChecklistListRef" class="package-checklist-list">
+                            @for (var i = 0; i < PackageChecklistEditorItems.Count; i++)
+                            {
+                                var itemIndex = i;
+                                var item = PackageChecklistEditorItems[i];
+                                var isLinked = !string.IsNullOrWhiteSpace((item.LinkedServiceJobId ?? "").Trim());
+                                var itemDescription = GetChecklistItemDisplayDescription(item);
+                                <div class="package-checklist-row"
+                                     data-index="@i"
+                                     draggable="true">
+                                    <span class="drag-handle" aria-label="Drag to reorder">&#8801;</span>
+                                    <div class="package-checklist-main">
+                                        <span class="package-checklist-name">@GetChecklistItemDisplayName(item)</span>
+                                        @if (!string.IsNullOrWhiteSpace(itemDescription))
+                                        {
+                                            <span class="package-checklist-description">@itemDescription</span>
+                                        }
+                                    </div>
+                                    <span class="package-checklist-type">@(isLinked ? "Linked service" : "Manual step")</span>
+                                    <button class="e-btn e-flat"
+                                            style="color:#dc3545;"
+                                            type="button"
+                                            @onclick="() => RemoveChecklistEditorItem(itemIndex)">Delete</button>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    <div style="font-size:12px; color:#64748b;">
+                        Checklist items are mechanic reminders only. Package price/time stays on the parent package.
+                    </div>
+                </div>
+            </div>
+        }
+
+        <div class="form-section">
+            <label title="Set a colour here if you do not want to use the category colour on your calendar and want this individual service to stand out.">Service Color</label>
+            <div class="inline-row">
+                <input type="color" @bind="NewJobColor" />
+                <input type="text" @bind="NewJobColor" style="width: 110px; padding: 5px;" placeholder="#RRGGBB" />
+                <span style="font-size: 12px; color:#666;">Leave empty to use category color.</span>
+            </div>
+        </div>
+
+        <div>
+            <button class="btn btn-success" @onclick="SaveJob">@(EditingJobId is not null ? "Update Job" : "Add Job")</button>
+            <button class="btn btn-secondary" @onclick="CancelAddEdit">Cancel</button>
+        </div>
+    </div>
+}
+
+<div class="inline-row" style="margin: 0 0 16px 0;">
+    <button class="btn btn-secondary" type="button" @onclick="ImportSuggestedServicesOnlyAsync">Import Suggested Services</button>
+    <button class="btn btn-secondary" type="button" @onclick="ImportSuggestedServicesAndTimesAsync">Import Suggested Services + Times</button>
+    <button class="btn btn-secondary" type="button" @onclick="ImportSuggestedServicePricesAsync">Import Suggested Prices</button>
+</div>
+
+<h4>Service Packages (@GetServicePackagesCount())</h4>
+<div style="margin-bottom: 20px;">
+    <button class="btn btn-primary" @onclick="ShowAddServicePackageForm">+ Add New Service</button>
+</div>
+
+@{
+    var servicePackageJobs = Catalog.Jobs
+        .Where(j => IsServicePackagesCategory(NormalizeCategory(j.Category)))
+        .OrderBy(j => j.Name)
+        .ToList();
+}
+
+<div style="margin-bottom: 24px;">
+    <h5 style="margin: 0 0 10px 0;">@ServicePackagesCategory (@servicePackageJobs.Count)</h5>
+    @if (!servicePackageJobs.Any())
+    {
+        <div style="color:#666;">No services in this category yet.</div>
+    }
+    else
+    {
+        <SfGrid DataSource="@servicePackageJobs" AllowSorting="true" Width="100%">
+            <GridColumns>
+                <GridColumn HeaderText="Name" Width="220">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <input type="text"
+                               value="@job.Name"
+                               class="grid-inline-input"
+                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.Name), e.Value?.ToString()))" />
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Time (mins)" Width="120" TextAlign="TextAlign.Center">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <input type="number"
+                               min="1"
+                               value="@job.DefaultMinutes"
+                               class="grid-inline-input numeric"
+                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.DefaultMinutes), e.Value?.ToString()))" />
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Category 2" Width="170">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <input type="text"
+                               value="@job.Category2"
+                               class="grid-inline-input"
+                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.Category2), e.Value?.ToString()))" />
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Pricing" Width="210">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <div class="package-rates-cell">
+                            <span class="package-rates-summary">@GetPricingSummary(job)</span>
+                            <span class="package-rates-summary">Current £@ResolveEffectivePrice(job).ToString("0.00")</span>
+                        </div>
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Part Number" Width="160">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <input type="text"
+                               value="@job.PartNumber"
+                               class="grid-inline-input"
+                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.PartNumber), e.Value?.ToString()))" />
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Skill Level" Width="250">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <div class="inline-row" style="flex-wrap:nowrap;">
+                            <select value="@job.SkillLevel"
+                                    class="grid-inline-select"
+                                    @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.SkillLevel), e.Value?.ToString()))">
+                                <option value="All">All</option>
+                                @foreach (var level in Catalog.SkillLevels)
+                                {
+                                    <option value="@level">@level</option>
+                                }
+                            </select>
+                            <button class="btn btn-secondary grid-btn"
+                                    style="width:auto; padding:0 10px;"
+                                    type="button"
+                                    @onclick="OpenSkillEditor">Add/Edit</button>
+                        </div>
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Description" Width="260">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <input type="text"
+                               value="@job.Description"
+                               class="grid-inline-input"
+                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.Description), e.Value?.ToString()))" />
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Color" Width="120">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                            var colorValue = string.IsNullOrWhiteSpace(job.ColorHex) ? "#94a3b8" : job.ColorHex;
+                        }
+                        <input type="color"
+                               value="@colorValue"
+                               class="grid-inline-color"
+                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.ColorHex), e.Value?.ToString()))" />
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Actions" Width="160" TextAlign="TextAlign.Center">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <button class="btn btn-primary grid-btn" @onclick="() => EditJob(job.Id)">Edit</button>
+                        <button class="btn btn-danger grid-btn" style="margin-right:0;" @onclick="() => DeleteJob(job.Id)">Delete</button>
+                    </Template>
+                </GridColumn>
+            </GridColumns>
+        </SfGrid>
+    }
+</div>
+
+<h4>Individual Services (@GetIndividualServicesCount())</h4>
+<div style="margin-bottom: 20px;">
+    <button class="btn btn-primary" @onclick="ShowAddIndividualServiceForm">+ Add New Service</button>
+</div>
+
+@{
+    var individualCategoryGroups = Catalog.Jobs
+        .Where(j => !IsServicePackagesCategory(NormalizeCategory(j.Category)))
+        .GroupBy(j => new
+        {
+            Category1 = NormalizeCategory(j.Category),
+            Category2 = NormalizeCategory2(j.Category2)
+        })
+        .OrderBy(g => g.Key.Category1, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(g => g.Key.Category2, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+}
+
+@if (!individualCategoryGroups.Any())
+{
+    <div style="color:#666; margin-bottom: 24px;">No individual service categories yet.</div>
+}
+@foreach (var group in individualCategoryGroups)
+{
+    var jobsInCategory = group
+        .OrderBy(j => j.Name)
+        .ToList();
+
+    if (!jobsInCategory.Any())
+    {
+        continue;
+    }
+
+    <div style="margin-bottom: 24px;">
+        <h5 style="margin: 0 0 10px 0;">@group.Key.Category1 / @group.Key.Category2 (@jobsInCategory.Count)</h5>
+        <SfGrid DataSource="@jobsInCategory" AllowSorting="true" Width="100%">
+            <GridColumns>
+                <GridColumn HeaderText="Name" Width="220">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <input type="text"
+                               value="@job.Name"
+                               class="grid-inline-input"
+                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.Name), e.Value?.ToString()))" />
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Time (mins)" Width="120" TextAlign="TextAlign.Center">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <input type="number"
+                               min="1"
+                               value="@job.DefaultMinutes"
+                               class="grid-inline-input numeric"
+                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.DefaultMinutes), e.Value?.ToString()))" />
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Price" Width="120" TextAlign="TextAlign.Center">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <input type="number"
+                               min="0"
+                               step="0.01"
+                               value="@FormatPriceForInput(job.BasePriceIncVat)"
+                               class="grid-inline-input numeric"
+                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.BasePriceIncVat), e.Value?.ToString()))" />
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Package Rates" Width="340">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <div class="package-rates-cell">
+                            <span class="package-rates-summary">@GetPackageOverrideSummary(job)</span>
+                            <button class="btn btn-secondary grid-btn"
+                                    style="width:auto; padding:0 10px;"
+                                    type="button"
+                                    @onclick="() => OpenPackageRatesDialog(job)">Set rates</button>
+                        </div>
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Part Number" Width="160">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <input type="text"
+                               value="@job.PartNumber"
+                               class="grid-inline-input"
+                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.PartNumber), e.Value?.ToString()))" />
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Skill Level" Width="250">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <div class="inline-row" style="flex-wrap:nowrap;">
+                            <select value="@job.SkillLevel"
+                                    class="grid-inline-select"
+                                    @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.SkillLevel), e.Value?.ToString()))">
+                                <option value="All">All</option>
+                                @foreach (var level in Catalog.SkillLevels)
+                                {
+                                    <option value="@level">@level</option>
+                                }
+                            </select>
+                            <button class="btn btn-secondary grid-btn"
+                                    style="width:auto; padding:0 10px;"
+                                    type="button"
+                                    @onclick="OpenSkillEditor">Add/Edit</button>
+                        </div>
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Description" Width="260">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <input type="text"
+                               value="@job.Description"
+                               class="grid-inline-input"
+                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.Description), e.Value?.ToString()))" />
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Color" Width="120">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                            var colorValue = string.IsNullOrWhiteSpace(job.ColorHex) ? "#94a3b8" : job.ColorHex;
+                        }
+                        <input type="color"
+                               value="@colorValue"
+                               class="grid-inline-color"
+                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.ColorHex), e.Value?.ToString()))" />
+                    </Template>
+                </GridColumn>
+                <GridColumn HeaderText="Actions" Width="160" TextAlign="TextAlign.Center">
+                    <Template>
+                        @{
+                            var job = (JobDefinition)context;
+                        }
+                        <button class="btn btn-primary grid-btn" @onclick="() => EditJob(job.Id)">Edit</button>
+                        <button class="btn btn-danger grid-btn" style="margin-right:0;" @onclick="() => DeleteJob(job.Id)">Delete</button>
+                    </Template>
+                </GridColumn>
+            </GridColumns>
+        </SfGrid>
+    </div>
+}
+
+<SfDialog Width="620px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          @bind-Visible="IsCategoryDialogVisible"
+          Header="Manage Categories">
+    <DialogTemplates>
+        <Content>
+            <div style="display:grid; gap:10px;">
+                @if (!string.IsNullOrWhiteSpace(CategoryEditorMessage))
+                {
+                    <div style="color:#dc3545;">@CategoryEditorMessage</div>
+                }
+
+                <div style="font-weight:600;">Existing categories</div>
+                <div id="jobs-category-editor-list" @ref="CategoryListRef">
+                    @for (var i = 0; i < CategoryEditorItems.Count; i++)
+                    {
+                        var itemIndex = i;
+                        var item = CategoryEditorItems[i];
+                        var isServicePackages = IsServicePackagesCategory(item.OriginalName);
+                        <div class="catalog-editor-row"
+                             data-index="@i"
+                             draggable="@(!isServicePackages)">
+                            <span class="drag-handle" aria-label="Drag to reorder">&#8801;</span>
+                            <input type="text" @bind="item.Name" class="editor-name" disabled="@isServicePackages" />
+                            <div class="editor-color">
+                                <input type="color" @bind="item.ColorHex" />
+                                <input type="text" @bind="item.ColorHex" class="editor-hex" placeholder="#RRGGBB" />
+                                <button class="e-btn e-flat"
+                                        style="color:#dc3545;"
+                                        type="button"
+                                        @onclick="() => RemoveCategoryEditorItem(itemIndex)"
+                                        disabled="@isServicePackages">Delete</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div style="margin-top:6px; font-weight:600;">Add new category</div>
+                <div class="catalog-editor-row">
+                    <span class="drag-handle" style="visibility:hidden;">&#8801;</span>
+                    <input type="text" @bind="NewCategoryEditorName" class="editor-name" placeholder="Category name" />
+                    <div class="editor-color">
+                        <input type="color" @bind="NewCategoryEditorColor" />
+                        <input type="text" @bind="NewCategoryEditorColor" class="editor-hex" placeholder="#RRGGBB" />
+                        <button class="e-btn e-flat" type="button" @onclick="AddCategoryEditorItem">Add</button>
+                    </div>
+                </div>
+            </div>
+        </Content>
+    </DialogTemplates>
+    <DialogButtons>
+        <DialogButton Content="Cancel" IsPrimary="false" OnClick="CloseCategoryEditor" />
+    </DialogButtons>
+</SfDialog>
+
+<SfDialog Width="520px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          @bind-Visible="IsSkillDialogVisible"
+          Header="Manage Skill Levels">
+    <DialogTemplates>
+        <Content>
+            <div style="display:grid; gap:10px;">
+                @if (!string.IsNullOrWhiteSpace(SkillEditorMessage))
+                {
+                    <div style="color:#dc3545;">@SkillEditorMessage</div>
+                }
+
+                <div style="font-weight:600;">Existing skill levels</div>
+                <div id="jobs-skill-editor-list" @ref="SkillListRef">
+                    @for (var i = 0; i < SkillEditorItems.Count; i++)
+                    {
+                        var itemIndex = i;
+                        var item = SkillEditorItems[i];
+                        <div class="skill-editor-row"
+                             data-index="@i"
+                             draggable="true">
+                            <span class="drag-handle" aria-label="Drag to reorder">&#8801;</span>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <input type="text" @bind="item.Name" class="editor-name" />
+                                <button class="e-btn e-flat"
+                                        style="color:#dc3545;"
+                                        type="button"
+                                        @onclick="() => RemoveSkillEditorItem(itemIndex)">Delete</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div style="margin-top:6px; font-weight:600;">Add new skill level</div>
+                <div class="skill-editor-row">
+                    <span class="drag-handle" style="visibility:hidden;">&#8801;</span>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="text" @bind="NewSkillEditorName" class="editor-name" placeholder="Skill level name" />
+                        <button class="e-btn e-flat" type="button" @onclick="AddSkillEditorItem">Add</button>
+                    </div>
+                </div>
+            </div>
+        </Content>
+    </DialogTemplates>
+    <DialogButtons>
+        <DialogButton Content="Cancel" IsPrimary="false" OnClick="CloseSkillEditor" />
+    </DialogButtons>
+</SfDialog>
+
+<SfDialog Width="760px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          @bind-Visible="IsPackageRatesDialogVisible"
+          Header="@PackageRatesDialogTitle">
+    <DialogTemplates>
+        <Content>
+            @if (PackageRatesTargetJob is null)
+            {
+                <div style="color:#dc3545;">Service not found.</div>
+            }
+            else if (ServicePackages.Count == 0)
+            {
+                <div style="color:#666;">No service packages available yet.</div>
+            }
+            else
+            {
+                var targetDefaultMinutes = PackageRatesTargetJob?.DefaultMinutes ?? 0;
+                var targetDefaultPrice = PackageRatesTargetJob?.BasePriceIncVat ?? 0m;
+                <div class="package-override-table">
+                    <div style="font-size:12px; color:#475569;">
+                        Tick a package when this service should be available as an additional service in that package.
+                        Untick it to hide the service for that package and force 0 mins / GBP 0.00.
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(PackageRatesDialogMessage))
+                    {
+                        <div style="color:#dc3545;">@PackageRatesDialogMessage</div>
+                    }
+                    <div class="package-override-header">
+                        <span></span>
+                        <span>Package</span>
+                        <span>Minutes</span>
+                        <span>Price</span>
+                    </div>
+                    @foreach (var package in ServicePackages)
+                    {
+                        var entry = GetPackageRatesDialogInput(package.Id);
+                        <div class="package-override-row">
+                            <input type="checkbox"
+                                   checked="@entry.Enabled"
+                                   @onchange="e => OnPackageOverrideAvailabilityChanged(entry, e, targetDefaultMinutes, targetDefaultPrice)" />
+                            <span>@package.Name</span>
+                            <input type="number" min="0" @bind="entry.Minutes" disabled="@(!entry.Enabled)" />
+                            <input type="number" min="0" step="0.01" @bind="entry.PriceInput" disabled="@(!entry.Enabled)" />
+                        </div>
+                    }
+                </div>
+            }
+        </Content>
+    </DialogTemplates>
+    <DialogButtons>
+        <DialogButton Content="Cancel" IsPrimary="false" OnClick="ClosePackageRatesDialog" />
+        <DialogButton Content="Save package settings" IsPrimary="true" OnClick="SavePackageRatesDialogAsync" />
+    </DialogButtons>
+</SfDialog>
+
+@code {
+    private string _message = "";
+    private bool _scrollToTopRequested;
+    private bool ShowAddForm;
+    private bool IsError;
+    private string Message
+    {
+        get => _message;
+        set
+        {
+            if (_message == value) return;
+            _message = value;
+            _scrollToTopRequested = !string.IsNullOrWhiteSpace(value);
+        }
+    }
+
+    private string? EditingJobId;
+    private const string ServicePackagesCategory = "Service Packages";
+    private ServiceEditorMode CurrentEditorMode = ServiceEditorMode.IndividualServices;
+    private bool IsServicePackagesEditor => CurrentEditorMode == ServiceEditorMode.ServicePackages;
+
+    private enum ServiceEditorMode
+    {
+        ServicePackages,
+        IndividualServices
+    }
+
+    private string NewJobName = "";
+    private string NewJobMinutesInput = "";
+    private string NewJobPriceInput = "";
+    private string NewJobEstimatedPriceInput = "";
+    private ServicePricingMode NewJobPricingMode = ServicePricingMode.FixedPrice;
+    private ServiceHourlyRateTier NewJobAutoPricingTier = ServiceHourlyRateTier.Default;
+    private string NewJobPartNumber = "";
+    private string NewJobCategory = "";
+    private string NewJobCategory2 = "";
+    private string NewJobSkillLevel = "All";
+    private string NewJobDescription = "";
+    private string NewJobColor = "";
+    private List<ServicePackageChecklistItemDefinition> PackageChecklistEditorItems = new();
+    private string ChecklistManualStepName = "";
+    private string ChecklistManualStepDescription = "";
+    private string ChecklistImportSourcePackageId = "";
+    private string ChecklistServiceFilter = "";
+    private readonly HashSet<string> ExpandedChecklistServiceGroups = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, PackageOverrideInput> PackageOverrideInputsByJobId = new(StringComparer.OrdinalIgnoreCase);
+    private bool IsPackageRatesDialogVisible;
+    private string? PackageRatesJobId;
+    private string PackageRatesDialogMessage = "";
+    private readonly Dictionary<string, PackageOverrideInput> PackageRatesDialogInputsByPackageId = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool IsCategoryDialogVisible;
+    private string CategoryEditorMessage = "";
+    private List<CategoryEditorItem> CategoryEditorItems = new();
+    private string NewCategoryEditorName = "";
+    private string NewCategoryEditorColor = "#94a3b8";
+    private DotNetObjectReference<ManageJobs>? CategoryDotNetRef;
+    private ElementReference CategoryListRef;
+    private bool ShouldInitCategoryDnd;
+
+    private bool IsSkillDialogVisible;
+    private string SkillEditorMessage = "";
+    private List<SkillEditorItem> SkillEditorItems = new();
+    private string NewSkillEditorName = "";
+    private DotNetObjectReference<ManageJobs>? SkillDotNetRef;
+    private ElementReference SkillListRef;
+    private bool ShouldInitSkillDnd;
+
+    private DotNetObjectReference<ManageJobs>? PackageChecklistDotNetRef;
+    private ElementReference PackageChecklistListRef;
+    private bool ShouldInitPackageChecklistDnd;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Catalog.EnsureInitializedAsync();
+        await Data.EnsureInitializedAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_scrollToTopRequested)
+        {
+            _scrollToTopRequested = false;
+            await JS.InvokeVoidAsync("window.scrollTo", 0, 0);
+        }
+
+        if (ShouldInitCategoryDnd)
+        {
+            ShouldInitCategoryDnd = false;
+            await EnsureCategoryDndAsync();
+        }
+
+        if (ShouldInitSkillDnd)
+        {
+            ShouldInitSkillDnd = false;
+            await EnsureSkillDndAsync();
+        }
+
+        if (ShouldInitPackageChecklistDnd)
+        {
+            ShouldInitPackageChecklistDnd = false;
+            await EnsurePackageChecklistDndAsync();
+        }
+    }
+
+    private void ShowAddServicePackageForm()
+        => ShowAddJobForm(ServiceEditorMode.ServicePackages);
+
+    private void ShowAddIndividualServiceForm()
+        => ShowAddJobForm(ServiceEditorMode.IndividualServices);
+
+    private void ShowAddJobForm(ServiceEditorMode mode)
+    {
+        ShowAddForm = true;
+        CurrentEditorMode = mode;
+        EditingJobId = null;
+        NewJobName = "";
+        NewJobMinutesInput = "";
+        NewJobPriceInput = "";
+        NewJobEstimatedPriceInput = "";
+        NewJobPricingMode = ServicePricingMode.FixedPrice;
+        NewJobAutoPricingTier = ServiceHourlyRateTier.Default;
+        NewJobPartNumber = "";
+        NewJobCategory = mode == ServiceEditorMode.ServicePackages
+            ? GetServicePackagesCategoryValue()
+            : GetDefaultIndividualCategory();
+        NewJobCategory2 = "";
+        NewJobSkillLevel = "All";
+        NewJobDescription = "";
+        NewJobColor = "";
+        if (mode == ServiceEditorMode.IndividualServices)
+        {
+            InitializePackageOverrideInputs();
+            PackageChecklistEditorItems = new();
+            ChecklistManualStepName = "";
+            ChecklistManualStepDescription = "";
+            ChecklistImportSourcePackageId = "";
+            ChecklistServiceFilter = "";
+            ExpandedChecklistServiceGroups.Clear();
+            ShouldInitPackageChecklistDnd = false;
+        }
+        else
+        {
+            PackageOverrideInputsByJobId.Clear();
+            InitializePackageChecklistEditor();
+        }
+        Message = "";
+        IsError = false;
+    }
+
+    private void EditJob(string jobId)
+    {
+        var job = Catalog.Jobs.FirstOrDefault(j => j.Id == jobId);
+        if (job == null)
+        {
+            Message = "Job not found.";
+            IsError = true;
+            return;
+        }
+
+        ShowAddForm = true;
+        CurrentEditorMode = IsServicePackagesCategory(job.Category)
+            ? ServiceEditorMode.ServicePackages
+            : ServiceEditorMode.IndividualServices;
+        EditingJobId = jobId;
+        NewJobName = job.Name;
+        NewJobMinutesInput = job.DefaultMinutes.ToString(CultureInfo.InvariantCulture);
+        NewJobPriceInput = FormatPriceForInput(job.BasePriceIncVat);
+        NewJobEstimatedPriceInput = FormatPriceForInput(job.EstimatedPriceIncVat);
+        NewJobPricingMode = job.PricingMode;
+        NewJobAutoPricingTier = job.AutoPricingTier;
+        NewJobPartNumber = job.PartNumber;
+        NewJobCategory = IsServicePackagesCategory(job.Category)
+            ? GetServicePackagesCategoryValue()
+            : job.Category;
+        NewJobCategory2 = IsServicePackagesCategory(job.Category) ? "" : (job.Category2 ?? "");
+        NewJobSkillLevel = job.SkillLevel;
+        NewJobDescription = job.Description;
+        NewJobColor = job.ColorHex;
+        if (CurrentEditorMode == ServiceEditorMode.IndividualServices)
+        {
+            InitializePackageOverrideInputs(job);
+            PackageChecklistEditorItems = new();
+            ChecklistManualStepName = "";
+            ChecklistManualStepDescription = "";
+            ChecklistImportSourcePackageId = "";
+            ChecklistServiceFilter = "";
+            ExpandedChecklistServiceGroups.Clear();
+            ShouldInitPackageChecklistDnd = false;
+        }
+        else
+        {
+            PackageOverrideInputsByJobId.Clear();
+            InitializePackageChecklistEditor(job);
+        }
+        Message = "";
+    }
+
+    private void CancelAddEdit()
+    {
+        ShowAddForm = false;
+        EditingJobId = null;
+        NewJobEstimatedPriceInput = "";
+        NewJobPricingMode = ServicePricingMode.FixedPrice;
+        NewJobAutoPricingTier = ServiceHourlyRateTier.Default;
+        NewJobCategory2 = "";
+        PackageOverrideInputsByJobId.Clear();
+        PackageChecklistEditorItems = new();
+        ChecklistManualStepName = "";
+        ChecklistManualStepDescription = "";
+        ChecklistImportSourcePackageId = "";
+        ChecklistServiceFilter = "";
+        ExpandedChecklistServiceGroups.Clear();
+        ShouldInitPackageChecklistDnd = false;
+        Message = "";
+    }
+
+    private List<JobDefinition> IndividualServicesForChecklist =>
+        Catalog.Jobs
+            .Where(j => !IsServicePackagesCategory(j.Category))
+            .OrderBy(j => j.Category, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(j => j.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private IReadOnlyDictionary<string, List<JobDefinition>> ChecklistServiceGroups
+    {
+        get
+        {
+            return IndividualServicesForChecklist
+                .Where(j => string.IsNullOrWhiteSpace(ChecklistServiceFilter)
+                            || j.Name.Contains(ChecklistServiceFilter, StringComparison.OrdinalIgnoreCase))
+                .GroupBy(j => NormalizeCategory(j.Category))
+                .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase).ToList(), StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool IsChecklistServiceGroupOpen(string key)
+    {
+        if (!string.IsNullOrWhiteSpace(ChecklistServiceFilter))
+            return true;
+
+        if (ExpandedChecklistServiceGroups.Count == 0)
+        {
+            var first = ChecklistServiceGroups.Keys.FirstOrDefault();
+            return first is not null && first.Equals(key, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return ExpandedChecklistServiceGroups.Contains(key);
+    }
+
+    private void ToggleChecklistServiceGroup(string key)
+    {
+        if (ExpandedChecklistServiceGroups.Count == 0)
+        {
+            var first = ChecklistServiceGroups.Keys.FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(first))
+                ExpandedChecklistServiceGroups.Add(first);
+        }
+
+        if (ExpandedChecklistServiceGroups.Contains(key))
+            ExpandedChecklistServiceGroups.Remove(key);
+        else
+            ExpandedChecklistServiceGroups.Add(key);
+    }
+
+    private List<JobDefinition> ImportablePackageTemplates =>
+        ServicePackages
+            .Where(p => string.IsNullOrWhiteSpace(EditingJobId) || !p.Id.Equals(EditingJobId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+    private void InitializePackageChecklistEditor(JobDefinition? sourcePackage = null)
+    {
+        PackageChecklistEditorItems = (sourcePackage?.PackageChecklistItems ?? new List<ServicePackageChecklistItemDefinition>())
+            .OrderBy(i => i.SortOrder)
+            .ThenBy(i => (i.Name ?? "").Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(i => new ServicePackageChecklistItemDefinition
+            {
+                Id = string.IsNullOrWhiteSpace((i.Id ?? "").Trim()) ? Guid.NewGuid().ToString("N") : (i.Id ?? "").Trim(),
+                SortOrder = Math.Max(0, i.SortOrder),
+                Name = (i.Name ?? "").Trim(),
+                Description = (i.Description ?? "").Trim(),
+                LinkedServiceJobId = (i.LinkedServiceJobId ?? "").Trim()
+            })
+            .ToList();
+
+        ReindexPackageChecklistEditorItems();
+        ChecklistManualStepName = "";
+        ChecklistManualStepDescription = "";
+        ChecklistImportSourcePackageId = "";
+        ChecklistServiceFilter = "";
+        ExpandedChecklistServiceGroups.Clear();
+        ShouldInitPackageChecklistDnd = PackageChecklistEditorItems.Count > 0;
+    }
+
+    private void ReindexPackageChecklistEditorItems()
+    {
+        for (var index = 0; index < PackageChecklistEditorItems.Count; index++)
+            PackageChecklistEditorItems[index].SortOrder = index;
+    }
+
+    private void AddChecklistLinkedService(string? sourceJobId = null)
+    {
+        var jobId = (sourceJobId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(jobId))
+            return;
+
+        var job = Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(jobId, StringComparison.OrdinalIgnoreCase));
+        if (job is null || IsServicePackagesCategory(job.Category))
+            return;
+
+        PackageChecklistEditorItems.Add(new ServicePackageChecklistItemDefinition
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            SortOrder = PackageChecklistEditorItems.Count,
+            Name = (job.Name ?? "").Trim(),
+            Description = (job.Description ?? "").Trim(),
+            LinkedServiceJobId = job.Id
+        });
+
+        ReindexPackageChecklistEditorItems();
+        ShouldInitPackageChecklistDnd = PackageChecklistEditorItems.Count > 0;
+    }
+
+    private void AddChecklistManualStep()
+    {
+        var name = (ChecklistManualStepName ?? "").Trim();
+        var description = (ChecklistManualStepDescription ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+
+        PackageChecklistEditorItems.Add(new ServicePackageChecklistItemDefinition
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            SortOrder = PackageChecklistEditorItems.Count,
+            Name = name,
+            Description = description,
+            LinkedServiceJobId = ""
+        });
+
+        ChecklistManualStepName = "";
+        ChecklistManualStepDescription = "";
+        ReindexPackageChecklistEditorItems();
+        ShouldInitPackageChecklistDnd = PackageChecklistEditorItems.Count > 0;
+    }
+
+    private void RemoveChecklistEditorItem(int index)
+    {
+        if (index < 0 || index >= PackageChecklistEditorItems.Count)
+            return;
+
+        PackageChecklistEditorItems.RemoveAt(index);
+        ReindexPackageChecklistEditorItems();
+        ShouldInitPackageChecklistDnd = PackageChecklistEditorItems.Count > 0;
+    }
+
+    private void ImportChecklistFromExistingPackage()
+    {
+        var packageId = (ChecklistImportSourcePackageId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(packageId))
+            return;
+
+        var source = ServicePackages.FirstOrDefault(p => p.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase));
+        if (source is null)
+            return;
+
+        PackageChecklistEditorItems = source.PackageChecklistItems
+            .OrderBy(i => i.SortOrder)
+            .ThenBy(i => (i.Name ?? "").Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(i => new ServicePackageChecklistItemDefinition
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                SortOrder = Math.Max(0, i.SortOrder),
+                Name = (i.Name ?? "").Trim(),
+                Description = (i.Description ?? "").Trim(),
+                LinkedServiceJobId = (i.LinkedServiceJobId ?? "").Trim()
+            })
+            .ToList();
+
+        ReindexPackageChecklistEditorItems();
+        ChecklistImportSourcePackageId = "";
+        ShouldInitPackageChecklistDnd = PackageChecklistEditorItems.Count > 0;
+    }
+
+    private string GetChecklistItemDisplayName(ServicePackageChecklistItemDefinition item)
+    {
+        var linkedServiceId = (item.LinkedServiceJobId ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(linkedServiceId))
+        {
+            var linkedService = Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(linkedServiceId, StringComparison.OrdinalIgnoreCase));
+            if (linkedService is not null)
+                return linkedService.Name;
+        }
+
+        var text = (item.Name ?? "").Trim();
+        return string.IsNullOrWhiteSpace(text) ? "Checklist item" : text;
+    }
+
+    private string GetChecklistItemDisplayDescription(ServicePackageChecklistItemDefinition item)
+    {
+        var linkedServiceId = (item.LinkedServiceJobId ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(linkedServiceId))
+        {
+            var linkedService = Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(linkedServiceId, StringComparison.OrdinalIgnoreCase));
+            if (linkedService is not null)
+                return (linkedService.Description ?? "").Trim();
+        }
+
+        return (item.Description ?? "").Trim();
+    }
+
+    private List<ServicePackageChecklistItemDefinition> BuildPackageChecklistItemsFromEditor()
+    {
+        var normalized = new List<ServicePackageChecklistItemDefinition>();
+        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in PackageChecklistEditorItems)
+        {
+            var linkedServiceJobId = (item.LinkedServiceJobId ?? "").Trim();
+            var name = GetChecklistItemDisplayName(item).Trim();
+            var description = GetChecklistItemDisplayDescription(item).Trim();
+            if (string.IsNullOrWhiteSpace(linkedServiceJobId) && string.IsNullOrWhiteSpace(name))
+                continue;
+
+            var id = (item.Id ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(id) || !seenIds.Add(id))
+                id = Guid.NewGuid().ToString("N");
+
+            normalized.Add(new ServicePackageChecklistItemDefinition
+            {
+                Id = id,
+                SortOrder = normalized.Count,
+                Name = name,
+                Description = description,
+                LinkedServiceJobId = linkedServiceJobId
+            });
+        }
+
+        return normalized;
+    }
+
+    private sealed class CategoryEditorItem
+    {
+        public CategoryEditorItem(string name, string colorHex)
+        {
+            OriginalName = name;
+            Name = name;
+            ColorHex = colorHex;
+        }
+
+        public string OriginalName { get; }
+        public string Name { get; set; }
+        public string ColorHex { get; set; }
+    }
+
+    private sealed class SkillEditorItem
+    {
+        public SkillEditorItem(string name)
+        {
+            OriginalName = name;
+            Name = name;
+        }
+
+        public string OriginalName { get; }
+        public string Name { get; set; }
+    }
+
+    private sealed class PackageOverrideInput
+    {
+        public bool Enabled { get; set; }
+        public int Minutes { get; set; }
+        public string PriceInput { get; set; } = "0.00";
+    }
+
+    private int GetDraftDefaultMinutes()
+        => int.TryParse(NewJobMinutesInput, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedMinutes)
+            ? Math.Max(0, parsedMinutes)
+            : 0;
+
+    private decimal GetDraftDefaultPrice()
+    {
+        return NewJobPricingMode switch
+        {
+            ServicePricingMode.AutoRate => RoundPrice((GetDraftDefaultMinutes() / 60m) * ResolveDraftHourlyRate(NewJobAutoPricingTier)),
+            ServicePricingMode.EstimatedPrice => TryParsePrice(NewJobEstimatedPriceInput, out var estimatedPrice)
+                ? RoundPrice(estimatedPrice)
+                : 0m,
+            _ => TryParsePrice(NewJobPriceInput, out var parsedPrice)
+                ? RoundPrice(parsedPrice)
+                : 0m
+        };
+    }
+
+    private decimal ResolveDraftHourlyRate(ServiceHourlyRateTier tier)
+    {
+        return tier switch
+        {
+            ServiceHourlyRateTier.Discounted => Catalog.DiscountedHourlyRate,
+            ServiceHourlyRateTier.LossLeader => Catalog.LossLeaderHourlyRate,
+            _ => Catalog.DefaultHourlyRate
+        };
+    }
+
+    private void OnPackageOverrideAvailabilityChanged(
+        PackageOverrideInput input,
+        Microsoft.AspNetCore.Components.ChangeEventArgs e,
+        int defaultMinutes,
+        decimal defaultPrice)
+    {
+        var enabled = e?.Value is bool value && value;
+        input.Enabled = enabled;
+
+        if (enabled)
+        {
+            if (input.Minutes <= 0)
+                input.Minutes = Math.Max(0, defaultMinutes);
+
+            if (!TryParsePrice(input.PriceInput, out var parsedPrice) || parsedPrice <= 0)
+                input.PriceInput = FormatPriceForInput(defaultPrice);
+        }
+        else
+        {
+            input.Minutes = 0;
+            input.PriceInput = FormatPriceForInput(0m);
+        }
+    }
+
+    private Task OpenCategoryEditor()
+    {
+        CategoryEditorItems = Catalog.CategoryColors
+            .Select(kvp => new CategoryEditorItem(kvp.Key, NormalizeColor(kvp.Value)))
+            .ToList();
+
+        if (!CategoryEditorItems.Any(i => IsServicePackagesCategory(i.Name)))
+            CategoryEditorItems.Insert(0, new CategoryEditorItem(ServicePackagesCategory, "#4f46e5"));
+
+        CategoryEditorMessage = "";
+        NewCategoryEditorName = "";
+        NewCategoryEditorColor = "#94a3b8";
+        IsCategoryDialogVisible = true;
+        ShouldInitCategoryDnd = true;
+        return Task.CompletedTask;
+    }
+
+    private void CloseCategoryEditor()
+    {
+        IsCategoryDialogVisible = false;
+        CategoryEditorMessage = "";
+    }
+
+    private async Task AddCategoryEditorItem()
+    {
+        var name = (NewCategoryEditorName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+
+        if (IsServicePackagesCategory(name))
+        {
+            CategoryEditorMessage = "Service Packages category is reserved.";
+            return;
+        }
+
+        if (!CategoryEditorItems.Any(i => i.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            CategoryEditorItems.Add(new CategoryEditorItem(name, NormalizeColor(NewCategoryEditorColor)));
+
+        NewCategoryEditorName = "";
+        await SaveCategoryEdits(closeDialog: false);
+    }
+
+    private async Task RemoveCategoryEditorItem(int index)
+    {
+        if (index < 0 || index >= CategoryEditorItems.Count)
+            return;
+
+        if (IsServicePackagesCategory(CategoryEditorItems[index].OriginalName))
+        {
+            CategoryEditorMessage = "Service Packages category cannot be removed.";
+            return;
+        }
+
+        CategoryEditorItems.RemoveAt(index);
+        CategoryEditorMessage = "";
+        await SaveCategoryEdits(closeDialog: false);
+    }
+
+    private async Task SaveCategoryEdits(bool closeDialog = true)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var hasServicePackages = false;
+
+        foreach (var item in CategoryEditorItems)
+        {
+            item.Name = (item.Name ?? "").Trim();
+            item.ColorHex = NormalizeColor(item.ColorHex);
+
+            if (string.IsNullOrWhiteSpace(item.Name))
+            {
+                CategoryEditorMessage = "Category names cannot be empty.";
+                return;
+            }
+
+            if (!names.Add(item.Name))
+            {
+                CategoryEditorMessage = "Category names must be unique.";
+                return;
+            }
+
+            if (IsServicePackagesCategory(item.OriginalName) && !IsServicePackagesCategory(item.Name))
+            {
+                CategoryEditorMessage = "Service Packages category name cannot be changed.";
+                return;
+            }
+
+            if (IsServicePackagesCategory(item.Name))
+                hasServicePackages = true;
+        }
+
+        if (!hasServicePackages)
+        {
+            CategoryEditorMessage = "Service Packages category is required.";
+            return;
+        }
+
+        var renameMap = CategoryEditorItems
+            .Where(i => !i.OriginalName.Equals(i.Name, StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(i => i.OriginalName, i => i.Name, StringComparer.OrdinalIgnoreCase);
+
+        var existingNames = Catalog.CategoryColors.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var newNames = CategoryEditorItems.Select(i => i.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var removed = existingNames.Except(newNames, StringComparer.OrdinalIgnoreCase).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var fallbackIndividualCategory = CategoryEditorItems
+            .Select(i => i.Name)
+            .FirstOrDefault(n => !IsServicePackagesCategory(n)) ?? ServicePackagesCategory;
+
+        Catalog.CategoryColors.Clear();
+        foreach (var item in CategoryEditorItems)
+            Catalog.CategoryColors[item.Name] = item.ColorHex;
+
+        await Catalog.SaveSettingsAsync();
+
+        foreach (var job in Catalog.Jobs)
+        {
+            var current = (job.Category ?? "").Trim();
+            var updated = current;
+
+            if (renameMap.TryGetValue(current, out var renamed))
+                updated = renamed;
+            else if (removed.Contains(current))
+                updated = IsServicePackagesCategory(current) ? ServicePackagesCategory : fallbackIndividualCategory;
+
+            if (updated.Equals(current, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            job.Category = updated;
+            await Catalog.SaveJobAsync(job);
+        }
+
+        if (renameMap.TryGetValue(NewJobCategory, out var newCategoryName))
+            NewJobCategory = newCategoryName;
+        else if (removed.Contains(NewJobCategory))
+            NewJobCategory = IsServicePackagesEditor ? ServicePackagesCategory : fallbackIndividualCategory;
+
+        if (string.IsNullOrWhiteSpace(NewJobCategory))
+            NewJobCategory = IsServicePackagesEditor ? ServicePackagesCategory : fallbackIndividualCategory;
+
+        CategoryEditorItems = CategoryEditorItems
+            .Select(i => new CategoryEditorItem(i.Name, i.ColorHex))
+            .ToList();
+        if (closeDialog)
+            IsCategoryDialogVisible = false;
+        CategoryEditorMessage = "";
+    }
+
+    private Task OpenSkillEditor()
+    {
+        SkillEditorItems = Catalog.SkillLevels
+            .Select(level => new SkillEditorItem(level))
+            .ToList();
+        SkillEditorMessage = "";
+        NewSkillEditorName = "";
+        IsSkillDialogVisible = true;
+        ShouldInitSkillDnd = true;
+        return Task.CompletedTask;
+    }
+
+    private void CloseSkillEditor()
+    {
+        IsSkillDialogVisible = false;
+        SkillEditorMessage = "";
+    }
+
+    private async Task AddSkillEditorItem()
+    {
+        var name = (NewSkillEditorName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+
+        if (name.Equals("All", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("Custom", StringComparison.OrdinalIgnoreCase))
+        {
+            SkillEditorMessage = "'All' and 'Custom' are reserved values.";
+            return;
+        }
+
+        if (!SkillEditorItems.Any(i => i.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            SkillEditorItems.Add(new SkillEditorItem(name));
+
+        NewSkillEditorName = "";
+        await SaveSkillEdits(closeDialog: false);
+    }
+
+    private async Task RemoveSkillEditorItem(int index)
+    {
+        if (index < 0 || index >= SkillEditorItems.Count)
+            return;
+
+        SkillEditorItems.RemoveAt(index);
+        SkillEditorMessage = "";
+        await SaveSkillEdits(closeDialog: false);
+    }
+
+    private async Task SaveSkillEdits(bool closeDialog = true)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in SkillEditorItems)
+        {
+            item.Name = (item.Name ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(item.Name))
+            {
+                SkillEditorMessage = "Skill levels cannot be empty.";
+                return;
+            }
+
+            if (item.Name.Equals("All", StringComparison.OrdinalIgnoreCase) ||
+                item.Name.Equals("Custom", StringComparison.OrdinalIgnoreCase))
+            {
+                SkillEditorMessage = "'All' and 'Custom' are reserved values.";
+                return;
+            }
+
+            if (!names.Add(item.Name))
+            {
+                SkillEditorMessage = "Skill levels must be unique.";
+                return;
+            }
+        }
+
+        if (SkillEditorItems.Count == 0)
+        {
+            SkillEditorMessage = "At least one skill level is required.";
+            return;
+        }
+
+        var renameMap = SkillEditorItems
+            .Where(i => !i.OriginalName.Equals(i.Name, StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(i => i.OriginalName, i => i.Name, StringComparer.OrdinalIgnoreCase);
+
+        var existingLevels = Catalog.SkillLevels.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var newLevels = SkillEditorItems.Select(i => i.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var removed = existingLevels.Except(newLevels, StringComparer.OrdinalIgnoreCase).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var usedByJobs = Catalog.Jobs
+            .Where(j => !string.IsNullOrWhiteSpace(j.SkillLevel) &&
+                        !j.SkillLevel.Equals("All", StringComparison.OrdinalIgnoreCase) &&
+                        removed.Contains(j.SkillLevel))
+            .Select(j => j.SkillLevel)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var usedByMechanics = Data.Mechanics
+            .Where(m => !string.IsNullOrWhiteSpace(m.SkillLevel) &&
+                        !m.SkillLevel.Equals("Custom", StringComparison.OrdinalIgnoreCase) &&
+                        removed.Contains(m.SkillLevel))
+            .Select(m => m.SkillLevel)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (usedByJobs.Count > 0 || usedByMechanics.Count > 0)
+        {
+            var inUseLevels = usedByJobs
+                .Concat(usedByMechanics)
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+            SkillEditorMessage = $"Cannot remove skill levels in use: {string.Join(", ", inUseLevels)}";
+            return;
+        }
+
+        Catalog.SkillLevels.Clear();
+        foreach (var item in SkillEditorItems)
+            Catalog.SkillLevels.Add(item.Name);
+
+        await Catalog.SaveSettingsAsync();
+
+        foreach (var job in Catalog.Jobs)
+        {
+            if (renameMap.TryGetValue(job.SkillLevel, out var renamed))
+            {
+                job.SkillLevel = renamed;
+                await Catalog.SaveJobAsync(job);
+            }
+        }
+
+        foreach (var mech in Data.Mechanics)
+        {
+            if (renameMap.TryGetValue(mech.SkillLevel, out var renamed))
+            {
+                mech.SkillLevel = renamed;
+                await Data.SaveMechanicAsync(mech);
+            }
+        }
+
+        if (renameMap.TryGetValue(NewJobSkillLevel, out var newSkillLevel))
+            NewJobSkillLevel = newSkillLevel;
+        else if (!NewJobSkillLevel.Equals("All", StringComparison.OrdinalIgnoreCase) &&
+                 !Catalog.SkillLevels.Any(s => s.Equals(NewJobSkillLevel, StringComparison.OrdinalIgnoreCase)))
+            NewJobSkillLevel = "All";
+
+        SkillEditorItems = SkillEditorItems
+            .Select(i => new SkillEditorItem(i.Name))
+            .ToList();
+        if (closeDialog)
+            IsSkillDialogVisible = false;
+        SkillEditorMessage = "";
+    }
+
+    private async Task EnsureCategoryDndAsync()
+    {
+        try
+        {
+            CategoryDotNetRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("workshopStatusDnd.init", CategoryListRef, CategoryDotNetRef, "ReorderCategory", ".catalog-editor-row");
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Category editor drag-and-drop initialization failed.");
+        }
+    }
+
+    private async Task EnsureSkillDndAsync()
+    {
+        try
+        {
+            SkillDotNetRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("workshopStatusDnd.init", SkillListRef, SkillDotNetRef, "ReorderSkillLevel", ".skill-editor-row");
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Skill editor drag-and-drop initialization failed.");
+        }
+    }
+
+    private async Task EnsurePackageChecklistDndAsync()
+    {
+        try
+        {
+            PackageChecklistDotNetRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("workshopStatusDnd.init", PackageChecklistListRef, PackageChecklistDotNetRef, "ReorderPackageChecklistItem", ".package-checklist-row");
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Package checklist drag-and-drop initialization failed.");
+        }
+    }
+
+    [JSInvokable]
+    public async Task ReorderCategory(int fromIndex, int toIndex)
+    {
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= CategoryEditorItems.Count || toIndex >= CategoryEditorItems.Count)
+            return;
+
+        if (fromIndex == toIndex)
+            return;
+
+        if (IsServicePackagesCategory(CategoryEditorItems[fromIndex].OriginalName))
+            return;
+
+        var item = CategoryEditorItems[fromIndex];
+        CategoryEditorItems.RemoveAt(fromIndex);
+        if (toIndex > fromIndex) toIndex--;
+        CategoryEditorItems.Insert(toIndex, item);
+        StateHasChanged();
+        await SaveCategoryEdits(closeDialog: false);
+    }
+
+    [JSInvokable]
+    public async Task ReorderSkillLevel(int fromIndex, int toIndex)
+    {
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= SkillEditorItems.Count || toIndex >= SkillEditorItems.Count)
+            return;
+
+        if (fromIndex == toIndex)
+            return;
+
+        var item = SkillEditorItems[fromIndex];
+        SkillEditorItems.RemoveAt(fromIndex);
+        if (toIndex > fromIndex) toIndex--;
+        SkillEditorItems.Insert(toIndex, item);
+        StateHasChanged();
+        await SaveSkillEdits(closeDialog: false);
+    }
+
+    [JSInvokable]
+    public Task ReorderPackageChecklistItem(int fromIndex, int toIndex)
+    {
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= PackageChecklistEditorItems.Count || toIndex >= PackageChecklistEditorItems.Count)
+            return Task.CompletedTask;
+
+        if (fromIndex == toIndex)
+            return Task.CompletedTask;
+
+        var item = PackageChecklistEditorItems[fromIndex];
+        PackageChecklistEditorItems.RemoveAt(fromIndex);
+        if (toIndex > fromIndex)
+            toIndex--;
+        PackageChecklistEditorItems.Insert(toIndex, item);
+        ReindexPackageChecklistEditorItems();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveJob()
+    {
+        Message = "";
+        IsError = false;
+
+        if (string.IsNullOrWhiteSpace(NewJobName))
+        {
+            Message = "Job name is required.";
+            IsError = true;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(NewJobMinutesInput))
+        {
+            Message = "Time is required.";
+            IsError = true;
+            return;
+        }
+
+        if (!int.TryParse(NewJobMinutesInput, NumberStyles.Integer, CultureInfo.CurrentCulture, out var newJobMinutes)
+            && !int.TryParse(NewJobMinutesInput, NumberStyles.Integer, CultureInfo.InvariantCulture, out newJobMinutes))
+        {
+            Message = "Time must be a valid whole number.";
+            IsError = true;
+            return;
+        }
+
+        if (newJobMinutes <= 0)
+        {
+            Message = "Time must be greater than 0.";
+            IsError = true;
+            return;
+        }
+
+        decimal newJobPrice;
+        decimal estimatedPrice = 0m;
+        switch (NewJobPricingMode)
+        {
+            case ServicePricingMode.AutoRate:
+                newJobPrice = RoundPrice((newJobMinutes / 60m) * ResolveDraftHourlyRate(NewJobAutoPricingTier));
+                NewJobPriceInput = FormatPriceForInput(newJobPrice);
+                NewJobEstimatedPriceInput = "";
+                break;
+            case ServicePricingMode.EstimatedPrice:
+                if (string.IsNullOrWhiteSpace(NewJobEstimatedPriceInput))
+                {
+                    Message = "Estimated price is required.";
+                    IsError = true;
+                    return;
+                }
+
+                if (!TryParsePrice(NewJobEstimatedPriceInput, out estimatedPrice))
+                {
+                    Message = "Estimated price must be a valid number.";
+                    IsError = true;
+                    return;
+                }
+
+                if (estimatedPrice < 0)
+                {
+                    Message = "Estimated price must be 0 or greater.";
+                    IsError = true;
+                    return;
+                }
+
+                estimatedPrice = RoundPrice(estimatedPrice);
+                newJobPrice = estimatedPrice;
+                NewJobPriceInput = FormatPriceForInput(newJobPrice);
+                break;
+            case ServicePricingMode.FixedPrice:
+            default:
+                if (string.IsNullOrWhiteSpace(NewJobPriceInput))
+                {
+                    Message = "Price is required.";
+                    IsError = true;
+                    return;
+                }
+
+                if (!TryParsePrice(NewJobPriceInput, out newJobPrice))
+                {
+                    Message = "Price must be a valid number.";
+                    IsError = true;
+                    return;
+                }
+
+                if (newJobPrice < 0)
+                {
+                    Message = "Price must be 0 or greater.";
+                    IsError = true;
+                    return;
+                }
+
+                newJobPrice = RoundPrice(newJobPrice);
+                NewJobEstimatedPriceInput = "";
+                break;
+        }
+
+        if (IsServicePackagesEditor)
+        {
+            NewJobCategory = GetServicePackagesCategoryValue();
+        }
+        else if (IsServicePackagesCategory(NewJobCategory))
+        {
+            Message = "Service Packages category is only available in the Service Packages section.";
+            IsError = true;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(NewJobCategory))
+        {
+            Message = "Category is required.";
+            IsError = true;
+            return;
+        }
+
+        NewJobCategory2 = IsServicePackagesEditor ? "" : (NewJobCategory2 ?? "").Trim();
+
+        if (string.IsNullOrWhiteSpace(NewJobSkillLevel))
+        {
+            Message = "Skill level is required.";
+            IsError = true;
+            return;
+        }
+
+        List<JobServicePackageOverride> packageOverrides = new();
+        if (!IsServicePackagesEditor)
+        {
+            packageOverrides = BuildPackageOverrides(newJobMinutes, newJobPrice, out var validationError);
+            if (!string.IsNullOrWhiteSpace(validationError))
+            {
+                Message = validationError;
+                IsError = true;
+                return;
+            }
+        }
+
+        var packageChecklistItems = IsServicePackagesEditor
+            ? BuildPackageChecklistItemsFromEditor()
+            : new List<ServicePackageChecklistItemDefinition>();
+
+        if (EditingJobId is not null)
+        {
+            var job = Catalog.Jobs.FirstOrDefault(j => j.Id == EditingJobId);
+            if (job == null)
+            {
+                Message = "Job not found.";
+                IsError = true;
+                return;
+            }
+
+            job.Name = NewJobName.Trim();
+            job.DefaultMinutes = newJobMinutes;
+            job.BasePriceIncVat = newJobPrice;
+            job.EstimatedPriceIncVat = estimatedPrice;
+            job.PricingMode = NewJobPricingMode;
+            job.AutoPricingTier = NewJobAutoPricingTier;
+            job.PartNumber = NewJobPartNumber.Trim();
+            job.Category = NewJobCategory.Trim();
+            job.Category2 = NewJobCategory2;
+            job.SkillLevel = NewJobSkillLevel.Trim();
+            job.Description = NewJobDescription.Trim();
+            job.ColorHex = NormalizeColor(NewJobColor);
+            job.PackageOverrides = IsServicePackagesEditor ? new List<JobServicePackageOverride>() : packageOverrides;
+            job.PackageChecklistItems = IsServicePackagesEditor ? packageChecklistItems : new List<ServicePackageChecklistItemDefinition>();
+
+            await Catalog.SaveJobAsync(job);
+            Message = $"Job '{job.Name}' updated successfully!";
+        }
+        else
+        {
+            var newId = $"JOB_{Catalog.Jobs.Count + 1:000}";
+            while (Catalog.Jobs.Any(j => j.Id.Equals(newId, StringComparison.OrdinalIgnoreCase)))
+            {
+                newId = $"JOB_{Catalog.Jobs.Count + 1:000}";
+            }
+
+            var newJob = new JobDefinition
+            {
+                Id = newId,
+                Name = NewJobName.Trim(),
+                DefaultMinutes = newJobMinutes,
+                BasePriceIncVat = newJobPrice,
+                EstimatedPriceIncVat = estimatedPrice,
+                PricingMode = NewJobPricingMode,
+                AutoPricingTier = NewJobAutoPricingTier,
+                PartNumber = NewJobPartNumber.Trim(),
+                Category = NewJobCategory.Trim(),
+                Category2 = NewJobCategory2,
+                SkillLevel = NewJobSkillLevel.Trim(),
+                Description = NewJobDescription.Trim(),
+                ColorHex = NormalizeColor(NewJobColor),
+                PackageOverrides = IsServicePackagesEditor ? new List<JobServicePackageOverride>() : packageOverrides,
+                PackageChecklistItems = IsServicePackagesEditor ? packageChecklistItems : new List<ServicePackageChecklistItemDefinition>()
+            };
+
+            await Catalog.SaveJobAsync(newJob);
+            Message = $"Job '{NewJobName.Trim()}' added successfully!";
+        }
+
+        IsError = false;
+        ShowAddForm = false;
+        EditingJobId = null;
+        PackageOverrideInputsByJobId.Clear();
+        PackageChecklistEditorItems = new();
+        ChecklistManualStepName = "";
+        ChecklistManualStepDescription = "";
+        ChecklistImportSourcePackageId = "";
+        ChecklistServiceFilter = "";
+        ExpandedChecklistServiceGroups.Clear();
+    }
+
+    private string NormalizeColor(string value)
+    {
+        var v = (value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(v))
+            return "";
+
+        if (!v.StartsWith("#", StringComparison.Ordinal))
+            v = "#" + v;
+
+        return v;
+    }
+
+    private string NormalizeCategory(string? category)
+    {
+        var c = (category ?? "").Trim();
+        return string.IsNullOrWhiteSpace(c) ? "Uncategorized" : c;
+    }
+
+    private static bool IsServicePackagesCategory(string? category)
+        => string.Equals((category ?? "").Trim(), ServicePackagesCategory, StringComparison.OrdinalIgnoreCase);
+
+    private string GetServicePackagesCategoryValue()
+        => Catalog.Categories.FirstOrDefault(IsServicePackagesCategory) ?? ServicePackagesCategory;
+
+    private string GetDefaultIndividualCategory()
+        => Catalog.Categories
+            .Where(c => !IsServicePackagesCategory(c))
+            .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault() ?? "";
+
+    private List<string> GetIndividualCategoryOptions()
+        => Catalog.Categories
+            .Where(c => !IsServicePackagesCategory(c))
+            .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private int GetServicePackagesCount()
+        => Catalog.Jobs.Count(j => IsServicePackagesCategory(NormalizeCategory(j.Category)));
+
+    private int GetIndividualServicesCount()
+        => Catalog.Jobs.Count(j => !IsServicePackagesCategory(NormalizeCategory(j.Category)));
+
+    private List<string> GetIndividualServiceCategories()
+        => Catalog.Jobs
+            .Select(j => NormalizeCategory(j.Category))
+            .Where(c => !IsServicePackagesCategory(c))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private List<JobDefinition> ServicePackages
+        => Catalog.Jobs
+            .Where(j => IsServicePackagesCategory(j.Category))
+            .OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private void InitializePackageOverrideInputs(JobDefinition? job = null)
+    {
+        PackageOverrideInputsByJobId.Clear();
+
+        var defaultMinutes = job?.DefaultMinutes
+            ?? (int.TryParse(NewJobMinutesInput, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedMinutes) ? parsedMinutes : 0);
+        var defaultPrice = job is not null
+            ? ResolveEffectivePrice(job)
+            : GetDraftDefaultPrice();
+
+        foreach (var package in ServicePackages)
+        {
+            var existing = job?.PackageOverrides
+                .FirstOrDefault(o => o.ServicePackageJobId.Equals(package.Id, StringComparison.OrdinalIgnoreCase));
+            var available = existing?.IsAvailableAsAdditionalService ?? true;
+            PackageOverrideInputsByJobId[package.Id] = new PackageOverrideInput
+            {
+                Enabled = available,
+                Minutes = available ? (existing?.Minutes ?? defaultMinutes) : 0,
+                PriceInput = FormatPriceForInput(available ? (existing?.PriceIncVat ?? defaultPrice) : 0m)
+            };
+        }
+    }
+
+    private PackageOverrideInput GetPackageOverrideInput(string packageJobId)
+    {
+        if (PackageOverrideInputsByJobId.TryGetValue(packageJobId, out var input))
+            return input;
+
+        var defaultMinutes = int.TryParse(NewJobMinutesInput, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedMinutes)
+            ? Math.Max(0, parsedMinutes)
+            : 0;
+        var defaultPrice = GetDraftDefaultPrice();
+
+        input = new PackageOverrideInput
+        {
+            Enabled = true,
+            Minutes = defaultMinutes,
+            PriceInput = FormatPriceForInput(defaultPrice)
+        };
+        PackageOverrideInputsByJobId[packageJobId] = input;
+        return input;
+    }
+
+    private List<JobServicePackageOverride> BuildPackageOverrides(int defaultMinutes, decimal defaultPrice, out string validationError)
+    {
+        validationError = "";
+        var overrides = new List<JobServicePackageOverride>();
+
+        foreach (var package in ServicePackages)
+        {
+            var input = GetPackageOverrideInput(package.Id);
+            if (!input.Enabled)
+            {
+                overrides.Add(new JobServicePackageOverride
+                {
+                    ServicePackageJobId = package.Id,
+                    IsAvailableAsAdditionalService = false,
+                    Minutes = 0,
+                    PriceIncVat = 0m
+                });
+                continue;
+            }
+
+            if (input.Minutes < 0)
+            {
+                validationError = $"Minutes for {package.Name} must be 0 or greater.";
+                return new List<JobServicePackageOverride>();
+            }
+
+            if (!TryParsePrice(input.PriceInput, out var packagePrice))
+            {
+                validationError = $"Price for {package.Name} must be a valid number.";
+                return new List<JobServicePackageOverride>();
+            }
+
+            if (packagePrice < 0)
+            {
+                validationError = $"Price for {package.Name} must be 0 or greater.";
+                return new List<JobServicePackageOverride>();
+            }
+
+            packagePrice = RoundPrice(packagePrice);
+            if (input.Minutes == defaultMinutes && packagePrice == defaultPrice)
+                continue;
+
+            overrides.Add(new JobServicePackageOverride
+            {
+                ServicePackageJobId = package.Id,
+                IsAvailableAsAdditionalService = true,
+                Minutes = input.Minutes,
+                PriceIncVat = packagePrice
+            });
+        }
+
+        return overrides;
+    }
+
+    private string GetPackageOverrideSummary(JobDefinition job)
+    {
+        if (job.PackageOverrides.Count == 0)
+            return "Available in all packages (default rates)";
+
+        var labels = job.PackageOverrides
+            .Select(overrideItem =>
+            {
+                var packageName = Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(overrideItem.ServicePackageJobId, StringComparison.OrdinalIgnoreCase))?.Name
+                    ?? overrideItem.ServicePackageJobId;
+                return overrideItem.IsAvailableAsAdditionalService
+                    ? $"{packageName}: {overrideItem.Minutes} mins / £{overrideItem.PriceIncVat:0.00}"
+                    : $"{packageName}: Not available";
+            })
+            .ToList();
+
+        return string.Join(Environment.NewLine, labels);
+    }
+
+    private JobDefinition? PackageRatesTargetJob =>
+        string.IsNullOrWhiteSpace(PackageRatesJobId)
+            ? null
+            : Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(PackageRatesJobId, StringComparison.OrdinalIgnoreCase));
+
+    private string PackageRatesDialogTitle =>
+        PackageRatesTargetJob is null
+            ? "Set package availability and rates"
+            : $"Set package availability and rates - {PackageRatesTargetJob.Name}";
+
+    private void OpenPackageRatesDialog(JobDefinition job)
+    {
+        if (IsServicePackagesCategory(job.Category))
+        {
+            Message = "Package rates are only available on Individual Services.";
+            IsError = true;
+            return;
+        }
+
+        PackageRatesJobId = job.Id;
+        PackageRatesDialogMessage = "";
+        PackageRatesDialogInputsByPackageId.Clear();
+
+        foreach (var package in ServicePackages)
+        {
+            var existing = job.PackageOverrides
+                .FirstOrDefault(o => o.ServicePackageJobId.Equals(package.Id, StringComparison.OrdinalIgnoreCase));
+            var available = existing?.IsAvailableAsAdditionalService ?? true;
+            PackageRatesDialogInputsByPackageId[package.Id] = new PackageOverrideInput
+            {
+                Enabled = available,
+                Minutes = available ? (existing?.Minutes ?? job.DefaultMinutes) : 0,
+                PriceInput = FormatPriceForInput(available ? (existing?.PriceIncVat ?? ResolveEffectivePrice(job)) : 0m)
+            };
+        }
+
+        IsPackageRatesDialogVisible = true;
+    }
+
+    private PackageOverrideInput GetPackageRatesDialogInput(string packageJobId)
+    {
+        if (PackageRatesDialogInputsByPackageId.TryGetValue(packageJobId, out var input))
+            return input;
+
+        var job = PackageRatesTargetJob;
+        input = new PackageOverrideInput
+        {
+            Enabled = true,
+            Minutes = job?.DefaultMinutes ?? 0,
+            PriceInput = FormatPriceForInput(job is null ? 0m : ResolveEffectivePrice(job))
+        };
+        PackageRatesDialogInputsByPackageId[packageJobId] = input;
+        return input;
+    }
+
+    private void ClosePackageRatesDialog()
+    {
+        IsPackageRatesDialogVisible = false;
+        PackageRatesDialogMessage = "";
+        PackageRatesJobId = null;
+        PackageRatesDialogInputsByPackageId.Clear();
+    }
+
+    private async Task SavePackageRatesDialogAsync()
+    {
+        var job = PackageRatesTargetJob;
+        if (job is null)
+        {
+            PackageRatesDialogMessage = "Service not found.";
+            return;
+        }
+
+        var overrides = new List<JobServicePackageOverride>();
+        foreach (var package in ServicePackages)
+        {
+            var input = GetPackageRatesDialogInput(package.Id);
+            if (!input.Enabled)
+            {
+                overrides.Add(new JobServicePackageOverride
+                {
+                    ServicePackageJobId = package.Id,
+                    IsAvailableAsAdditionalService = false,
+                    Minutes = 0,
+                    PriceIncVat = 0m
+                });
+                continue;
+            }
+
+            if (input.Minutes < 0)
+            {
+                PackageRatesDialogMessage = $"Minutes for {package.Name} must be 0 or greater.";
+                return;
+            }
+
+            if (!TryParsePrice(input.PriceInput, out var packagePrice))
+            {
+                PackageRatesDialogMessage = $"Price for {package.Name} must be a valid number.";
+                return;
+            }
+
+            if (packagePrice < 0)
+            {
+                PackageRatesDialogMessage = $"Price for {package.Name} must be 0 or greater.";
+                return;
+            }
+
+            packagePrice = RoundPrice(packagePrice);
+            if (input.Minutes == job.DefaultMinutes && packagePrice == ResolveEffectivePrice(job))
+                continue;
+
+            overrides.Add(new JobServicePackageOverride
+            {
+                ServicePackageJobId = package.Id,
+                IsAvailableAsAdditionalService = true,
+                Minutes = input.Minutes,
+                PriceIncVat = packagePrice
+            });
+        }
+
+        job.PackageOverrides = overrides;
+        await Catalog.SaveJobAsync(job);
+
+        Message = $"Saved package settings for '{job.Name}'.";
+        IsError = false;
+        ClosePackageRatesDialog();
+    }
+
+    private async Task ImportSuggestedServicesOnlyAsync()
+    {
+        await ImportSuggestedAsync(SuggestedImportMode.ServicesOnly, "Imported suggested services.");
+    }
+
+    private async Task ImportSuggestedServicesAndTimesAsync()
+    {
+        await ImportSuggestedAsync(SuggestedImportMode.ServicesAndTimes, "Imported suggested services and times.");
+    }
+
+    private async Task ImportSuggestedServicePricesAsync()
+    {
+        await ImportSuggestedAsync(SuggestedImportMode.ServicePrices, "Imported suggested prices.");
+    }
+
+    private async Task ImportSuggestedAsync(SuggestedImportMode mode, string successPrefix)
+    {
+        Message = "";
+        IsError = false;
+
+        var result = await SuggestedCatalog.ImportSuggestedAsync(TenantContext.TenantId, mode);
+        await Catalog.ReloadAsync();
+        Message = $"{successPrefix} Categories +{result.CategoriesAdded}, categories updated {result.CategoriesUpdated}, services +{result.ServicesAdded}, services updated {result.ServicesUpdated}.";
+    }
+
+    private async Task PersistInlineChange(JobDefinition job, string field, string? value)
+    {
+        Message = "";
+        IsError = false;
+
+        switch (field)
+        {
+            case nameof(JobDefinition.Name):
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    job.Name = value.Trim();
+                }
+                else
+                {
+                    IsError = true;
+                    Message = "Job name cannot be empty.";
+                }
+                break;
+            case nameof(JobDefinition.DefaultMinutes):
+                if (int.TryParse(value, out var mins) && mins > 0)
+                {
+                    job.DefaultMinutes = mins;
+                }
+                else
+                {
+                    IsError = true;
+                    Message = "Time must be greater than 0.";
+                }
+                break;
+            case nameof(JobDefinition.BasePriceIncVat):
+                if (TryParsePrice(value, out var price) && price >= 0)
+                {
+                    job.BasePriceIncVat = RoundPrice(price);
+                }
+                else
+                {
+                    IsError = true;
+                    Message = "Price must be 0 or greater.";
+                }
+                break;
+            case nameof(JobDefinition.PartNumber):
+                job.PartNumber = (value ?? "").Trim();
+                break;
+            case nameof(JobDefinition.Category2):
+                job.Category2 = (value ?? "").Trim();
+                break;
+            case nameof(JobDefinition.SkillLevel):
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    job.SkillLevel = value.Trim();
+                }
+                break;
+            case nameof(JobDefinition.Description):
+                job.Description = (value ?? "").Trim();
+                break;
+            case nameof(JobDefinition.ColorHex):
+                job.ColorHex = NormalizeColor(value ?? "");
+                break;
+        }
+
+        if (!IsError)
+        {
+            await Catalog.SaveJobAsync(job);
+            Message = $"Saved changes to '{job.Name}'.";
+        }
+    }
+
+    private async Task DeleteJob(string jobId)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", "Are you sure you want to delete this service type?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var job = Catalog.Jobs.FirstOrDefault(j => j.Id == jobId);
+        if (job is null)
+        {
+            IsError = true;
+            Message = "Job not found.";
+            return;
+        }
+
+        await Catalog.DeleteJobAsync(jobId);
+        IsError = false;
+        Message = $"Deleted '{job.Name}'.";
+    }
+
+    private decimal ResolveEffectivePrice(JobDefinition job)
+    {
+        var (_, price, _) = Catalog.PriceAndTime(job.Id, (string?)null);
+        return RoundPrice(price);
+    }
+
+    private string GetPricingSummary(JobDefinition job)
+    {
+        return job.PricingMode switch
+        {
+            ServicePricingMode.AutoRate => $"Auto ({job.AutoPricingTier})",
+            ServicePricingMode.EstimatedPrice => $"Estimated £{job.EstimatedPriceIncVat:0.00}",
+            _ => $"Fixed £{job.BasePriceIncVat:0.00}"
+        };
+    }
+
+    private static string NormalizeCategory2(string? category2)
+    {
+        var c = (category2 ?? "").Trim();
+        return string.IsNullOrWhiteSpace(c) ? "General" : c;
+    }
+
+    private static decimal RoundPrice(decimal price) => decimal.Round(price, 2, MidpointRounding.AwayFromZero);
+
+    private static string FormatPriceForInput(decimal price)
+        => RoundPrice(price).ToString("0.00", CultureInfo.InvariantCulture);
+
+    private static bool TryParsePrice(string? value, out decimal price)
+    {
+        const NumberStyles style = NumberStyles.AllowLeadingSign
+                                   | NumberStyles.AllowDecimalPoint
+                                   | NumberStyles.AllowThousands
+                                   | NumberStyles.AllowLeadingWhite
+                                   | NumberStyles.AllowTrailingWhite;
+
+        return decimal.TryParse(value, style, CultureInfo.CurrentCulture, out price)
+            || decimal.TryParse(value, style, CultureInfo.InvariantCulture, out price);
+    }
+}
+
+

@@ -1,0 +1,21 @@
+@namespace Workshop.Components.Marketing
+@using Syncfusion.Blazor.Navigations
+
+<SfAccordion ExpandMode="ExpandMode.Single" CssClass="mk-faq-accordion">
+    <AccordionItems>
+        @foreach (var item in Items)
+        {
+            <AccordionItem Header="@item.Question">
+                <ContentTemplate>
+                    <p class="mk-faq-answer">@item.Answer</p>
+                </ContentTemplate>
+            </AccordionItem>
+        }
+    </AccordionItems>
+</SfAccordion>
+
+@code {
+    [Parameter] public IReadOnlyList<FaqItem> Items { get; set; } = Array.Empty<FaqItem>();
+
+    public sealed record FaqItem(string Question, string Answer);
+}

@@ -1,0 +1,15 @@
+@namespace Workshop.Components.Marketing
+@using Microsoft.AspNetCore.Components
+
+<section id="@Id" class="mk-section @(Soft ? "mk-section-soft" : string.Empty) @Class">
+    <div class="mk-container">
+        @ChildContent
+    </div>
+</section>
+
+@code {
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool Soft { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

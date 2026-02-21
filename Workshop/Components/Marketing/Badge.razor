@@ -1,0 +1,9 @@
+@namespace Workshop.Components.Marketing
+@using Microsoft.AspNetCore.Components
+
+<span class="mk-badge @Class">@Text</span>
+
+@code {
+    [Parameter] public string Text { get; set; } = string.Empty;
+    [Parameter] public string? Class { get; set; }
+}

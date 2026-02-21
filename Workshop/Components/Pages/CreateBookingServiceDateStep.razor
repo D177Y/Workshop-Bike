@@ -1,0 +1,32 @@
+@using Syncfusion.Blazor.Calendars
+
+<div class="section-title">SERVICE DATE</div>
+<div class="step-section">
+    <div class="form-block">
+        <label>Select Service Date</label>
+        <div class="@(ShowValidation && !SelectedDate.HasValue ? "input-invalid" : "")">
+            <SfDatePicker TValue="DateTime?"
+                          Value="SelectedDate"
+                          Format="dd/MM/yyyy"
+                          StrictMode="true"
+                          AllowEdit="false"
+                          Placeholder="Select a day">
+                <DatePickerEvents TValue="DateTime?"
+                                  ValueChange="OnDateChanged"
+                                  OnRenderDayCell="OnRenderDayCell">
+                </DatePickerEvents>
+            </SfDatePicker>
+        </div>
+
+        <div class="helper-text">
+            We'll always schedule the earliest available slot on the selected day.
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public bool ShowValidation { get; set; }
+    [Parameter] public DateTime? SelectedDate { get; set; }
+    [Parameter] public EventCallback<ChangedEventArgs<DateTime?>> OnDateChanged { get; set; }
+    [Parameter] public EventCallback<RenderDayCellEventArgs> OnRenderDayCell { get; set; }
+}

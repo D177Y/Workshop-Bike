@@ -1,0 +1,170 @@
+@page "/super/settings/default-services"
+@attribute [Authorize(Roles = "SuperAdmin")]
+@using Workshop.Models
+@using Workshop.Services
+@inject SuggestedCatalogService SuggestedCatalog
+
+<h3>Default Services</h3>
+
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="@(IsError ? "error-message" : "success-message")">@Message</div>
+}
+
+<div class="editor-section">
+    <h4>@(EditingId > 0 ? "Edit Default Service" : "Add Default Service")</h4>
+    <div class="grid">
+        <input type="text" @bind="Editor.Name" placeholder="Service name" />
+        <input type="text" @bind="Editor.Category1" placeholder="Category 1" />
+        <input type="text" @bind="Editor.Category2" placeholder="Category 2" />
+        <input type="number" min="1" @bind="Editor.DefaultMinutes" placeholder="Minutes" />
+        <select @bind="Editor.PricingMode">
+            <option value="@ServicePricingMode.AutoRate">Auto rate</option>
+            <option value="@ServicePricingMode.FixedPrice">Fixed price</option>
+            <option value="@ServicePricingMode.EstimatedPrice">Estimated price</option>
+        </select>
+        <select @bind="Editor.AutoPricingTier">
+            <option value="@ServiceHourlyRateTier.Default">Default tier</option>
+            <option value="@ServiceHourlyRateTier.Discounted">Discounted tier</option>
+            <option value="@ServiceHourlyRateTier.LossLeader">Loss leader tier</option>
+        </select>
+        <input type="number" min="0" step="0.01" @bind="Editor.BasePriceIncVat" placeholder="Price" />
+        <input type="number" min="0" step="0.01" @bind="Editor.EstimatedPriceIncVat" placeholder="Estimated" />
+        <input type="text" @bind="Editor.SkillLevel" placeholder="Skill level" />
+        <input type="number" min="0" @bind="Editor.SortOrder" placeholder="Sort" />
+        <textarea @bind="Editor.Description" placeholder="Description"></textarea>
+        <div class="actions">
+            <button class="btn btn-primary" @onclick="SaveAsync">Save</button>
+            @if (EditingId > 0)
+            {
+                <button class="btn btn-secondary" @onclick="ResetEditor">Cancel</button>
+            }
+        </div>
+    </div>
+</div>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Category</th>
+            <th>Mins</th>
+            <th>Pricing</th>
+            <th>Price</th>
+            <th>Estimated</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var service in Services)
+        {
+            <tr>
+                <td>@service.Name</td>
+                <td>@service.Category1 / @service.Category2</td>
+                <td>@service.DefaultMinutes</td>
+                <td>@service.PricingMode (@service.AutoPricingTier)</td>
+                <td>£@service.BasePriceIncVat.ToString("0.00")</td>
+                <td>£@service.EstimatedPriceIncVat.ToString("0.00")</td>
+                <td>
+                    <button class="btn btn-secondary" @onclick="() => Edit(service)">Edit</button>
+                    <button class="btn btn-danger" @onclick="() => DeleteAsync(service.Id)">Delete</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<style>
+    .editor-section { margin-bottom: 16px; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 8px; }
+    textarea { min-height: 64px; grid-column: span 2; padding: 6px; }
+    input, select { padding: 6px; }
+    .actions { display: flex; gap: 8px; align-items: center; }
+    .table { width: 100%; border-collapse: collapse; background: #fff; }
+    .table th, .table td { border: 1px solid #e2e8f0; padding: 8px; text-align: left; }
+    .btn { padding: 6px 10px; border: none; border-radius: 999px; cursor: pointer; margin-right: 4px; }
+    .btn-primary { background: #0d6efd; color: #fff; }
+    .btn-secondary { background: #64748b; color: #fff; }
+    .btn-danger { background: #b91c1c; color: #fff; }
+    .error-message { color: #b91c1c; margin: 10px 0; }
+    .success-message { color: #166534; margin: 10px 0; }
+</style>
+
+@code {
+    private List<GlobalServiceTemplate> Services = new();
+    private string Message = "";
+    private bool IsError;
+    private int EditingId;
+    private GlobalServiceTemplate Editor = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        ResetEditor();
+    }
+
+    private async Task LoadAsync()
+    {
+        Services = await SuggestedCatalog.GetGlobalTemplatesAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        Message = "";
+        IsError = false;
+
+        if (string.IsNullOrWhiteSpace(Editor.Name) || string.IsNullOrWhiteSpace(Editor.Category1))
+        {
+            Message = "Service name and Category 1 are required.";
+            IsError = true;
+            return;
+        }
+
+        Editor.Id = EditingId;
+        await SuggestedCatalog.SaveGlobalTemplateAsync(Editor);
+        Message = "Saved default service.";
+        await LoadAsync();
+        ResetEditor();
+    }
+
+    private void Edit(GlobalServiceTemplate service)
+    {
+        EditingId = service.Id;
+        Editor = new GlobalServiceTemplate
+        {
+            Id = service.Id,
+            Name = service.Name,
+            PartNumber = service.PartNumber,
+            Category1 = service.Category1,
+            Category2 = service.Category2,
+            SkillLevel = service.SkillLevel,
+            Description = service.Description,
+            DefaultMinutes = service.DefaultMinutes,
+            BasePriceIncVat = service.BasePriceIncVat,
+            PricingMode = service.PricingMode,
+            AutoPricingTier = service.AutoPricingTier,
+            EstimatedPriceIncVat = service.EstimatedPriceIncVat,
+            SortOrder = service.SortOrder
+        };
+    }
+
+    private void ResetEditor()
+    {
+        EditingId = 0;
+        Editor = new GlobalServiceTemplate
+        {
+            SkillLevel = "All",
+            DefaultMinutes = 30,
+            PricingMode = ServicePricingMode.FixedPrice,
+            AutoPricingTier = ServiceHourlyRateTier.Default
+        };
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        await SuggestedCatalog.DeleteGlobalTemplateAsync(id);
+        Message = "Deleted default service.";
+        IsError = false;
+        await LoadAsync();
+    }
+}

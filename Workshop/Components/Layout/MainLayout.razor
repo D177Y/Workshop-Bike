@@ -1,9 +1,458 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@implements IDisposable
+@using System.Net
+@using System.Security.Claims
+@using Syncfusion.Blazor.Navigations
+@using Workshop.Services
+@inject IWebHostEnvironment Env
+@inject WorkshopData Data
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthStateProvider
+@inject Workshop.Data.TenantContext TenantContext
+@inject TenantSetupService SetupService
+@inject UserAccessService UserAccess
+@inject IEmailSender EmailSender
+@inject ILogger<MainLayout> Logger
+@inject IJSRuntime JS
 
-@Body
+<div id="app-shell" class="@(SidebarToggle ? "sidebar-open" : "sidebar-closed")">
+    <SfToolbar CssClass="app-toolbar">
+        <ToolbarItems>
+            <ToolbarItem Type="ItemType.Button"
+                         PrefixIcon="e-icons e-menu"
+                         TooltipText="Menu"
+                         OnClick="@ToggleSidebar"></ToolbarItem>
+            <ToolbarItem>
+                <Template>
+                    <div class="app-title">VeloLabs</div>
+                </Template>
+            </ToolbarItem>
+        </ToolbarItems>
+    </SfToolbar>
+
+    <div class="app-body">
+        <aside class="app-sidebar">
+            <div class="app-menu">
+                <SfTreeView CssClass="app-treeview"
+                            ExpandOn="ExpandAction.Click"
+                            @bind-SelectedNodes="_selectedNodes"
+                            @bind-ExpandedNodes="_expandedNodes"
+                            TValue="NavItem">
+                    <TreeViewEvents TValue="NavItem"
+                                    NodeClicked="OnTreeNodeClicked"
+                                    NodeSelected="OnTreeNodeSelected"></TreeViewEvents>
+                    <TreeViewFieldsSettings Id="NodeId"
+                                            Text="NodeText"
+                                            NavigateUrl="NavigateUrl"
+                                            DataSource="_navItems"
+                                            HasChildren="HasChild"
+                                            ParentID="Pid">
+                    </TreeViewFieldsSettings>
+                </SfTreeView>
+            </div>
+        </aside>
+
+        <main class="app-main">
+            <ErrorBoundary @ref="_errorBoundary">
+                <ChildContent>
+                    @Body
+                </ChildContent>
+                <ErrorContent Context="ex">
+                    @if (Env.IsDevelopment())
+                    {
+                        <div style="padding:12px; border:1px solid #c00; background:#fff5f5; color:#800; white-space:pre-wrap;">
+                            <div style="font-weight:600; margin-bottom:6px;">Unhandled exception</div>
+                            <div>@ex.ToString()</div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="friendly-error-shell">
+                            <div class="friendly-error">
+                                <div class="friendly-error-figure" aria-hidden="true"></div>
+                                <div class="friendly-error-content">
+                                    <p class="friendly-error-badge">OOPS</p>
+                                    <h2 class="friendly-error-title">AAAAH!</h2>
+                                    <p class="friendly-error-subtitle">...don't freak out.</p>
+                                    <p>
+                                        This is embarrassing, but I can't find the page you are looking for.
+                                        I'm sure it will turn up eventually though.
+                                    </p>
+                                    <div class="friendly-error-actions">
+                                        <button class="friendly-btn primary" type="button" @onclick="NavigateHomeFromError">Back to home</button>
+                                        <button class="friendly-btn secondary" type="button" @onclick="() => ReportBugAsync(ex)" disabled="@_isReportingBug">
+                                            @(_isReportingBug ? "Sending..." : "Report bug")
+                                        </button>
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(_bugReportStatus))
+                                    {
+                                        <p class="friendly-error-status @(_bugReportIsError ? "error" : "success")">@_bugReportStatus</p>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </ErrorContent>
+            </ErrorBoundary>
+        </main>
+    </div>
+</div>
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
+        <div class="blazor-friendly-error">
+            <div class="blazor-friendly-figure" aria-hidden="true"></div>
+            <div class="blazor-friendly-content">
+            <p class="friendly-error-badge">BLAZOR ERROR</p>
+            <h2 class="friendly-error-title">OOPS!</h2>
+            <p class="friendly-error-subtitle">...I did it again.</p>
+            <p>
+                This is embarrassing, but I can't find the page you are looking for.
+                I'm sure it will turn up eventually though.
+            </p>
+            <div class="friendly-error-actions">
+                <a href="/app" class="friendly-btn primary reload">Back to home</a>
+                <a href="/Error" class="friendly-btn secondary">Report bug</a>
+            </div>
+        </div>
+        <button type="button" class="dismiss" aria-label="Dismiss">x</button>
+    </div>
 </div>
+
+@code {
+    public bool SidebarToggle = true;
+    private ErrorBoundary? _errorBoundary;
+    private readonly List<NavItem> _navItems = new();
+    private TenantSetupStatus _setupStatus = TenantSetupStatus.Empty;
+    private UserAccessScope _userAccess = UserAccessScope.AllowAll();
+    private string[] _selectedNodes = Array.Empty<string>();
+    private string[] _expandedNodes = Array.Empty<string>();
+    private bool _isReportingBug;
+    private string _bugReportStatus = "";
+    private bool _bugReportIsError;
+    private bool _isSuperAdmin;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _isSuperAdmin = authState.User.IsInRole("SuperAdmin");
+
+        var tenantClaim = authState.User.FindFirst("tenant_id")?.Value;
+        if (!_isSuperAdmin && int.TryParse(tenantClaim, out var tenantId))
+        {
+            TenantContext.SetTenantId(tenantId);
+        }
+
+        await RefreshNavigationSafeAsync();
+        Nav.LocationChanged += HandleLocationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (firstRender)
+                await JS.InvokeVoidAsync("workshopSmartSidebar.init");
+            else
+                await JS.InvokeVoidAsync("workshopSmartSidebar.refresh");
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore disconnects during navigation/teardown.
+        }
+    }
+
+    private async Task RefreshNavigationAsync()
+    {
+        if (_isSuperAdmin)
+        {
+            _setupStatus = TenantSetupStatus.Empty;
+            _userAccess = UserAccessScope.AllowAll();
+            BuildNavItems();
+            SyncSelectionWithRoute();
+            EnsureSuperAdminRoute();
+            return;
+        }
+
+        _userAccess = await UserAccess.GetCurrentAsync();
+        await Data.EnsureInitializedAsync();
+        _setupStatus = await SetupService.GetStatusAsync();
+        BuildNavItems();
+        SyncSelectionWithRoute();
+    }
+
+    private async Task RefreshNavigationSafeAsync()
+    {
+        try
+        {
+            await RefreshNavigationAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to refresh navigation for URI {Uri}.", Nav.Uri);
+            _setupStatus = TenantSetupStatus.Empty;
+            _userAccess = UserAccessScope.AllowAll();
+            BuildNavItems();
+            SyncSelectionWithRoute();
+        }
+    }
+
+    private void BuildNavItems()
+    {
+        _navItems.Clear();
+        if (_isSuperAdmin)
+        {
+            BuildSuperAdminNavItems();
+            return;
+        }
+
+        var accessibleStores = Data.Stores
+            .Where(s => _userAccess.CanAccessStore(s.Id))
+            .OrderBy(s => s.Name)
+            .ToList();
+
+        if (!_setupStatus.IsComplete)
+            _navItems.Add(new NavItem { NodeId = "setup", NodeText = "Setup Guide", NavigateUrl = "/app" });
+
+        _navItems.Add(new NavItem { NodeId = "dashboard", NodeText = "Dashboard", HasChild = true });
+        _navItems.Add(new NavItem { NodeId = "dashboard-overview", NodeText = "Overview", NavigateUrl = "/dashboard/overview", Pid = "dashboard" });
+        _navItems.Add(new NavItem { NodeId = "dashboard-top-store", NodeText = "Top Store", NavigateUrl = "/dashboard/top-store", Pid = "dashboard" });
+        _navItems.Add(new NavItem { NodeId = "dashboard-top-mechanic", NodeText = "Top Mechanic", NavigateUrl = "/dashboard/top-mechanic", Pid = "dashboard" });
+
+        _navItems.Add(new NavItem { NodeId = "customers", NodeText = "Customers", HasChild = true });
+        _navItems.Add(new NavItem { NodeId = "customers-search", NodeText = "Search customers", NavigateUrl = "/customers", Pid = "customers" });
+
+        if (_setupStatus.CanCreateBooking && accessibleStores.Count > 0)
+        {
+            _navItems.Add(new NavItem { NodeId = "booking", NodeText = "Booking", HasChild = true });
+            _navItems.Add(new NavItem { NodeId = "booking-assessment", NodeText = "Assessment", NavigateUrl = "/assessment", Pid = "booking" });
+            _navItems.Add(new NavItem { NodeId = "booking-create", NodeText = "Create booking", NavigateUrl = "/create-booking", Pid = "booking" });
+            _navItems.Add(new NavItem { NodeId = "booking-book-holiday", NodeText = "Book holiday", NavigateUrl = "/booking/book-holiday", Pid = "booking" });
+        }
+        else
+        {
+            _navItems.Add(new NavItem { NodeId = "assessment", NodeText = "Assessment", NavigateUrl = "/assessment" });
+        }
+
+        if (_setupStatus.CanViewSchedules && accessibleStores.Count > 0)
+        {
+            _navItems.Add(new NavItem { NodeId = "schedules", NodeText = "Store Schedules", HasChild = true });
+            foreach (var store in accessibleStores)
+            {
+                _navItems.Add(new NavItem
+                {
+                    NodeId = $"store-{store.Id}",
+                    NodeText = $"{store.Name} schedule",
+                    NavigateUrl = $"/store/{store.Id}",
+                    Pid = "schedules"
+                });
+            }
+        }
+
+        _navItems.Add(new NavItem { NodeId = "management", NodeText = "Management", HasChild = true });
+        _navItems.Add(new NavItem { NodeId = "management-stores", NodeText = "Manage Stores", NavigateUrl = "/manage-stores", Pid = "management" });
+
+        if (_setupStatus.CanManageMechanics)
+            _navItems.Add(new NavItem { NodeId = "management-mechanics", NodeText = "Manage Mechanics", NavigateUrl = "/manage-mechanics", Pid = "management" });
+
+        _navItems.Add(new NavItem { NodeId = "management-service-categories", NodeText = "Manage Service Categories", NavigateUrl = "/manage-service-categories", Pid = "management" });
+        _navItems.Add(new NavItem { NodeId = "management-jobs", NodeText = "Manage Services", NavigateUrl = "/manage-jobs", Pid = "management" });
+
+        _navItems.Add(new NavItem { NodeId = "management-users", NodeText = "Manage Users", NavigateUrl = "/manage-users", Pid = "management" });
+        _navItems.Add(new NavItem { NodeId = "management-email-retries", NodeText = "Email retries", NavigateUrl = "/email-retries", Pid = "management" });
+
+        _navItems.Add(new NavItem { NodeId = "settings", NodeText = "Settings", HasChild = true });
+        _navItems.Add(new NavItem { NodeId = "settings-automatic-pricing", NodeText = "Automatic pricing", NavigateUrl = "/settings/automatic-pricing", Pid = "settings" });
+        _navItems.Add(new NavItem { NodeId = "settings-financial-year", NodeText = "Financial year", NavigateUrl = "/settings/financial-year", Pid = "settings" });
+        _navItems.Add(new NavItem { NodeId = "settings-integrations", NodeText = "Integrations", NavigateUrl = "/settings/integrations", Pid = "settings" });
+
+        _navItems.Add(new NavItem { NodeId = "profile", NodeText = "Profile", NavigateUrl = "/profile" });
+        _navItems.Add(new NavItem { NodeId = "logout", NodeText = "Log out", NavigateUrl = "/logout" });
+    }
+
+    private void BuildSuperAdminNavItems()
+    {
+        _navItems.Add(new NavItem { NodeId = "super-settings", NodeText = "Settings", HasChild = true });
+        _navItems.Add(new NavItem { NodeId = "super-default-categories", NodeText = "Default Categories", NavigateUrl = "/super/settings/default-categories", Pid = "super-settings" });
+        _navItems.Add(new NavItem { NodeId = "super-default-services", NodeText = "Default Services", NavigateUrl = "/super/settings/default-services", Pid = "super-settings" });
+        _navItems.Add(new NavItem { NodeId = "logout", NodeText = "Log out", NavigateUrl = "/logout" });
+    }
+
+    private void SyncSelectionWithRoute()
+    {
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var withoutQuery = relativePath.Split('?', '#')[0];
+        var currentPath = NormalizePath($"/{withoutQuery}");
+
+        var selectedItem = _navItems.FirstOrDefault(item =>
+            !string.IsNullOrWhiteSpace(item.NavigateUrl) &&
+            NormalizePath(item.NavigateUrl) == currentPath);
+
+        if (selectedItem is null || string.IsNullOrWhiteSpace(selectedItem.NodeId))
+        {
+            _selectedNodes = Array.Empty<string>();
+            return;
+        }
+
+        _selectedNodes = new[] { selectedItem.NodeId };
+    }
+
+    private static string NormalizePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return "/";
+        var trimmed = path.Trim();
+        if (!trimmed.StartsWith("/"))
+            trimmed = "/" + trimmed;
+        return trimmed.Length > 1 ? trimmed.TrimEnd('/') : trimmed;
+    }
+
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            _errorBoundary?.Recover();
+            await RefreshNavigationSafeAsync();
+            EnsureSuperAdminRoute();
+            StateHasChanged();
+        });
+    }
+
+    private void EnsureSuperAdminRoute()
+    {
+        if (!_isSuperAdmin)
+            return;
+
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var withoutQuery = relativePath.Split('?', '#')[0];
+        var currentPath = NormalizePath($"/{withoutQuery}");
+        if (currentPath is "/logout" or "/super/settings/default-categories" or "/super/settings/default-services")
+            return;
+
+        Nav.NavigateTo("/super/settings/default-categories", forceLoad: true);
+    }
+
+    private Task OnTreeNodeClicked(NodeClickEventArgs args)
+        => NavigateToNode(args?.NodeData?.Id?.ToString(), forceLoad: true);
+
+    private Task OnTreeNodeSelected(NodeSelectEventArgs args)
+    {
+        if (args is null || !args.IsInteracted)
+            return Task.CompletedTask;
+
+        return NavigateToNode(args.NodeData?.Id?.ToString(), forceLoad: true);
+    }
+
+    private Task NavigateToNode(string? nodeId, bool forceLoad)
+    {
+        if (string.IsNullOrWhiteSpace(nodeId))
+            return Task.CompletedTask;
+
+        var item = _navItems.FirstOrDefault(n => n.NodeId == nodeId);
+        if (item is null)
+            return Task.CompletedTask;
+
+        if (item.HasChild)
+            return Task.CompletedTask;
+
+        if (string.IsNullOrWhiteSpace(item.NavigateUrl))
+            return Task.CompletedTask;
+
+        Nav.NavigateTo(item.NavigateUrl, forceLoad);
+        return Task.CompletedTask;
+    }
+
+    private void NavigateHomeFromError()
+    {
+        _bugReportStatus = "";
+        _bugReportIsError = false;
+        _errorBoundary?.Recover();
+        Nav.NavigateTo("/app", forceLoad: true);
+    }
+
+    private async Task ReportBugAsync(Exception ex)
+    {
+        if (_isReportingBug)
+            return;
+
+        _isReportingBug = true;
+        _bugReportStatus = "";
+        _bugReportIsError = false;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            var userName = user.Identity?.Name ?? "anonymous";
+            var userEmail = user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "unknown";
+            var tenantId = TenantContext.TenantId;
+            var now = DateTimeOffset.UtcNow;
+            var currentUri = Nav.Uri;
+
+            var subject = $"VeloLabs bug report {now:yyyy-MM-dd HH:mm:ss} UTC";
+            var html = $"""
+                <h2>Automatic bug report</h2>
+                <p><strong>Time (UTC):</strong> {now:O}</p>
+                <p><strong>URL:</strong> {WebUtility.HtmlEncode(currentUri)}</p>
+                <p><strong>User:</strong> {WebUtility.HtmlEncode(userName)}</p>
+                <p><strong>User email:</strong> {WebUtility.HtmlEncode(userEmail)}</p>
+                <p><strong>Tenant ID:</strong> {tenantId}</p>
+                <h3>Exception</h3>
+                <pre>{WebUtility.HtmlEncode(ex.ToString())}</pre>
+                """;
+            var text = $"""
+                Automatic bug report
+                Time (UTC): {now:O}
+                URL: {currentUri}
+                User: {userName}
+                User email: {userEmail}
+                Tenant ID: {tenantId}
+
+                Exception:
+                {ex}
+                """;
+
+            await EmailSender.SendAsync("support@velolabs.co.uk", subject, html, text);
+            _bugReportStatus = "Bug report sent. Thank you - we will investigate it.";
+            _bugReportIsError = false;
+        }
+        catch (Exception sendEx)
+        {
+            Logger.LogError(sendEx, "Failed to send automatic bug report.");
+            _bugReportStatus = "We could not send the bug report automatically. Please email support@velolabs.co.uk.";
+            _bugReportIsError = true;
+        }
+        finally
+        {
+            _isReportingBug = false;
+        }
+    }
+
+    private void ToggleSidebar(ClickEventArgs args)
+    {
+        SidebarToggle = !SidebarToggle;
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("workshopSmartSidebar.refresh");
+            }
+            catch (JSDisconnectedException)
+            {
+                // Ignore disconnects during navigation/teardown.
+            }
+        });
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= HandleLocationChanged;
+    }
+
+    public sealed class NavItem
+    {
+        public string? NodeId { get; set; }
+        public string? NodeText { get; set; }
+        public string? NavigateUrl { get; set; }
+        public bool HasChild { get; set; }
+        public string? Pid { get; set; }
+    }
+}

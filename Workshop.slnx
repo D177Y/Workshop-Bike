@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="Workshop.Client/Workshop.Client.csproj" />
+  <Project Path="Workshop.Tests/Workshop.Tests.csproj" />
   <Project Path="Workshop/Workshop.csproj" />
 </Solution>

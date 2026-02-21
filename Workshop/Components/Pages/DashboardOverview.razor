@@ -1,0 +1,401 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@page "/dashboard/overview"
+@attribute [Authorize]
+@using Syncfusion.Blazor.Calendars
+@using Syncfusion.Blazor.Charts
+@using Syncfusion.Blazor.Grids
+@using Syncfusion.Blazor.Layouts
+@using Syncfusion.Blazor.PivotView
+@using Workshop.Models
+@using Workshop.Services
+@inject WorkshopData Data
+@inject JobCatalogService Catalog
+@inject UserAccessService UserAccess
+@inject FinancialYearService FinancialYears
+@inject DashboardAnalyticsService Analytics
+@inject ILogger<DashboardOverview> Logger
+
+<div class="dashboard-page">
+    <header class="dashboard-header">
+        <h3>Dashboard Overview</h3>
+        <p>Track revenue, mechanic performance, and service mix across the selected date range.</p>
+    </header>
+
+    <section class="range-toolbar">
+        <div class="range-picker">
+            <SfDateRangePicker TValue="DateTime?"
+                               @bind-StartDate="_rangeStartInput"
+                               @bind-EndDate="_rangeEndInput"
+                               Placeholder="Select date range"
+                               Width="320px">
+                <DateRangePickerEvents TValue="DateTime?" ValueChange="OnRangeChanged" />
+            </SfDateRangePicker>
+        </div>
+
+        <div class="quick-picks">
+            <button type="button"
+                    class="@GetQuickRangeButtonClass(QuickRange.Today)"
+                    aria-pressed="@(_selectedQuickRange == QuickRange.Today)"
+                    @onclick="() => ApplyQuickRangeAsync(QuickRange.Today)">Today</button>
+            <button type="button"
+                    class="@GetQuickRangeButtonClass(QuickRange.ThisWeek)"
+                    aria-pressed="@(_selectedQuickRange == QuickRange.ThisWeek)"
+                    @onclick="() => ApplyQuickRangeAsync(QuickRange.ThisWeek)">This week</button>
+            <button type="button"
+                    class="@GetQuickRangeButtonClass(QuickRange.ThisMonth)"
+                    aria-pressed="@(_selectedQuickRange == QuickRange.ThisMonth)"
+                    @onclick="() => ApplyQuickRangeAsync(QuickRange.ThisMonth)">This month</button>
+            <button type="button"
+                    class="@GetQuickRangeButtonClass(QuickRange.ThisYear)"
+                    aria-pressed="@(_selectedQuickRange == QuickRange.ThisYear)"
+                    @onclick="() => ApplyQuickRangeAsync(QuickRange.ThisYear)">This year</button>
+            <button type="button"
+                    class="@GetQuickRangeButtonClass(QuickRange.ThisFinancialYear)"
+                    aria-pressed="@(_selectedQuickRange == QuickRange.ThisFinancialYear)"
+                    @onclick="() => ApplyQuickRangeAsync(QuickRange.ThisFinancialYear)">This financial year</button>
+            <button type="button"
+                    class="@GetQuickRangeButtonClass(QuickRange.Last30Days)"
+                    aria-pressed="@(_selectedQuickRange == QuickRange.Last30Days)"
+                    @onclick="() => ApplyQuickRangeAsync(QuickRange.Last30Days)">Last 30 days</button>
+        </div>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(_statusMessage))
+    {
+        <div class="status @(_statusIsError ? "error" : "success")">@_statusMessage</div>
+    }
+
+    @if (_overview is null)
+    {
+        <div class="status">Loading dashboard data...</div>
+    }
+    else
+    {
+        <div class="overview-layout">
+            <SfDashboardLayout Columns="12"
+                               AllowDragging="false"
+                               AllowResizing="false"
+                               AllowFloating="false"
+                               CellAspectRatio="4"
+                               CellSpacing="@_cellSpacing">
+                <DashboardLayoutPanels>
+                <DashboardLayoutPanel Id="overview-revenue" Row="0" Column="0" SizeX="12" SizeY="@_revenuePanelSizeY">
+                    <HeaderTemplate>
+                        <div class="panel-title-row">
+                            <h4>Revenue</h4>
+                            <span>Total: GBP @_overview.TotalRevenue.ToString("0.00")</span>
+                        </div>
+                    </HeaderTemplate>
+                    <ContentTemplate>
+                        <div class="panel-content chart-content">
+                            <SfChart Height="100%" Width="100%">
+                                <ChartPrimaryXAxis ValueType="Syncfusion.Blazor.Charts.ValueType.DateTime" LabelFormat="dd MMM" />
+                                <ChartPrimaryYAxis LabelFormat="GBP {value}" />
+                                <ChartSeriesCollection>
+                                    <ChartSeries DataSource="@_overview.RevenueTrend"
+                                                 XName="@nameof(RevenuePoint.Date)"
+                                                 YName="@nameof(RevenuePoint.Revenue)"
+                                                 Type="Syncfusion.Blazor.Charts.ChartSeriesType.Line"
+                                                 Width="2" />
+                                </ChartSeriesCollection>
+                            </SfChart>
+                        </div>
+                    </ContentTemplate>
+                </DashboardLayoutPanel>
+
+                <DashboardLayoutPanel Id="overview-top-mechanics" Row="@_revenuePanelSizeY" Column="0" SizeX="12" SizeY="@_topMechanicsPanelSizeY">
+                    <HeaderTemplate>
+                        <h4>Top Mechanics (By Revenue)</h4>
+                    </HeaderTemplate>
+                    <ContentTemplate>
+                        <div class="panel-content grid-content">
+                            <SfGrid DataSource="@_overview.TopMechanics" AllowSorting="true" Width="100%">
+                                <GridColumns>
+                                    <GridColumn Field="@nameof(MechanicRevenueRow.Rank)" HeaderText="Rank" Width="80" TextAlign="TextAlign.Center" />
+                                    <GridColumn Field="@nameof(MechanicRevenueRow.Name)" HeaderText="Name" Width="240" />
+                                    <GridColumn Field="@nameof(MechanicRevenueRow.Store)" HeaderText="Store" Width="170" />
+                                    <GridColumn HeaderText="Revenue" Width="130" TextAlign="TextAlign.Right">
+                                        <Template>
+                                            @{
+                                                var row = (MechanicRevenueRow)context;
+                                            }
+                                            GBP @row.Revenue.ToString("0.00")
+                                        </Template>
+                                    </GridColumn>
+                                    <GridColumn HeaderText="Avg Per Hour" Width="140" TextAlign="TextAlign.Right">
+                                        <Template>
+                                            @{
+                                                var row = (MechanicRevenueRow)context;
+                                            }
+                                            GBP @row.AvgPerHour.ToString("0.00")
+                                        </Template>
+                                    </GridColumn>
+                                </GridColumns>
+                            </SfGrid>
+                        </div>
+                    </ContentTemplate>
+                </DashboardLayoutPanel>
+
+                <DashboardLayoutPanel Id="overview-service-by-mechanic" Row="@(_revenuePanelSizeY + _topMechanicsPanelSizeY)" Column="0" SizeX="6" SizeY="@_servicePairPanelSizeY">
+                    <HeaderTemplate>
+                        <h4>Service By Mechanic</h4>
+                    </HeaderTemplate>
+                    <ContentTemplate>
+                        @if (_serviceByMechanicPivotData.Count == 0)
+                        {
+                            <div class="panel-content">
+                                <div class="muted">No service package data in this date range.</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="panel-content pivot-content">
+                                <SfPivotView TValue="ServicePivotRecord"
+                                             ID="serviceByMechanicPivot"
+                                             Width="100%"
+                                             Height="100%"
+                                             ShowFieldList="false"
+                                             ShowGroupingBar="false"
+                                             ShowToolbar="false">
+                                    <PivotViewGridSettings ColumnWidth="110"></PivotViewGridSettings>
+                                    <PivotViewDataSourceSettings DataSource="@_serviceByMechanicPivotData"
+                                                                 ShowSubTotals="false"
+                                                                 ShowRowSubTotals="false"
+                                                                 ShowColumnSubTotals="false">
+                                        <PivotViewRows>
+                                            <PivotViewRow Name="@nameof(ServicePivotRecord.RowLabel)" Caption="Mechanic"></PivotViewRow>
+                                        </PivotViewRows>
+                                        <PivotViewColumns>
+                                            <PivotViewColumn Name="@nameof(ServicePivotRecord.ServicePackage)" Caption="Service Package"></PivotViewColumn>
+                                        </PivotViewColumns>
+                                        <PivotViewValues>
+                                            <PivotViewValue Name="@nameof(ServicePivotRecord.Units)" Caption="Units"></PivotViewValue>
+                                        </PivotViewValues>
+                                    </PivotViewDataSourceSettings>
+                                </SfPivotView>
+                            </div>
+                        }
+                    </ContentTemplate>
+                </DashboardLayoutPanel>
+
+                <DashboardLayoutPanel Id="overview-service-by-store" Row="@(_revenuePanelSizeY + _topMechanicsPanelSizeY)" Column="6" SizeX="6" SizeY="@_servicePairPanelSizeY">
+                    <HeaderTemplate>
+                        <h4>Service By Store</h4>
+                    </HeaderTemplate>
+                    <ContentTemplate>
+                        @if (_serviceByStorePivotData.Count == 0)
+                        {
+                            <div class="panel-content">
+                                <div class="muted">No service package data in this date range.</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="panel-content pivot-content">
+                                <SfPivotView TValue="ServicePivotRecord"
+                                             ID="serviceByStorePivot"
+                                             Width="100%"
+                                             Height="100%"
+                                             ShowFieldList="false"
+                                             ShowGroupingBar="false"
+                                             ShowToolbar="false">
+                                    <PivotViewGridSettings ColumnWidth="110"></PivotViewGridSettings>
+                                    <PivotViewDataSourceSettings DataSource="@_serviceByStorePivotData"
+                                                                 ShowSubTotals="false"
+                                                                 ShowRowSubTotals="false"
+                                                                 ShowColumnSubTotals="false">
+                                        <PivotViewRows>
+                                            <PivotViewRow Name="@nameof(ServicePivotRecord.RowLabel)" Caption="Store"></PivotViewRow>
+                                        </PivotViewRows>
+                                        <PivotViewColumns>
+                                            <PivotViewColumn Name="@nameof(ServicePivotRecord.ServicePackage)" Caption="Service Package"></PivotViewColumn>
+                                        </PivotViewColumns>
+                                        <PivotViewValues>
+                                            <PivotViewValue Name="@nameof(ServicePivotRecord.Units)" Caption="Units"></PivotViewValue>
+                                        </PivotViewValues>
+                                    </PivotViewDataSourceSettings>
+                                </SfPivotView>
+                            </div>
+                        }
+                    </ContentTemplate>
+                </DashboardLayoutPanel>
+                </DashboardLayoutPanels>
+            </SfDashboardLayout>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly double[] _cellSpacing = new[] { 12d, 12d };
+
+    private UserAccessScope _userAccess = UserAccessScope.AllowAll();
+    private DashboardOverviewData? _overview;
+    private List<ServicePivotRecord> _serviceByMechanicPivotData = new();
+    private List<ServicePivotRecord> _serviceByStorePivotData = new();
+    private int _revenuePanelSizeY = 5;
+    private int _topMechanicsPanelSizeY = 4;
+    private int _servicePairPanelSizeY = 4;
+    private DateTime _rangeStart = DateTime.Today.AddDays(-29);
+    private DateTime _rangeEnd = DateTime.Today;
+    private DateTime? _rangeStartInput;
+    private DateTime? _rangeEndInput;
+    private QuickRange? _selectedQuickRange = QuickRange.Last30Days;
+    private string _statusMessage = "";
+    private bool _statusIsError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Data.EnsureInitializedAsync();
+            await Catalog.EnsureInitializedAsync();
+            _userAccess = await UserAccess.GetCurrentAsync();
+
+            _rangeStartInput = _rangeStart;
+            _rangeEndInput = _rangeEnd;
+
+            RefreshOverview();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize dashboard overview page.");
+            _statusMessage = "Could not load dashboard overview data.";
+            _statusIsError = true;
+        }
+    }
+
+    private void RefreshOverview()
+    {
+        NormalizeRange();
+        var stores = Data.Stores.Where(s => _userAccess.CanAccessStore(s.Id)).ToList();
+        var mechanics = Data.Mechanics.Where(m => _userAccess.CanAccessMechanic(m)).ToList();
+        _overview = Analytics.BuildOverview(
+            Data.Bookings,
+            stores,
+            mechanics,
+            Catalog.Jobs,
+            _rangeStart,
+            _rangeEnd,
+            _userAccess);
+        BuildPivotSources();
+        UpdatePanelHeights();
+    }
+
+    private Task OnRangeChanged(RangePickerEventArgs<DateTime?> args)
+    {
+        if (args.StartDate.HasValue)
+            _rangeStart = args.StartDate.Value.Date;
+        if (args.EndDate.HasValue)
+            _rangeEnd = args.EndDate.Value.Date;
+
+        _selectedQuickRange = null;
+        _rangeStartInput = _rangeStart;
+        _rangeEndInput = _rangeEnd;
+        RefreshOverview();
+        return Task.CompletedTask;
+    }
+
+    private async Task ApplyQuickRangeAsync(QuickRange range)
+    {
+        var today = DateTime.Today;
+        switch (range)
+        {
+            case QuickRange.Today:
+                _rangeStart = today;
+                _rangeEnd = today;
+                break;
+            case QuickRange.ThisWeek:
+                var diff = ((int)today.DayOfWeek + 6) % 7;
+                _rangeStart = today.AddDays(-diff);
+                _rangeEnd = _rangeStart.AddDays(6);
+                break;
+            case QuickRange.ThisMonth:
+                _rangeStart = new DateTime(today.Year, today.Month, 1);
+                _rangeEnd = _rangeStart.AddMonths(1).AddDays(-1);
+                break;
+            case QuickRange.ThisYear:
+                _rangeStart = new DateTime(today.Year, 1, 1);
+                _rangeEnd = new DateTime(today.Year, 12, 31);
+                break;
+            case QuickRange.ThisFinancialYear:
+                var financialYear = await FinancialYears.GetCurrentRangeAsync(today);
+                _rangeStart = financialYear.StartDate;
+                _rangeEnd = financialYear.EndDate;
+                break;
+            case QuickRange.Last30Days:
+                _rangeEnd = today;
+                _rangeStart = today.AddDays(-29);
+                break;
+        }
+
+        _selectedQuickRange = range;
+        _rangeStartInput = _rangeStart;
+        _rangeEndInput = _rangeEnd;
+        RefreshOverview();
+    }
+
+    private string GetQuickRangeButtonClass(QuickRange range)
+        => _selectedQuickRange == range ? "btn-primary" : "btn-secondary";
+
+    private void NormalizeRange()
+    {
+        _rangeStart = _rangeStart.Date;
+        _rangeEnd = _rangeEnd.Date;
+        if (_rangeEnd < _rangeStart)
+            (_rangeStart, _rangeEnd) = (_rangeEnd, _rangeStart);
+    }
+
+    private void BuildPivotSources()
+    {
+        _serviceByMechanicPivotData = FlattenPivotRows(_overview?.ServiceByMechanic);
+        _serviceByStorePivotData = FlattenPivotRows(_overview?.ServiceByStore);
+    }
+
+    private static List<ServicePivotRecord> FlattenPivotRows(IEnumerable<PivotRow>? rows)
+    {
+        if (rows is null)
+            return new List<ServicePivotRecord>();
+
+        var data = new List<ServicePivotRecord>();
+        foreach (var row in rows)
+        {
+            foreach (var pair in row.Counts.OrderBy(kvp => kvp.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                if (pair.Value <= 0)
+                    continue;
+
+                data.Add(new ServicePivotRecord
+                {
+                    RowLabel = row.RowLabel,
+                    ServicePackage = pair.Key,
+                    Units = pair.Value
+                });
+            }
+        }
+
+        return data;
+    }
+
+    private void UpdatePanelHeights()
+    {
+        _revenuePanelSizeY = 5;
+
+        var topMechanicRows = _overview?.TopMechanics.Count ?? 0;
+        _topMechanicsPanelSizeY = Math.Clamp(4 + topMechanicRows, 6, 12);
+
+        var serviceRowsByMechanic = _overview?.ServiceByMechanic.Count ?? 0;
+        var serviceRowsByStore = _overview?.ServiceByStore.Count ?? 0;
+        var pairedServiceRows = Math.Max(serviceRowsByMechanic, serviceRowsByStore);
+        _servicePairPanelSizeY = Math.Clamp(4 + pairedServiceRows, 6, 12);
+    }
+
+    private enum QuickRange
+    {
+        Today,
+        ThisWeek,
+        ThisMonth,
+        ThisYear,
+        ThisFinancialYear,
+        Last30Days
+    }
+}

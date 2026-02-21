@@ -1,0 +1,291 @@
+.mk-signup-head {
+    max-width: 720px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.mk-signup-grid {
+    max-width: none;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 448px 280px;
+    gap: 3rem;
+    align-items: start;
+    justify-content: center;
+}
+
+.mk-signup-card {
+    padding: 2.5rem;
+    width: 448px;
+    box-sizing: border-box;
+}
+
+.mk-signup-card form {
+    display: grid;
+    gap: 0;
+}
+
+.mk-signup-card form > :first-child {
+    margin-top: 1.25rem;
+}
+
+.mk-signup-two {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    align-items: start;
+}
+
+.mk-signup-card form > .mk-signup-two + .mk-field,
+.mk-signup-card form > .mk-field + .mk-field,
+.mk-signup-card form > .mk-field + .mk-signup-two,
+.mk-signup-card form > .mk-signup-two + .mk-signup-two,
+.mk-signup-card form > .mk-signup-two + .mk-signup-checks,
+.mk-signup-card form > .mk-signup-checks + .mk-signup-message,
+.mk-signup-card form > .mk-signup-message + .mk-signup-submit {
+    margin-top: 1.25rem;
+}
+
+.mk-field {
+    display: grid;
+    gap: 0.42rem;
+    align-content: start;
+}
+
+.mk-field label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--mk-text);
+}
+
+.mk-field label span {
+    color: #ef4444;
+}
+
+.mk-signup-card ::deep .mk-input,
+.mk-signup-card ::deep input.mk-input,
+.mk-signup-card ::deep select.mk-input {
+    width: 100%;
+    box-sizing: border-box;
+    height: 42px;
+    border-radius: 12px;
+    border: 1px solid var(--mk-border);
+    background: #fff;
+    padding: 0.7rem 0.85rem;
+    color: var(--mk-text);
+    font: inherit;
+    font-size: 0.875rem;
+    appearance: none;
+}
+
+.mk-signup-card ::deep .valid.modified:not([type="checkbox"]),
+.mk-signup-card ::deep .invalid {
+    outline: none;
+}
+
+.mk-signup-card ::deep input.mk-input::placeholder {
+    font-size: 0.875rem;
+    color: #64748b;
+}
+
+.mk-signup-card ::deep select.mk-input {
+    background-image: linear-gradient(45deg, transparent 50%, #64748b 50%), linear-gradient(135deg, #64748b 50%, transparent 50%);
+    background-position: calc(100% - 16px) calc(50% - 3px), calc(100% - 11px) calc(50% - 3px);
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 2rem;
+}
+
+.mk-field small {
+    color: var(--mk-muted);
+    font-size: 0.82rem;
+}
+
+.mk-password-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.mk-password-wrap ::deep input.mk-input {
+    padding-right: 2.6rem;
+    margin: 0;
+}
+
+.mk-password-toggle {
+    position: absolute;
+    right: 0.55rem;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 0;
+    background: transparent;
+    color: var(--mk-muted);
+    width: 1.75rem;
+    height: 1.75rem;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.mk-password-icon {
+    width: 1rem;
+    height: 1rem;
+}
+
+.mk-signup-checks {
+    display: grid;
+    gap: 0.45rem;
+    margin-top: 1.25rem;
+}
+
+.mk-check-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--mk-muted);
+    font-size: 0.875rem;
+}
+
+.mk-check-wrap ::deep input[type="checkbox"] {
+    margin: 0;
+    width: 1rem;
+    height: 1rem;
+    border: 1.5px solid #3b82f6;
+    border-radius: 999px;
+    appearance: none;
+    background: #fff;
+    display: inline-grid;
+    place-items: center;
+}
+
+.mk-check-wrap ::deep input[type="checkbox"]:checked {
+    background: #e6f0ff;
+}
+
+.mk-check-wrap ::deep input[type="checkbox"]:checked::after {
+    content: "";
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: #2563eb;
+}
+
+.mk-check-wrap a {
+    color: var(--mk-brand);
+    text-decoration: none;
+}
+
+.mk-signup-card ::deep .validation-message {
+    color: #b91c1c;
+    font-size: 0.82rem;
+}
+
+.mk-signup-message {
+    border-radius: 10px;
+    padding: 0.65rem 0.75rem;
+    font-size: 0.88rem;
+}
+
+.mk-signup-message-error {
+    color: #b91c1c;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+}
+
+.mk-signup-message-ok {
+    color: #166534;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+}
+
+.mk-signup-submit {
+    width: 100%;
+    min-height: 42px;
+    margin-top: 1.25rem;
+}
+
+.mk-signup-foot,
+.mk-signup-help {
+    margin: 1rem 0 0;
+    text-align: center;
+    color: var(--mk-muted);
+    font-size: 0.875rem;
+}
+
+.mk-signup-help {
+    margin-top: 0.75rem;
+    font-size: 0.875rem;
+}
+
+.mk-signup-foot a,
+.mk-signup-help a {
+    color: var(--mk-brand);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.mk-signup-aside {
+    padding: 2rem;
+    width: 280px;
+    box-sizing: border-box;
+    background: #f8fafd;
+    box-shadow: none;
+    align-self: start;
+}
+
+.mk-signup-aside ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 1rem;
+}
+
+.mk-signup-aside li {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    gap: 0.75rem;
+    align-items: center;
+    color: var(--mk-text);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.mk-dot-check {
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 999px;
+    background: var(--mk-brand-soft);
+    color: var(--mk-brand);
+    display: inline-grid;
+    place-items: center;
+}
+
+.mk-check-icon {
+    width: 12px;
+    height: 12px;
+    display: block;
+}
+
+@media (max-width: 980px) {
+    .mk-signup-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .mk-signup-aside {
+        width: 100%;
+        max-width: none;
+    }
+
+    .mk-signup-card {
+        width: 100%;
+    }
+}
+
+@media (max-width: 720px) {
+    .mk-signup-two {
+        grid-template-columns: 1fr;
+    }
+}

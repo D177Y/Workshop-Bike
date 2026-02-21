@@ -1,0 +1,590 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@page "/customers"
+@attribute [Authorize]
+@using Workshop.Models
+@using Workshop.Services
+@inject WorkshopData Data
+@inject CustomerProfileService CustomerProfiles
+@inject UserAccessService UserAccess
+@inject ILogger<Customers> Logger
+
+<div class="customers-page">
+    <header class="customers-header">
+        <h3>Customers</h3>
+        <p>Search customers and review contact details, bikes, quotes, bookings, service history, and communications.</p>
+    </header>
+
+    <section class="customers-toolbar">
+        <input type="text"
+               placeholder="Search by account, name, phone, or email"
+               @bind="SearchTerm"
+               @bind:event="oninput" />
+        <button type="button" class="btn-secondary" @onclick="ClearSearch">Clear</button>
+    </section>
+
+    <section class="customers-layout">
+        <aside class="customer-list">
+            @if (FilteredCustomers.Count == 0)
+            {
+                <div class="muted">No customers found.</div>
+            }
+            else
+            {
+                @foreach (var customer in FilteredCustomers)
+                {
+                    var bookings = GetBookingsForCustomer(customer);
+                    var quotes = GetVisibleQuotes(customer);
+                    <button type="button"
+                            class="customer-list-item @(IsSelected(customer.AccountNumber) ? "selected" : "")"
+                            @onclick="() => SelectCustomer(customer.AccountNumber)">
+                        <strong>@GetCustomerDisplayName(customer)</strong>
+                        <span>@customer.AccountNumber</span>
+                        <span>@bookings.Count booking(s) - @quotes.Count quote(s)</span>
+                    </button>
+                }
+            }
+        </aside>
+
+        <div class="customer-detail">
+            @if (SelectedCustomer is null)
+            {
+                <div class="empty-state">Select a customer to view details.</div>
+            }
+            else
+            {
+                var customer = SelectedCustomer;
+                var bookings = GetBookingsForCustomer(customer);
+                var quotes = GetVisibleQuotes(customer);
+                var serviceHistory = BuildServiceHistory(bookings);
+                var timeline = BuildCustomerTimeline(customer, bookings);
+                var lifetimeSpend = bookings.Sum(b => b.TotalPriceIncVat);
+                var completedCount = bookings.Count(b => b.StatusName.Equals("Completed", StringComparison.OrdinalIgnoreCase));
+                var averageBookingValue = bookings.Count == 0 ? 0 : bookings.Average(b => b.TotalPriceIncVat);
+
+                <section class="detail-card">
+                    <h4>Contact Details</h4>
+                    <div class="detail-grid">
+                        <div><strong>Account:</strong> @customer.AccountNumber</div>
+                        <div><strong>Name:</strong> @GetCustomerDisplayName(customer)</div>
+                        <div><strong>Phone:</strong> @(string.IsNullOrWhiteSpace(customer.Phone) ? "-" : customer.Phone)</div>
+                        <div><strong>Email:</strong> @(string.IsNullOrWhiteSpace(customer.Email) ? "-" : customer.Email)</div>
+                        <div><strong>County:</strong> @(string.IsNullOrWhiteSpace(customer.County) ? "-" : customer.County)</div>
+                        <div><strong>Postcode:</strong> @(string.IsNullOrWhiteSpace(customer.Postcode) ? "-" : customer.Postcode)</div>
+                        <div><strong>Address 1:</strong> @(string.IsNullOrWhiteSpace(customer.AddressLine1) ? "-" : customer.AddressLine1)</div>
+                        <div><strong>Address 2:</strong> @(string.IsNullOrWhiteSpace(customer.AddressLine2) ? "-" : customer.AddressLine2)</div>
+                    </div>
+                </section>
+
+                <section class="stats-grid">
+                    <article class="stat-card">
+                        <span>Lifetime spend</span>
+                        <strong>GBP @lifetimeSpend.ToString("0.00")</strong>
+                    </article>
+                    <article class="stat-card">
+                        <span>Total bookings</span>
+                        <strong>@bookings.Count</strong>
+                    </article>
+                    <article class="stat-card">
+                        <span>Completed services</span>
+                        <strong>@completedCount</strong>
+                    </article>
+                    <article class="stat-card">
+                        <span>Average booking value</span>
+                        <strong>GBP @averageBookingValue.ToString("0.00")</strong>
+                    </article>
+                    <article class="stat-card">
+                        <span>Bikes</span>
+                        <strong>@customer.Bikes.Count</strong>
+                    </article>
+                    <article class="stat-card">
+                        <span>Saved quotes</span>
+                        <strong>@quotes.Count</strong>
+                    </article>
+                </section>
+
+                <section class="detail-card">
+                    <h4>Bikes</h4>
+                    <CustomerBikeSelector Bikes="@_customerBikes"
+                                          @bind-SelectedBikeId="_selectedBikeId"
+                                          OnBikesChanged="PersistSelectedCustomerBikesAsync"
+                                          EmptyStateText="No bikes found for this customer yet. Add a bike to continue." />
+                    @if (!string.IsNullOrWhiteSpace(_bikeStatusMessage))
+                    {
+                        <div class="customer-bike-status @(_bikeStatusIsError ? "error" : "success")">@_bikeStatusMessage</div>
+                    }
+                </section>
+
+                <section class="detail-card">
+                    <h4>Quotes</h4>
+                    @if (quotes.Count == 0)
+                    {
+                        <div class="muted">No saved quotes.</div>
+                    }
+                    else
+                    {
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Created</th>
+                                        <th>Store</th>
+                                        <th>Bike</th>
+                                        <th>Status</th>
+                                        <th>Services</th>
+                                        <th>Estimate</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var quote in quotes)
+                                    {
+                                        <tr>
+                                            <td>@quote.CreatedUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
+                                            <td>@(string.IsNullOrWhiteSpace(quote.StoreName) ? "-" : quote.StoreName)</td>
+                                            <td>@(string.IsNullOrWhiteSpace(quote.BikeDetails) ? "-" : quote.BikeDetails)</td>
+                                            <td><span class="status-pill @QuoteStatusClass(quote)">@GetQuoteStatus(quote)</span></td>
+                                            <td>@(quote.JobNames.Length == 0 ? "-" : string.Join(", ", quote.JobNames))</td>
+                                            <td>GBP @quote.EstimatedPriceIncVat.ToString("0.00")</td>
+                                            <td>
+                                                <a href="@BuildReuseBookingUrl(customer, quote)">Send to booking</a>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </section>
+
+                <section class="detail-card">
+                    <h4>Booked Services And Status</h4>
+                    @if (bookings.Count == 0)
+                    {
+                        <div class="muted">No bookings recorded yet.</div>
+                    }
+                    else
+                    {
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Store</th>
+                                        <th>Bike</th>
+                                        <th>Service</th>
+                                        <th>Quote</th>
+                                        <th>Status</th>
+                                        <th>Price</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var booking in bookings)
+                                    {
+                                        <tr>
+                                            <td>@booking.Start.ToString("dd MMM yyyy HH:mm")</td>
+                                            <td>@GetStoreName(booking.StoreId)</td>
+                                            <td>@(string.IsNullOrWhiteSpace(booking.BikeDetails) ? "-" : booking.BikeDetails)</td>
+                                            <td>@booking.Title</td>
+                                            <td>@(string.IsNullOrWhiteSpace(booking.SourceQuoteId) ? "-" : booking.SourceQuoteId)</td>
+                                            <td><span class="status-pill booking">@booking.StatusName</span></td>
+                                            <td>GBP @booking.TotalPriceIncVat.ToString("0.00")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </section>
+
+                <section class="detail-card">
+                    <h4>Service History Per Bike</h4>
+                    @if (serviceHistory.Count == 0)
+                    {
+                        <div class="muted">No service history yet.</div>
+                    }
+                    else
+                    {
+                        @foreach (var bikeGroup in serviceHistory)
+                        {
+                            <article class="history-group">
+                                <h5>@bikeGroup.BikeDetails</h5>
+                                <ul class="detail-list">
+                                    @foreach (var item in bikeGroup.Items)
+                                    {
+                                        <li>
+                                            <strong>@item.DateLocal:</strong> @item.WorkDone
+                                            <span class="history-meta">Status: @item.Status</span>
+                                            @if (!string.IsNullOrWhiteSpace(item.Advisories))
+                                            {
+                                                <span class="history-meta">Advisories: @item.Advisories</span>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+                            </article>
+                        }
+                    }
+                </section>
+
+                <section class="detail-card">
+                    <h4>Customer Timeline</h4>
+                    @if (timeline.Count == 0)
+                    {
+                        <div class="muted">No timeline activity logged.</div>
+                    }
+                    else
+                    {
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Type</th>
+                                        <th>Channel</th>
+                                        <th>Target</th>
+                                        <th>Summary</th>
+                                        <th>Source</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var entry in timeline)
+                                    {
+                                        <tr>
+                                            <td>@entry.OccurredLocal</td>
+                                            <td><span class="timeline-type @TimelineTypeClass(entry.Type)">@entry.Type</span></td>
+                                            <td>@entry.Channel</td>
+                                            <td>@entry.Target</td>
+                                            <td>@entry.Summary</td>
+                                            <td>@entry.Source</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </section>
+            }
+        </div>
+    </section>
+</div>
+
+@code {
+    private UserAccessScope _userAccess = UserAccessScope.AllowAll();
+    private string SearchTerm = "";
+    private string? _selectedCustomerAccount;
+    private readonly List<CustomerBikeRow> _customerBikes = new();
+    private string? _selectedBikeId;
+    private string _bikeStatusMessage = "";
+    private bool _bikeStatusIsError;
+
+    private List<CustomerProfile> FilteredCustomers =>
+        Data.CustomerProfiles
+            .Where(IsVisibleToCurrentUser)
+            .Where(MatchesSearch)
+            .OrderBy(c => c.LastName)
+            .ThenBy(c => c.FirstName)
+            .ThenBy(c => c.AccountNumber)
+            .ToList();
+
+    private CustomerProfile? SelectedCustomer =>
+        string.IsNullOrWhiteSpace(_selectedCustomerAccount)
+            ? null
+            : Data.CustomerProfiles.FirstOrDefault(c =>
+                c.AccountNumber.Equals(_selectedCustomerAccount, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Data.EnsureInitializedAsync();
+            _userAccess = await UserAccess.GetCurrentAsync();
+            await BackfillProfilesFromBookingsAsync();
+            _selectedCustomerAccount = FilteredCustomers.FirstOrDefault()?.AccountNumber;
+            SyncSelectedCustomerBikes();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize customers page.");
+        }
+    }
+
+    private async Task BackfillProfilesFromBookingsAsync()
+    {
+        var candidates = Data.Bookings
+            .Where(b => _userAccess.CanAccessStore(b.StoreId))
+            .Where(b =>
+                !string.IsNullOrWhiteSpace(b.CustomerFirstName)
+                || !string.IsNullOrWhiteSpace(b.CustomerLastName)
+                || !string.IsNullOrWhiteSpace(b.CustomerPhone)
+                || !string.IsNullOrWhiteSpace(b.CustomerEmail))
+            .ToList();
+
+        foreach (var booking in candidates)
+        {
+            if (!string.IsNullOrWhiteSpace(booking.CustomerAccountNumber))
+            {
+                var profile = await Data.FindCustomerProfileByAccountAsync(booking.CustomerAccountNumber);
+                if (profile is not null)
+                    continue;
+            }
+
+            await Data.UpsertCustomerFromBookingAsync(booking);
+        }
+    }
+
+    private void ClearSearch() => SearchTerm = "";
+
+    private void SelectCustomer(string accountNumber)
+    {
+        _selectedCustomerAccount = accountNumber;
+        _bikeStatusMessage = "";
+        _bikeStatusIsError = false;
+        SyncSelectedCustomerBikes();
+    }
+
+    private void SyncSelectedCustomerBikes()
+    {
+        var selectedBefore = _selectedBikeId;
+        _customerBikes.Clear();
+        var customer = SelectedCustomer;
+        if (customer is null)
+        {
+            _selectedBikeId = null;
+            return;
+        }
+
+        foreach (var bike in customer.Bikes)
+        {
+            _customerBikes.Add(new CustomerBikeRow
+            {
+                RowId = string.IsNullOrWhiteSpace(bike.Id) ? BikeDetailsService.NewBikeRowId() : bike.Id.Trim(),
+                Make = bike.Make,
+                Model = bike.Model,
+                Size = bike.Size,
+                FrameNumber = bike.FrameNumber,
+                StockNumber = bike.StockNumber
+            });
+        }
+
+        _selectedBikeId = _customerBikes.Any(b =>
+                !string.IsNullOrWhiteSpace(selectedBefore)
+                && b.RowId.Equals(selectedBefore, StringComparison.OrdinalIgnoreCase))
+            ? selectedBefore
+            : _customerBikes.FirstOrDefault()?.RowId;
+    }
+
+    private async Task PersistSelectedCustomerBikesAsync()
+    {
+        var customer = SelectedCustomer;
+        if (customer is null)
+            return;
+
+        try
+        {
+            customer.Bikes = _customerBikes
+                .Select(b => new CustomerBikeProfile
+                {
+                    Id = string.IsNullOrWhiteSpace(b.RowId) ? BikeDetailsService.NewBikeRowId() : b.RowId,
+                    Make = b.Make,
+                    Model = b.Model,
+                    Size = b.Size,
+                    FrameNumber = b.FrameNumber,
+                    StockNumber = b.StockNumber
+                })
+                .ToList();
+
+            var saved = await CustomerProfiles.UpsertAsync(customer);
+            _selectedCustomerAccount = saved.AccountNumber;
+            SyncSelectedCustomerBikes();
+
+            _bikeStatusMessage = $"Saved {saved.Bikes.Count} bike(s) to {saved.AccountNumber}.";
+            _bikeStatusIsError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to save bikes for customer {AccountNumber}.", customer.AccountNumber);
+            _bikeStatusMessage = "Could not save bike changes. Please try again.";
+            _bikeStatusIsError = true;
+        }
+    }
+
+    private bool IsSelected(string accountNumber) =>
+        !string.IsNullOrWhiteSpace(_selectedCustomerAccount) &&
+        _selectedCustomerAccount.Equals(accountNumber, StringComparison.OrdinalIgnoreCase);
+
+    private bool MatchesSearch(CustomerProfile customer)
+    {
+        var term = (SearchTerm ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(term))
+            return true;
+
+        return customer.AccountNumber.Contains(term, StringComparison.OrdinalIgnoreCase)
+               || customer.FirstName.Contains(term, StringComparison.OrdinalIgnoreCase)
+               || customer.LastName.Contains(term, StringComparison.OrdinalIgnoreCase)
+               || customer.Phone.Contains(term, StringComparison.OrdinalIgnoreCase)
+               || customer.Email.Contains(term, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsVisibleToCurrentUser(CustomerProfile customer)
+    {
+        if (!_userAccess.HasStoreRestrictions)
+            return true;
+
+        if (GetBookingsForCustomer(customer).Count > 0)
+            return true;
+
+        return customer.Quotes.Any(q => q.StoreId == 0 || _userAccess.CanAccessStore(q.StoreId));
+    }
+
+    private List<CustomerQuoteRecord> GetVisibleQuotes(CustomerProfile customer) =>
+        customer.Quotes
+            .Where(q => q.StoreId == 0 || _userAccess.CanAccessStore(q.StoreId))
+            .OrderByDescending(q => q.CreatedUtc)
+            .ToList();
+
+    private string GetQuoteStatus(CustomerQuoteRecord quote) =>
+        QuoteLifecycleService.ResolveStatus(quote, DateTime.UtcNow);
+
+    private string QuoteStatusClass(CustomerQuoteRecord quote)
+    {
+        var status = GetQuoteStatus(quote);
+        if (status.Equals(QuoteLifecycleStatus.Sent, StringComparison.OrdinalIgnoreCase))
+            return "sent";
+        if (status.Equals(QuoteLifecycleStatus.Accepted, StringComparison.OrdinalIgnoreCase))
+            return "accepted";
+        if (status.Equals(QuoteLifecycleStatus.Expired, StringComparison.OrdinalIgnoreCase))
+            return "expired";
+        return "draft";
+    }
+
+    private static string TimelineTypeClass(string type)
+    {
+        if (type.Equals("Booking", StringComparison.OrdinalIgnoreCase))
+            return "booking";
+        if (type.Equals("Communication", StringComparison.OrdinalIgnoreCase))
+            return "communication";
+        if (type.Equals("Quote", StringComparison.OrdinalIgnoreCase))
+            return "quote";
+        return "generic";
+    }
+
+    private List<Booking> GetBookingsForCustomer(CustomerProfile customer)
+    {
+        var account = (customer.AccountNumber ?? "").Trim();
+        var email = (customer.Email ?? "").Trim();
+        var phoneDigits = NormalizeDigits(customer.Phone ?? "");
+
+        return Data.Bookings
+            .Where(b => _userAccess.CanAccessStore(b.StoreId))
+            .Where(b =>
+                (!string.IsNullOrWhiteSpace(account) &&
+                 b.CustomerAccountNumber.Equals(account, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(email) &&
+                    b.CustomerEmail.Equals(email, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(phoneDigits) &&
+                    NormalizeDigits(b.CustomerPhone).Equals(phoneDigits, StringComparison.Ordinal)))
+            .GroupBy(b => b.Id)
+            .Select(g => g.First())
+            .OrderByDescending(b => b.Start)
+            .ToList();
+    }
+
+    private List<ServiceHistoryByBike> BuildServiceHistory(List<Booking> bookings)
+    {
+        return bookings
+            .GroupBy(b => string.IsNullOrWhiteSpace(b.BikeDetails) ? "Unknown bike" : b.BikeDetails.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ServiceHistoryByBike(
+                g.Key,
+                g.OrderByDescending(b => b.Start)
+                    .Select(b => new ServiceHistoryItem(
+                        b.Start.ToString("dd MMM yyyy HH:mm"),
+                        BuildWorkDoneText(b),
+                        b.StatusName,
+                        ExtractAdvisories(b.Notes)))
+                    .ToList()))
+            .OrderBy(g => g.BikeDetails, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string BuildWorkDoneText(Booking booking)
+    {
+        if (booking.JobCard?.Services is { Count: > 0 })
+        {
+            var completed = booking.JobCard.Services
+                .Where(s => s.IsCompleted)
+                .Select(s => s.Name)
+                .ToList();
+            if (completed.Count > 0)
+                return string.Join(", ", completed);
+        }
+
+        return string.IsNullOrWhiteSpace(booking.Title) ? "Workshop service" : booking.Title.Trim();
+    }
+
+    private static string ExtractAdvisories(string notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes))
+            return "";
+
+        var lines = notes
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(line =>
+                line.StartsWith("- Advisory", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("- Fail", StringComparison.OrdinalIgnoreCase))
+            .Take(3)
+            .ToList();
+
+        return lines.Count == 0 ? "" : string.Join(" | ", lines);
+    }
+
+    private List<CustomerTimelineEntry> BuildCustomerTimeline(CustomerProfile customer, List<Booking> bookings) =>
+        CustomerTimelineService.BuildTimeline(customer, bookings, DateTime.UtcNow);
+
+    private string BuildReuseBookingUrl(CustomerProfile customer, CustomerQuoteRecord quote)
+    {
+        var query = new List<string>();
+        AddQuery(query, "storeId", quote.StoreId > 0 ? quote.StoreId.ToString() : "");
+        AddQuery(query, "quoteId", quote.Id);
+        AddQuery(query, "jobs", quote.JobIds.Length == 0 ? "" : string.Join(",", quote.JobIds));
+        AddQuery(query, "notes", quote.Notes);
+        AddQuery(query, "customerAccountNumber", customer.AccountNumber);
+        AddQuery(query, "customerFirstName", customer.FirstName);
+        AddQuery(query, "customerLastName", customer.LastName);
+        AddQuery(query, "customerPhone", customer.Phone);
+        AddQuery(query, "customerEmail", customer.Email);
+        AddQuery(query, "bikeDetails", quote.BikeDetails);
+
+        if (query.Count == 0)
+            return "/create-booking";
+
+        return "/create-booking?" + string.Join("&", query);
+    }
+
+    private string GetStoreName(int storeId)
+    {
+        var store = Data.Stores.FirstOrDefault(s => s.Id == storeId);
+        return store is null ? "Unknown" : store.Name;
+    }
+
+    private static string GetCustomerDisplayName(CustomerProfile customer)
+    {
+        var display = $"{customer.FirstName} {customer.LastName}".Trim();
+        return string.IsNullOrWhiteSpace(display) ? customer.AccountNumber : display;
+    }
+
+    private static void AddQuery(List<string> parts, string key, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        parts.Add($"{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}");
+    }
+
+    private static string NormalizeDigits(string input) =>
+        new(input.Where(char.IsDigit).ToArray());
+
+    private sealed record ServiceHistoryByBike(string BikeDetails, List<ServiceHistoryItem> Items);
+    private sealed record ServiceHistoryItem(string DateLocal, string WorkDone, string Status, string Advisories);
+}
+
+

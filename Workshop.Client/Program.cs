@@ -4,8 +4,12 @@ using Syncfusion.Licensing;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
-// ✅ Syncfusion license (use your 7-day key for now)
-SyncfusionLicenseProvider.RegisterLicense("Ngo9BigBOggjHTQxAR8/V1JGaF5cXGpCfExyWmFZfVhgd19GZVZTQ2Y/P1ZhSXxVdkRhUX5bcHFXQWFVUUF9XEA=");
+// ✅ Syncfusion license (from configuration/user-secrets)
+var syncfusionKey = builder.Configuration["Syncfusion:LicenseKey"];
+if (!string.IsNullOrWhiteSpace(syncfusionKey))
+{
+    SyncfusionLicenseProvider.RegisterLicense(syncfusionKey);
+}
 
 // ✅ Register Syncfusion Blazor services
 builder.Services.AddSyncfusionBlazor();

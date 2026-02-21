@@ -4,22 +4,35 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VeloLabs</title>
+    <meta name="description" content="VeloLabs is workshop scheduling software built for bike retailers." />
     <base href="/" />
     <ResourcePreloader />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="stylesheet" href="/css/marketing-tokens.css" />
+    <link rel="stylesheet" href="/css/marketing.css" />
     <link rel="stylesheet" href="@Assets["Workshop.styles.css"]" />
     <ImportMap />
     <HeadOutlet />
-    <link href="_content/Syncfusion.Blazor.Themes/bootstrap5.css" rel="stylesheet" />
-    <link href="_content/Syncfusion.Blazor.Themes/icons.css" rel="stylesheet" />
+    <link rel="icon" href="favicon.ico" type="image/x-icon" />
+    <link href="_content/Syncfusion.Blazor/styles/bootstrap5.css" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/syncfusion-overrides.css" />
 
 </head>
 
 <body>
-    <Routes />
+    <CascadingAuthenticationState>
+        <Routes @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
+    </CascadingAuthenticationState>
     <ReconnectModal />
 
     <script src="_content/Syncfusion.Blazor/scripts/syncfusion-blazor.min.js"></script>
+    <script src="@Assets["status-dnd.js"]"></script>
+    <script src="@Assets["sidebar-smart-sticky.js"]"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="@Assets["js/marketing-icons.js"]"></script>
+    <script src="@Assets["js/marketing-reveal.js"]"></script>
     <script src="@Assets["_framework/blazor.web.js"]"></script>
 </body>
 

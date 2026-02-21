@@ -1,0 +1,9 @@
+@namespace Workshop.Components.Marketing
+@using Microsoft.AspNetCore.Components
+
+<div class="mk-container @Class">@ChildContent</div>
+
+@code {
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

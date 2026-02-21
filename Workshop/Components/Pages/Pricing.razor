@@ -1,0 +1,186 @@
+﻿@page "/pricing"
+@layout MarketingLayout
+@attribute [AllowAnonymous]
+@using System.Net
+
+<Section>
+    <div class="mk-center-head mk-reveal">
+        <h1 class="mk-page-title">Simple, transparent pricing</h1>
+        <p class="mk-page-sub">Start free. Scale when you're ready.</p>
+    </div>
+
+    <div class="mk-pricing-toggle-wrap">
+        <div class="mk-pricing-toggle" role="group" aria-label="Billing toggle">
+            <button type="button" class="@(AnnualBilling ? string.Empty : "active")" @onclick="() => AnnualBilling = false">Monthly</button>
+            <button type="button" class="@(AnnualBilling ? "active" : string.Empty)" @onclick="() => AnnualBilling = true">Annual <span>Save 17%</span></button>
+        </div>
+    </div>
+
+    <div class="mk-pricing-grid">
+        <PricingCard Name="Starter"
+                     Description="For single-store workshops getting started."
+                     MonthlyPrice="£15"
+                     AnnualPrice="£12"
+                     Features="@StarterFeatures"
+                     AnnualBilling="@AnnualBilling"
+                     CtaHref="/signup"
+                     CtaText="Start free trial" />
+
+        <PricingCard Name="Standard"
+                     Description="For growing workshops running multiple mechanics."
+                     MonthlyPrice="£25"
+                     AnnualPrice="£21"
+                     Features="@StandardFeatures"
+                     AnnualBilling="@AnnualBilling"
+                     IsPopular="true"
+                     CtaHref="/signup"
+                     CtaText="Start free trial" />
+
+        <PricingCard Name="Premium"
+                     Description="For high-volume workshops needing scale."
+                     MonthlyPrice="£49"
+                     AnnualPrice="£41"
+                     Features="@PremiumFeatures"
+                     AnnualBilling="@AnnualBilling"
+                     CtaHref="/signup"
+                     CtaText="Start free trial" />
+
+        <PricingCard Name="Enterprise"
+                     Description="For large operations across many locations."
+                     MonthlyPrice="£99"
+                     AnnualPrice="£82"
+                     Features="@EnterpriseFeatures"
+                     AnnualBilling="@AnnualBilling"
+                     ExtraCtaTopSpace="true"
+                     CtaHref="/signup"
+                     CtaText="Start free trial" />
+    </div>
+</Section>
+
+<Section Soft="true">
+    <div class="mk-center-head">
+        <h2>Compare plans</h2>
+    </div>
+    <div class="mk-compare-wrap">
+        <table class="mk-compare-table">
+            <thead>
+                <tr><th>Feature</th><th>Starter</th><th>Standard</th><th>Premium</th><th>Enterprise</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var row in ComparisonRows)
+                {
+                    <tr>
+                        <td>@row.Name</td>
+                        <td>@RenderValue(row.Starter)</td>
+                        <td>@RenderValue(row.Standard)</td>
+                        <td>@RenderValue(row.Premium)</td>
+                        <td>@RenderValue(row.Enterprise)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</Section>
+
+<Section Id="faq">
+    <div class="mk-center-head">
+        <h2>Frequently asked questions</h2>
+    </div>
+    <div class="mk-faq-wrap">
+        <FAQAccordion Items="@FaqItems" />
+    </div>
+</Section>
+
+<Section Soft="true">
+    <div class="mk-final-cta">
+        <h2>Start your free trial today</h2>
+        <p>No credit card required. Set up in under a minute.</p>
+        <a class="mk-btn mk-btn-primary" href="/signup">Get started free</a>
+    </div>
+</Section>
+
+@code {
+    private bool AnnualBilling;
+
+    private static readonly IReadOnlyList<string> StarterFeatures =
+    [
+        "1 store",
+        "1 mechanic calendar",
+        "1 user",
+        "Service booking form",
+        "Dashboard"
+    ];
+
+    private static readonly IReadOnlyList<string> StandardFeatures =
+    [
+        "Up to 3 stores",
+        "6 mechanic calendars",
+        "5 users",
+        "Bike assessment assistant",
+        "Timetastic integration",
+        "1-click service setup"
+    ];
+
+    private static readonly IReadOnlyList<string> PremiumFeatures =
+    [
+        "Up to 10 stores",
+        "30 mechanic calendars",
+        "15 users",
+        "Bike assessment assistant",
+        "Timetastic integration",
+        "1-click service setup"
+    ];
+
+    private static readonly IReadOnlyList<string> EnterpriseFeatures =
+    [
+        "Up to 25 stores",
+        "50 mechanic calendars",
+        "30 users",
+        "Bike assessment assistant",
+        "Timetastic integration",
+        "1-click service setup",
+        "EPOS integration (Abacus)"
+    ];
+
+    private static readonly IReadOnlyList<ComparisonRow> ComparisonRows =
+    [
+        new("14-day free trial", true, true, true, true),
+        new("Stores", "1", "Up to 3", "Up to 10", "Up to 25"),
+        new("Mechanic calendars", "1", "6", "30", "50"),
+        new("Setup guide", true, true, true, true),
+        new("Unlimited service types", true, true, true, true),
+        new("Unlimited service packages", true, true, true, true),
+        new("1-click service setup", false, true, true, true),
+        new("Users", "1", "5", "15", "30"),
+        new("Bike assessment assistant", false, true, true, true),
+        new("Service booking form", true, true, true, true),
+        new("Mechanic holiday blocking", true, true, true, true),
+        new("Timetastic integration", false, true, true, true),
+        new("Customer database", true, true, true, true),
+        new("Customer bike management", true, true, true, true),
+        new("Dashboard", true, true, true, true),
+        new("EPOS integration (Abacus)", false, false, false, true)
+    ];
+
+    private static readonly IReadOnlyList<FAQAccordion.FaqItem> FaqItems =
+    [
+        new("Is there a free trial?", "Yes. Every plan includes a 14-day free trial with no card required."),
+        new("Can I switch plans later?", "Yes. Upgrade or downgrade at any time as your workshop changes."),
+        new("What happens when my trial ends?", "Choose a paid plan to continue. Your data stays intact."),
+        new("Do you offer discounts for annual billing?", "Yes. Annual billing provides roughly 17% savings."),
+        new("Can I add more stores later?", "Yes. Move to a higher plan whenever you need additional locations."),
+        new("Is my data secure?", "We use secure hosting, role controls, and encrypted transport."),
+        new("Do you integrate with other tools?", "Timetastic integration is available and more integrations are planned."),
+        new("Can I cancel anytime?", "Yes. There are no lock-in contracts.")
+    ];
+
+    private static MarkupString RenderValue(object value) => value switch
+    {
+        bool boolValue => boolValue
+            ? new MarkupString("<span class=\"mk-compare-tick\" aria-label=\"Included\">&#10003;</span>")
+            : new MarkupString("<span class=\"mk-compare-dash\" aria-label=\"Not included\">&ndash;</span>"),
+        _ => new MarkupString(WebUtility.HtmlEncode(value.ToString() ?? string.Empty))
+    };
+
+    private sealed record ComparisonRow(string Name, object Starter, object Standard, object Premium, object Enterprise);
+}

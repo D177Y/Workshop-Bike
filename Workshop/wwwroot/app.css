@@ -20,9 +20,29 @@ h1:focus {
     color: white;
 }
 
-    .blazor-error-boundary::after {
-        content: "An error has occurred."
-    }
+.blazor-error-boundary::after {
+    content: "An error has occurred."
+}
+
+#blazor-error-ui {
+    background: #fff5f5;
+    border-top: 1px solid #f1aeb5;
+    color: #842029;
+    display: none;
+    left: 0;
+    padding: 12px 16px;
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    float: right;
+    font-weight: 700;
+    padding-left: 12px;
+}
 
 .darker-border-checkbox.form-check-input {
     border-color: #929292;
@@ -35,4 +55,11 @@ h1:focus {
 
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
+}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }

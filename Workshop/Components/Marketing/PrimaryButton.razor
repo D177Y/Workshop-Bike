@@ -1,0 +1,10 @@
+@namespace Workshop.Components.Marketing
+@using Microsoft.AspNetCore.Components
+
+<a href="@Href" class="mk-btn mk-btn-primary @Class">@Text</a>
+
+@code {
+    [Parameter] public string Href { get; set; } = "/signup";
+    [Parameter] public string Text { get; set; } = "Start free trial";
+    [Parameter] public string? Class { get; set; }
+}

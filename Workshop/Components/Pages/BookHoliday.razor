@@ -1,0 +1,863 @@
+@page "/booking/book-holiday"
+@page "/booking/time-off"
+@attribute [Authorize]
+@using Workshop.Models
+@using Workshop.Services
+@inject WorkshopData Data
+@inject UserAccessService UserAccess
+@inject IJSRuntime JS
+
+<style>
+    .holiday-page {
+        display: grid;
+        gap: 14px;
+    }
+
+    .holiday-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        background: #fff;
+        padding: 14px;
+    }
+
+    .holiday-title {
+        margin: 0;
+    }
+
+    .holiday-status {
+        padding: 10px;
+        border-radius: 8px;
+        font-size: 13px;
+    }
+
+    .holiday-status.error {
+        background: #fff1f2;
+        border: 1px solid #fda4af;
+        color: #9f1239;
+    }
+
+    .holiday-status.info {
+        background: #eff6ff;
+        border: 1px solid #93c5fd;
+        color: #1e3a8a;
+    }
+
+    .holiday-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+    }
+
+    .holiday-table th,
+    .holiday-table td {
+        border-top: 1px solid #edf2f7;
+        text-align: left;
+        padding: 8px 6px;
+        vertical-align: top;
+        font-size: 13px;
+    }
+
+    .holiday-table th {
+        border-top: none;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: #475569;
+        background: #f8fafc;
+    }
+
+    .holiday-btn {
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        border-radius: 999px;
+        padding: 5px 11px;
+        font-size: 12px;
+        cursor: pointer;
+    }
+
+    .holiday-btn.primary {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+    }
+
+    .holiday-btn.danger {
+        border-color: #fecaca;
+        color: #991b1b;
+    }
+
+    .holiday-actions {
+        display: inline-flex;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .holiday-header-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 8px;
+    }
+
+    .holiday-store-title {
+        margin: 0 0 10px 0;
+        font-size: 17px;
+    }
+
+    .holiday-mech-toggle {
+        border: none;
+        background: transparent;
+        color: #1d4ed8;
+        cursor: pointer;
+        padding: 0;
+        text-align: left;
+        font-weight: 600;
+    }
+
+    .holiday-inline-list {
+        margin: 8px 0 0 0;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .holiday-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, .45);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1200;
+        padding: 16px;
+    }
+
+    .holiday-modal {
+        width: min(1050px, 96vw);
+        max-height: 88vh;
+        overflow: auto;
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid #dbeafe;
+        box-shadow: 0 20px 45px rgba(15, 23, 42, .25);
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+    }
+
+    .holiday-form-grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        align-items: end;
+    }
+
+    .holiday-field {
+        display: grid;
+        gap: 4px;
+    }
+
+    .holiday-field label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #334155;
+    }
+
+    .holiday-field input,
+    .holiday-field select {
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 7px 8px;
+        font-size: 13px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    @@media (max-width: 1000px) {
+        .holiday-form-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+
+    @@media (max-width: 700px) {
+        .holiday-form-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="holiday-page">
+    <h3 class="holiday-title">Book Holiday</h3>
+
+    <div class="holiday-header-actions">
+        <button type="button" class="holiday-btn" @onclick="RefreshTimetasticEntriesAsync" disabled="@IsRefreshingTimetastic">
+            @(IsRefreshingTimetastic ? "Refreshing..." : "Refresh Timetastic entries")
+        </button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(StatusMessage))
+    {
+        <div class="holiday-status @(StatusIsError ? "error" : "info")">@StatusMessage</div>
+    }
+
+    @if (IsLoading)
+    {
+        <section class="holiday-card">
+            <strong>Loading mechanics...</strong>
+            <div>Checking tenant, store and mechanic access.</div>
+        </section>
+    }
+    else if (!string.IsNullOrWhiteSpace(LoadError))
+    {
+        <section class="holiday-card">
+            <strong>Could not load holiday bookings</strong>
+            <div>@LoadError</div>
+            <div style="margin-top:10px;">
+                <button class="holiday-btn primary" type="button" @onclick="LoadAsync">Retry</button>
+            </div>
+        </section>
+    }
+    else if (StoreGroups.Count == 0)
+    {
+        <section class="holiday-card">
+            <strong>No accessible stores</strong>
+            <div>There are no stores/mechanics available for this account.</div>
+        </section>
+    }
+    else
+    {
+        @foreach (var group in StoreGroups)
+        {
+            <section class="holiday-card">
+                <h4 class="holiday-store-title">@group.Store.Name</h4>
+                @if (group.Mechanics.Count == 0)
+                {
+                    <div>No mechanics in this store.</div>
+                }
+                else
+                {
+                    <table class="holiday-table">
+                        <thead>
+                            <tr>
+                                <th>Mechanic</th>
+                                <th>Booked holidays</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var mechanic in group.Mechanics)
+                            {
+                                var bookings = GetMechanicEntries(mechanic.Id);
+                                var expanded = ExpandedMechanicIds.Contains(mechanic.Id);
+                                <tr>
+                                    <td>
+                                        <button type="button"
+                                                class="holiday-mech-toggle"
+                                                @onclick="() => ToggleMechanicExpanded(mechanic.Id)">
+                                            @(expanded ? "[-]" : "[+]") @mechanic.Name
+                                        </button>
+                                    </td>
+                                    <td>@bookings.Count</td>
+                                    <td>
+                                        <div class="holiday-actions">
+                                            <button type="button" class="holiday-btn primary" @onclick="() => OpenBookModal(mechanic)">Book</button>
+                                            <button type="button"
+                                                    class="holiday-btn"
+                                                    disabled="@(bookings.Count == 0)"
+                                                    @onclick="() => OpenEditModal(mechanic)">
+                                                Edit
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                @if (expanded)
+                                {
+                                    <tr>
+                                        <td colspan="3">
+                                            @if (bookings.Count == 0)
+                                            {
+                                                <div>No holidays booked for this mechanic.</div>
+                                            }
+                                            else
+                                            {
+                                                <div class="holiday-inline-list">
+                                                    <table class="holiday-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Reason</th>
+                                                                <th>Start</th>
+                                                                <th>End</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @foreach (var entry in bookings)
+                                                            {
+                                                                <tr>
+                                                                    <td>@entry.Type</td>
+                                                                    <td>@FormatDateTime(entry.Start)</td>
+                                                                    <td>@FormatDateTime(entry.End)</td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                }
+            </section>
+        }
+    }
+</div>
+
+@if (ShowModal && SelectedMechanic is not null)
+{
+    <div class="holiday-modal-backdrop" @onclick="CloseModal">
+        <div class="holiday-modal" @onclick:stopPropagation>
+            <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
+                <h4 style="margin:0;">Book Holiday - @SelectedMechanic.Name</h4>
+                <button type="button" class="holiday-btn" @onclick="CloseModal">Close</button>
+            </div>
+
+            <table class="holiday-table">
+                <thead>
+                    <tr>
+                        <th>Select</th>
+                        <th>Reason</th>
+                        <th>Start date time</th>
+                        <th>End date time</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (ModalEntries.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="5">No holiday entries yet.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var entry in ModalEntries)
+                        {
+                            <tr>
+                                <td>
+                                    <input type="radio"
+                                           name="selectedHoliday"
+                                           checked="@(SelectedEntryId == entry.Id)"
+                                           @onchange="() => SelectedEntryId = entry.Id" />
+                                </td>
+                                <td>@entry.Type</td>
+                                <td>@FormatDateTime(entry.Start)</td>
+                                <td>@FormatDateTime(entry.End)</td>
+                                <td>
+                                    <div class="holiday-actions">
+                                        <button type="button" class="holiday-btn" @onclick="() => StartEditEntry(entry)">Edit</button>
+                                        <button type="button" class="holiday-btn danger" @onclick="() => DeleteEntryAsync(entry.Id)">Delete</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+
+            <div class="holiday-form-grid">
+                <div class="holiday-field">
+                    <label>Reason</label>
+                    <select @bind="EditReason">
+                        @foreach (var reason in Reasons)
+                        {
+                            <option value="@reason">@reason</option>
+                        }
+                    </select>
+                </div>
+                <div class="holiday-field">
+                    <label>Start date</label>
+                    <input type="date"
+                           value="@EditStartDateInput"
+                           @onchange="OnEditStartDateChanged" />
+                </div>
+                <div class="holiday-field">
+                    <label>Start time</label>
+                    <input type="time"
+                           value="@EditStartTimeInput"
+                           min="@StartTimeMinInput"
+                           max="@StartTimeMaxInput"
+                           @onchange="OnEditStartTimeChanged" />
+                </div>
+                <div class="holiday-field">
+                    <label>End date</label>
+                    <input type="date"
+                           value="@EditEndDateInput"
+                           @onchange="OnEditEndDateChanged" />
+                </div>
+                <div class="holiday-field">
+                    <label>End time</label>
+                    <input type="time"
+                           value="@EditEndTimeInput"
+                           min="@EndTimeMinInput"
+                           max="@EndTimeMaxInput"
+                           @onchange="OnEditEndTimeChanged" />
+                </div>
+                <div class="holiday-field">
+                    <label>&nbsp;</label>
+                    <div class="holiday-actions">
+                        <button type="button" class="holiday-btn primary" @onclick="SaveEntryAsync">
+                            @(EditingEntryId.HasValue ? "Update" : "Add")
+                        </button>
+                        @if (EditingEntryId.HasValue)
+                        {
+                            <button type="button" class="holiday-btn" @onclick="ResetEditor">Cancel</button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly string[] Reasons =
+    {
+        "Holiday",
+        "Illness",
+        "Training",
+        "Shop floor",
+        "Other"
+    };
+
+    private static readonly TimeSpan LoadTimeout = TimeSpan.FromSeconds(10);
+
+    private bool IsLoading = true;
+    private bool IsRefreshingTimetastic;
+    private string LoadError = "";
+    private string StatusMessage = "";
+    private bool StatusIsError;
+
+    private UserAccessScope _access = UserAccessScope.AllowAll();
+    private List<Store> AccessibleStores { get; set; } = new();
+    private List<Mechanic> AccessibleMechanics { get; set; } = new();
+    private List<MechanicTimeOff> AccessibleEntries { get; set; } = new();
+    private HashSet<int> ExpandedMechanicIds { get; } = new();
+
+    private bool ShowModal;
+    private Mechanic? SelectedMechanic;
+    private int? SelectedEntryId;
+    private int? EditingEntryId;
+    private string EditReason = Reasons[0];
+    private string EditStartDateInput = "";
+    private string EditStartTimeInput = "";
+    private string EditEndDateInput = "";
+    private string EditEndTimeInput = "";
+
+    private List<StoreGroup> StoreGroups => AccessibleStores
+        .Select(s => new StoreGroup(
+            s,
+            AccessibleMechanics.Where(m => m.StoreId == s.Id).OrderBy(m => m.Name).ToList()))
+        .ToList();
+
+    private List<MechanicTimeOff> ModalEntries => SelectedMechanic is null
+        ? new List<MechanicTimeOff>()
+        : AccessibleEntries
+            .Where(x => x.MechanicId == SelectedMechanic.Id)
+            .OrderBy(x => x.Start)
+            .ToList();
+
+    protected override async Task OnInitializedAsync()
+        => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        IsLoading = true;
+        LoadError = "";
+        StatusMessage = "";
+        StatusIsError = false;
+
+        try
+        {
+            var accessTask = UserAccess.GetCurrentAsync();
+            if (await Task.WhenAny(accessTask, Task.Delay(LoadTimeout)) == accessTask)
+            {
+                _access = await accessTask;
+            }
+            else
+            {
+                _access = UserAccessScope.AllowAll();
+                StatusMessage = "Access lookup timed out. Fallback access is in use.";
+                StatusIsError = true;
+            }
+
+            var dataTask = Data.EnsureInitializedAsync();
+            if (await Task.WhenAny(dataTask, Task.Delay(LoadTimeout)) != dataTask)
+            {
+                LoadError = "Timed out while loading booking data.";
+                return;
+            }
+
+            await dataTask;
+            await Data.ReloadAsync();
+            RefreshAccessibleData();
+        }
+        catch (Exception ex)
+        {
+            LoadError = ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void RefreshAccessibleData()
+    {
+        AccessibleStores = Data.Stores
+            .Where(s => _access.CanAccessStore(s.Id))
+            .OrderBy(s => s.Name)
+            .ToList();
+
+        AccessibleMechanics = Data.Mechanics
+            .Where(m => _access.CanAccessMechanic(m))
+            .OrderBy(m => m.Name)
+            .ToList();
+
+        var allowedMechanicIds = AccessibleMechanics.Select(m => m.Id).ToHashSet();
+        AccessibleEntries = Data.MechanicTimeOffEntries
+            .Where(t => _access.CanAccessStore(t.StoreId))
+            .Where(t => allowedMechanicIds.Contains(t.MechanicId))
+            .ToList();
+        AccessibleEntries = TimeOffOrderingService.OrderBySoonest(AccessibleEntries);
+    }
+
+    private List<MechanicTimeOff> GetMechanicEntries(int mechanicId)
+        => TimeOffOrderingService.OrderBySoonest(AccessibleEntries.Where(x => x.MechanicId == mechanicId));
+
+    private async Task RefreshTimetasticEntriesAsync()
+    {
+        if (IsRefreshingTimetastic)
+            return;
+
+        IsRefreshingTimetastic = true;
+        try
+        {
+            await Data.ReloadAsync();
+            RefreshAccessibleData();
+            StatusMessage = "Timetastic entries refreshed.";
+            StatusIsError = false;
+        }
+        catch (Exception ex)
+        {
+            SetError($"Could not refresh entries: {ex.Message}");
+        }
+        finally
+        {
+            IsRefreshingTimetastic = false;
+        }
+    }
+
+    private void ToggleMechanicExpanded(int mechanicId)
+    {
+        if (!ExpandedMechanicIds.Add(mechanicId))
+            ExpandedMechanicIds.Remove(mechanicId);
+    }
+
+    private void OpenBookModal(Mechanic mechanic)
+    {
+        SelectedMechanic = mechanic;
+        ShowModal = true;
+        ResetEditor();
+    }
+
+    private void OpenEditModal(Mechanic mechanic)
+    {
+        SelectedMechanic = mechanic;
+        ShowModal = true;
+        var first = ModalEntries.FirstOrDefault();
+        if (first is not null)
+            StartEditEntry(first);
+        else
+            ResetEditor();
+    }
+
+    private void CloseModal()
+    {
+        ShowModal = false;
+        SelectedMechanic = null;
+        SelectedEntryId = null;
+        EditingEntryId = null;
+    }
+
+    private void StartEditEntry(MechanicTimeOff entry)
+    {
+        EditingEntryId = entry.Id;
+        SelectedEntryId = entry.Id;
+        EditReason = string.IsNullOrWhiteSpace(entry.Type) ? Reasons[0] : entry.Type;
+        EditStartDateInput = ToDateInput(entry.Start);
+        EditStartTimeInput = ToTimeInput(entry.Start);
+        EditEndDateInput = ToDateInput(entry.End);
+        EditEndTimeInput = ToTimeInput(entry.End);
+    }
+
+    private void ResetEditor()
+    {
+        EditingEntryId = null;
+        EditReason = Reasons[0];
+        var defaultDate = DateTime.Today;
+        var store = ResolveSelectedStore();
+        if (store is not null)
+        {
+            if (!TryGetStoreHoursForDate(store, defaultDate, out var openFrom, out var openTo))
+            {
+                defaultDate = FindNextOpenDay(store, defaultDate);
+                if (!TryGetStoreHoursForDate(store, defaultDate, out openFrom, out openTo))
+                {
+                    openFrom = store.OpenFrom;
+                    openTo = store.OpenTo;
+                }
+            }
+
+            EditStartDateInput = ToDateInput(defaultDate);
+            EditEndDateInput = ToDateInput(defaultDate);
+            EditStartTimeInput = ToTimeInput(defaultDate.Add(openFrom));
+            EditEndTimeInput = ToTimeInput(defaultDate.Add(openTo));
+            return;
+        }
+
+        var fallbackNow = DateTime.Now;
+        EditStartDateInput = ToDateInput(fallbackNow);
+        EditEndDateInput = ToDateInput(fallbackNow);
+        EditStartTimeInput = ToTimeInput(fallbackNow);
+        EditEndTimeInput = ToTimeInput(fallbackNow.AddHours(1));
+    }
+
+    private string StartTimeMinInput => ResolveTimeWindow(EditStartDateInput).min;
+    private string StartTimeMaxInput => ResolveTimeWindow(EditStartDateInput).max;
+    private string EndTimeMinInput => ResolveTimeWindow(EditEndDateInput).min;
+    private string EndTimeMaxInput => ResolveTimeWindow(EditEndDateInput).max;
+
+    private void OnEditStartDateChanged(ChangeEventArgs e)
+    {
+        EditStartDateInput = e?.Value?.ToString() ?? "";
+        var store = ResolveSelectedStore();
+        if (store is not null && DateTime.TryParse(EditStartDateInput, out var selectedDate))
+        {
+            if (!TryGetStoreHoursForDate(store, selectedDate, out _, out _))
+            {
+                var nextOpen = FindNextOpenDay(store, selectedDate);
+                EditStartDateInput = ToDateInput(nextOpen);
+                StatusMessage = $"Store is closed on {selectedDate:dd MMM yyyy}. Moved to next open day.";
+                StatusIsError = false;
+            }
+        }
+
+        var (min, max) = ResolveTimeWindow(EditStartDateInput);
+        EditStartTimeInput = min;
+
+        if (string.IsNullOrWhiteSpace(EditEndDateInput)
+            || string.CompareOrdinal(EditEndDateInput, EditStartDateInput) < 0)
+        {
+            EditEndDateInput = EditStartDateInput;
+            EditEndTimeInput = max;
+        }
+    }
+
+    private void OnEditEndDateChanged(ChangeEventArgs e)
+    {
+        EditEndDateInput = e?.Value?.ToString() ?? "";
+        var store = ResolveSelectedStore();
+        if (store is not null && DateTime.TryParse(EditEndDateInput, out var selectedDate))
+        {
+            if (!TryGetStoreHoursForDate(store, selectedDate, out _, out _))
+            {
+                var nextOpen = FindNextOpenDay(store, selectedDate);
+                EditEndDateInput = ToDateInput(nextOpen);
+                StatusMessage = $"Store is closed on {selectedDate:dd MMM yyyy}. Moved to next open day.";
+                StatusIsError = false;
+            }
+        }
+
+        var (_, max) = ResolveTimeWindow(EditEndDateInput);
+        EditEndTimeInput = max;
+    }
+
+    private void OnEditStartTimeChanged(ChangeEventArgs e)
+        => EditStartTimeInput = e?.Value?.ToString() ?? "";
+
+    private void OnEditEndTimeChanged(ChangeEventArgs e)
+        => EditEndTimeInput = e?.Value?.ToString() ?? "";
+
+    private async Task SaveEntryAsync()
+    {
+        if (SelectedMechanic is null)
+            return;
+
+        if (!TryComposeDateTime(EditStartDateInput, EditStartTimeInput, out var start))
+        {
+            SetError("Start date/time is invalid.");
+            return;
+        }
+
+        if (!TryComposeDateTime(EditEndDateInput, EditEndTimeInput, out var end))
+        {
+            SetError("End date/time is invalid.");
+            return;
+        }
+
+        if (end <= start)
+        {
+            SetError("End date/time must be after start date/time.");
+            return;
+        }
+
+        var store = ResolveSelectedStore();
+        if (store is null)
+        {
+            SetError("Could not resolve the store for this mechanic.");
+            return;
+        }
+
+        if (!ValidateWithinStoreHours(store, start, out var startHoursMessage))
+        {
+            SetError(startHoursMessage);
+            return;
+        }
+
+        if (!ValidateWithinStoreHours(store, end, out var endHoursMessage))
+        {
+            SetError(endHoursMessage);
+            return;
+        }
+
+        var entry = new MechanicTimeOff
+        {
+            Id = EditingEntryId ?? 0,
+            StoreId = SelectedMechanic.StoreId,
+            MechanicId = SelectedMechanic.Id,
+            Type = (EditReason ?? "").Trim(),
+            Start = start,
+            End = end,
+            IsAllDay = false,
+            Source = "Manual"
+        };
+
+        await Data.SaveMechanicTimeOffAsync(entry);
+        RefreshAccessibleData();
+
+        StatusMessage = EditingEntryId.HasValue ? "Holiday updated." : "Holiday added.";
+        StatusIsError = false;
+
+        ResetEditor();
+        StateHasChanged();
+    }
+
+    private async Task DeleteEntryAsync(int id)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", "Delete this holiday entry?");
+        if (!confirmed)
+            return;
+
+        await Data.DeleteMechanicTimeOffAsync(id);
+        RefreshAccessibleData();
+
+        if (EditingEntryId == id)
+            ResetEditor();
+
+        if (SelectedEntryId == id)
+            SelectedEntryId = null;
+
+        StatusMessage = "Holiday deleted.";
+        StatusIsError = false;
+    }
+
+    private void SetError(string message)
+    {
+        StatusMessage = message;
+        StatusIsError = true;
+    }
+
+    private static string FormatDateTime(DateTime value)
+        => value.ToString("dd MMM yyyy HH:mm");
+
+    private Store? ResolveSelectedStore()
+    {
+        if (SelectedMechanic is null)
+            return null;
+        return AccessibleStores.FirstOrDefault(s => s.Id == SelectedMechanic.StoreId);
+    }
+
+    private static bool TryGetStoreHoursForDate(Store store, DateTime date, out TimeSpan openFrom, out TimeSpan openTo)
+        => store.TryGetHours(date, out openFrom, out openTo);
+
+    private static DateTime FindNextOpenDay(Store store, DateTime startDate)
+    {
+        for (var i = 0; i < 14; i++)
+        {
+            var candidate = startDate.Date.AddDays(i);
+            if (TryGetStoreHoursForDate(store, candidate, out _, out _))
+                return candidate;
+        }
+
+        return startDate.Date;
+    }
+
+    private (string min, string max) ResolveTimeWindow(string dateInput)
+    {
+        var fallback = ("00:00", "23:59");
+        if (!DateTime.TryParse(dateInput, out var date))
+            return fallback;
+
+        var store = ResolveSelectedStore();
+        if (store is null)
+            return fallback;
+
+        if (!TryGetStoreHoursForDate(store, date, out var openFrom, out var openTo))
+            return fallback;
+
+        var min = $"{(int)openFrom.TotalHours:00}:{openFrom.Minutes:00}";
+        var max = $"{(int)openTo.TotalHours:00}:{openTo.Minutes:00}";
+        return (min, max);
+    }
+
+    private static bool TryComposeDateTime(string dateInput, string timeInput, out DateTime value)
+    {
+        value = default;
+        if (!DateTime.TryParse(dateInput, out var date))
+            return false;
+        if (!TimeSpan.TryParse(timeInput, out var time))
+            return false;
+
+        value = date.Date.Add(time);
+        return true;
+    }
+
+    private static bool ValidateWithinStoreHours(Store store, DateTime value, out string message)
+    {
+        if (!TryGetStoreHoursForDate(store, value.Date, out var openFrom, out var openTo))
+        {
+            message = $"Store is closed on {value:dd MMM yyyy}.";
+            return false;
+        }
+
+        var time = value.TimeOfDay;
+        if (time < openFrom || time > openTo)
+        {
+            message = $"Time must be within store hours on {value:dd MMM yyyy} ({openFrom:hh\\:mm} - {openTo:hh\\:mm}).";
+            return false;
+        }
+
+        message = "";
+        return true;
+    }
+
+    private static string ToDateInput(DateTime value)
+        => value.ToString("yyyy-MM-dd");
+
+    private static string ToTimeInput(DateTime value)
+        => value.ToString("HH:mm");
+
+    private sealed record StoreGroup(Store Store, List<Mechanic> Mechanics);
+}

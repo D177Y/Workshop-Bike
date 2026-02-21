@@ -1,0 +1,674 @@
+@rendermode InteractiveServer
+@page "/manage-users"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using Syncfusion.Blazor.Grids
+@using Workshop.Data
+@using Workshop.Models
+@inject WorkshopData Data
+@inject TenantContext TenantContext
+@inject UserManager<AppUser> UserManager
+@inject RoleManager<AppRole> RoleManager
+@inject IDbContextFactory<WorkshopDbContext> DbFactory
+@inject IJSRuntime JS
+
+<h3>Manage Users</h3>
+
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="@(IsError ? "error-message" : "success-message")">@Message</div>
+}
+
+@if (ShowForm)
+{
+    <div class="add-user-section">
+        <h4>@(_model.IsEdit ? "Edit User" : "Add New User")</h4>
+        <EditForm Model="_model" OnValidSubmit="SaveUserAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="form-section">
+                <label>Full name</label>
+                <InputText class="form-input" @bind-Value="_model.FullName" />
+            </div>
+            <div class="form-section">
+                <label>Email</label>
+                <InputText class="form-input" type="email" @bind-Value="_model.Email" />
+            </div>
+            <div class="form-section">
+                <label>Phone</label>
+                <InputText class="form-input" @bind-Value="_model.Phone" />
+            </div>
+            <div class="form-section">
+                <label>Role</label>
+                <InputSelect class="form-input" @bind-Value="_model.Role">
+                    <option value="Admin">Admin</option>
+                    <option value="Manager">Manager</option>
+                    <option value="User">User</option>
+                </InputSelect>
+            </div>
+
+            @if (!_model.IsEdit)
+            {
+                <div class="form-section">
+                    <label>Temporary password</label>
+                    <InputText class="form-input" type="password" @bind-Value="_model.Password" />
+                </div>
+            }
+
+            <div class="form-section">
+                <label>Store access</label>
+                <div class="store-access-list">
+                    @foreach (var store in Stores.OrderBy(s => s.Name))
+                    {
+                        var isChecked = _model.StoreIds.Contains(store.Id);
+                        <label>
+                            <input type="checkbox" checked="@isChecked" @onchange="(e) => ToggleStore(store.Id, e)" />
+                            @store.Name
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <div class="form-section">
+                <label>Mechanic access</label>
+                @if (_model.StoreIds.Count == 0)
+                {
+                    <div class="empty-access-hint">Select at least one store first.</div>
+                }
+                else
+                {
+                    @foreach (var group in MechanicsBySelectedStore)
+                    {
+                        <div class="mechanic-group">
+                            <div class="mechanic-group-title">@group.StoreName</div>
+                            <div class="mechanic-list">
+                                @if (group.Mechanics.Count == 0)
+                                {
+                                    <div class="empty-access-hint">No mechanics in this store.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var mech in group.Mechanics)
+                                    {
+                                        var isChecked = _model.MechanicIds.Contains(mech.Id);
+                                        <label>
+                                            <input type="checkbox" checked="@isChecked" @onchange="(e) => ToggleMechanic(mech.Id, e)" />
+                                            @mech.Name
+                                        </label>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div>
+                <button class="btn btn-success" type="submit">@(_model.IsEdit ? "Update User" : "Add User")</button>
+                <button class="btn btn-secondary" type="button" @onclick="CancelEdit">Cancel</button>
+            </div>
+        </EditForm>
+    </div>
+}
+else
+{
+    <div style="margin-bottom: 20px;">
+        <button class="btn btn-primary" @onclick="ShowAddForm">+ Add New User</button>
+    </div>
+}
+
+<h4>Existing Users (@Users.Count)</h4>
+
+<SfGrid DataSource="Users.OrderBy(u => u.FullName).ToList()" AllowPaging="true" Width="100%">
+    <GridPageSettings PageSize="10"></GridPageSettings>
+    <GridColumns>
+        <GridColumn HeaderText="Name" Width="200">
+            <Template>
+                @{
+                    var user = (AppUser)context;
+                }
+                @(string.IsNullOrWhiteSpace(user.FullName) ? "-" : user.FullName)
+            </Template>
+        </GridColumn>
+        <GridColumn HeaderText="Email" Width="220">
+            <Template>
+                @{
+                    var user = (AppUser)context;
+                }
+                @user.Email
+            </Template>
+        </GridColumn>
+        <GridColumn HeaderText="Role" Width="140">
+            <Template>
+                @{
+                    var user = (AppUser)context;
+                }
+                @(UserRoles.TryGetValue(user.Id, out var role) ? role : "-")
+            </Template>
+        </GridColumn>
+        <GridColumn HeaderText="Stores" Width="260">
+            <Template>
+                @{
+                    var user = (AppUser)context;
+                }
+                @GetStoreNames(user.Id)
+            </Template>
+        </GridColumn>
+        <GridColumn HeaderText="Mechanics" Width="340">
+            <Template>
+                @{
+                    var user = (AppUser)context;
+                }
+                @GetMechanicNames(user.Id)
+            </Template>
+        </GridColumn>
+        <GridColumn HeaderText="Actions" Width="180" TextAlign="TextAlign.Center">
+            <Template>
+                @{
+                    var user = (AppUser)context;
+                }
+                <button class="btn btn-primary grid-btn" @onclick="() => EditUser(user.Id)">Edit</button>
+                <button class="btn btn-danger grid-btn" @onclick="() => DeleteUser(user.Id)">Delete</button>
+            </Template>
+        </GridColumn>
+    </GridColumns>
+</SfGrid>
+
+<style>
+    .btn {
+        padding: 8px 16px;
+        margin-right: 8px;
+        border: none;
+        border-radius: 999px;
+        cursor: pointer;
+    }
+
+    .btn-primary {
+        background: #0d6efd;
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #0b5ed7;
+    }
+
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-secondary:hover {
+        background: #545b62;
+    }
+
+    .btn-success {
+        background: #0d6efd;
+        color: white;
+    }
+
+    .btn-success:hover {
+        background: #0b5ed7;
+    }
+
+    .btn-danger {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background: #5a6268;
+    }
+
+    .error-message {
+        color: #dc3545;
+        margin-top: 10px;
+        margin-bottom: 14px;
+        padding: 10px;
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 4px;
+    }
+
+    .success-message {
+        color: #155724;
+        margin-top: 10px;
+        margin-bottom: 14px;
+        padding: 10px;
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 4px;
+    }
+
+    .add-user-section {
+        border: 2px dashed #0066cc;
+        padding: 20px;
+        margin-bottom: 30px;
+        border-radius: 6px;
+        background: #f0f8ff;
+    }
+
+    .form-section {
+        margin-bottom: 15px;
+    }
+
+    .form-section label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 5px;
+    }
+
+    .form-input {
+        width: 320px;
+        max-width: 100%;
+        padding: 5px;
+        box-sizing: border-box;
+    }
+
+    .mechanic-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 8px;
+        font-size: 13px;
+        background: #fff;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        padding: 10px;
+    }
+
+    .store-access-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 8px;
+        font-size: 13px;
+        background: #fff;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        padding: 10px;
+    }
+
+    .mechanic-group {
+        margin-bottom: 10px;
+    }
+
+    .mechanic-group:last-child {
+        margin-bottom: 0;
+    }
+
+    .mechanic-group-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: #334155;
+        margin-bottom: 6px;
+    }
+
+    .empty-access-hint {
+        font-size: 12px;
+        color: #6b7280;
+    }
+
+    .grid-btn {
+        width: 64px;
+        height: 24px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+</style>
+
+@code {
+    private string _message = "";
+    private bool _scrollToTopRequested;
+    private List<AppUser> Users = new();
+    private Dictionary<int, string> UserRoles = new();
+    private Dictionary<int, List<int>> UserStoreAccess = new();
+    private Dictionary<int, List<int>> UserMechanicAccess = new();
+    private List<Store> Stores = new();
+    private List<Mechanic> Mechanics = new();
+    private bool ShowForm;
+    private string Message
+    {
+        get => _message;
+        set
+        {
+            if (_message == value) return;
+            _message = value;
+            _scrollToTopRequested = !string.IsNullOrWhiteSpace(value);
+        }
+    }
+    private bool IsError;
+    private readonly UserFormModel _model = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Data.EnsureInitializedAsync();
+        Stores = Data.Stores.OrderBy(s => s.Name).ToList();
+        Mechanics = Data.Mechanics.OrderBy(m => m.Name).ToList();
+        await LoadUsersAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_scrollToTopRequested)
+        {
+            _scrollToTopRequested = false;
+            await JS.InvokeVoidAsync("window.scrollTo", 0, 0);
+        }
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        var tenantId = TenantContext.TenantId;
+        Users = await UserManager.Users.Where(u => u.TenantId == tenantId).OrderBy(u => u.FullName).ToListAsync();
+        UserRoles.Clear();
+        UserStoreAccess.Clear();
+        UserMechanicAccess.Clear();
+
+        var userIds = Users.Select(u => u.Id).ToList();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var storeAccess = await db.UserStoreAccess
+            .Where(x => userIds.Contains(x.UserId))
+            .ToListAsync();
+        var access = await db.UserMechanicAccess
+            .Where(x => userIds.Contains(x.UserId))
+            .ToListAsync();
+
+        foreach (var user in Users)
+        {
+            var roles = await UserManager.GetRolesAsync(user);
+            UserRoles[user.Id] = roles.FirstOrDefault() ?? "User";
+            UserStoreAccess[user.Id] = storeAccess.Where(a => a.UserId == user.Id).Select(a => a.StoreId).ToList();
+            UserMechanicAccess[user.Id] = access.Where(a => a.UserId == user.Id).Select(a => a.MechanicId).ToList();
+        }
+    }
+
+    private void ShowAddForm()
+    {
+        _model.Reset();
+        _model.StoreIds = Stores.Select(s => s.Id).ToHashSet();
+        ShowForm = true;
+    }
+
+    private async Task SaveUserAsync()
+    {
+        Message = "";
+        IsError = false;
+
+        if (_model.StoreIds.Count == 0)
+        {
+            Message = "Select at least one store for this user.";
+            IsError = true;
+            return;
+        }
+
+        NormalizeModelAccess();
+
+        if (_model.IsEdit)
+        {
+            var user = await UserManager.FindByIdAsync(_model.UserId.ToString());
+            if (user is null)
+            {
+                Message = "User not found.";
+                IsError = true;
+                return;
+            }
+
+            user.FullName = _model.FullName.Trim();
+            user.Email = _model.Email.Trim();
+            user.UserName = _model.Email.Trim();
+            user.PhoneNumber = _model.Phone.Trim();
+
+            var update = await UserManager.UpdateAsync(user);
+            if (!update.Succeeded)
+            {
+                Message = string.Join(" ", update.Errors.Select(e => e.Description));
+                IsError = true;
+                return;
+            }
+
+            var currentRoles = await UserManager.GetRolesAsync(user);
+            if (!currentRoles.Contains(_model.Role))
+            {
+                await UserManager.RemoveFromRolesAsync(user, currentRoles);
+                await UserManager.AddToRoleAsync(user, _model.Role);
+            }
+
+            await SaveStoreAccessAsync(user.Id);
+            await SaveMechanicAccessAsync(user.Id);
+            Message = "User updated.";
+        }
+        else
+        {
+            var user = new AppUser
+            {
+                TenantId = TenantContext.TenantId,
+                FullName = _model.FullName.Trim(),
+                Email = _model.Email.Trim(),
+                UserName = _model.Email.Trim(),
+                PhoneNumber = _model.Phone.Trim()
+            };
+
+            var result = await UserManager.CreateAsync(user, _model.Password);
+            if (!result.Succeeded)
+            {
+                Message = string.Join(" ", result.Errors.Select(e => e.Description));
+                IsError = true;
+                return;
+            }
+
+            await UserManager.AddToRoleAsync(user, _model.Role);
+            await SaveStoreAccessAsync(user.Id);
+            await SaveMechanicAccessAsync(user.Id);
+            Message = "User added.";
+        }
+
+        ShowForm = false;
+        await LoadUsersAsync();
+    }
+
+    private async Task SaveStoreAccessAsync(int userId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.UserStoreAccess.Where(x => x.UserId == userId).ToListAsync();
+        db.UserStoreAccess.RemoveRange(existing);
+
+        var validStoreIds = Stores.Select(s => s.Id).ToHashSet();
+        foreach (var storeId in _model.StoreIds.Where(validStoreIds.Contains).Distinct())
+        {
+            db.UserStoreAccess.Add(new UserStoreAccess { UserId = userId, StoreId = storeId });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    private async Task SaveMechanicAccessAsync(int userId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.UserMechanicAccess.Where(x => x.UserId == userId).ToListAsync();
+        db.UserMechanicAccess.RemoveRange(existing);
+
+        var validMechanicIds = Mechanics
+            .Where(m => _model.StoreIds.Contains(m.StoreId))
+            .Select(m => m.Id)
+            .ToHashSet();
+
+        foreach (var mechId in _model.MechanicIds.Where(validMechanicIds.Contains).Distinct())
+        {
+            db.UserMechanicAccess.Add(new UserMechanicAccess { UserId = userId, MechanicId = mechId });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    private void CancelEdit()
+    {
+        ShowForm = false;
+    }
+
+    private async Task EditUser(int userId)
+    {
+        var user = await UserManager.FindByIdAsync(userId.ToString());
+        if (user is null) return;
+
+        _model.UserId = user.Id;
+        _model.IsEdit = true;
+        _model.FullName = user.FullName;
+        _model.Email = user.Email ?? "";
+        _model.Phone = user.PhoneNumber ?? "";
+        _model.Role = UserRoles.TryGetValue(user.Id, out var role) ? role : "User";
+        _model.StoreIds = UserStoreAccess.TryGetValue(user.Id, out var stores) && stores.Count > 0
+            ? stores.ToHashSet()
+            : Stores.Select(s => s.Id).ToHashSet();
+        _model.MechanicIds = UserMechanicAccess.TryGetValue(user.Id, out var list) ? new HashSet<int>(list) : new HashSet<int>();
+        NormalizeModelAccess();
+        ShowForm = true;
+    }
+
+    private async Task DeleteUser(int userId)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", "Delete this user?");
+        if (!confirmed) return;
+
+        var user = await UserManager.FindByIdAsync(userId.ToString());
+        if (user is null) return;
+
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            var mechAccess = await db.UserMechanicAccess.Where(x => x.UserId == userId).ToListAsync();
+            if (mechAccess.Count > 0)
+                db.UserMechanicAccess.RemoveRange(mechAccess);
+
+            var storeAccess = await db.UserStoreAccess.Where(x => x.UserId == userId).ToListAsync();
+            if (storeAccess.Count > 0)
+                db.UserStoreAccess.RemoveRange(storeAccess);
+
+            if (mechAccess.Count > 0 || storeAccess.Count > 0)
+                await db.SaveChangesAsync();
+        }
+
+        await UserManager.DeleteAsync(user);
+        await LoadUsersAsync();
+    }
+
+    private void ToggleStore(int storeId, ChangeEventArgs e)
+    {
+        var isChecked = e?.Value is bool b && b;
+        if (isChecked)
+            _model.StoreIds.Add(storeId);
+        else
+            _model.StoreIds.Remove(storeId);
+
+        NormalizeModelAccess();
+    }
+
+    private void ToggleMechanic(int mechanicId, ChangeEventArgs e)
+    {
+        var isChecked = e?.Value is bool b && b;
+        if (isChecked)
+            _model.MechanicIds.Add(mechanicId);
+        else
+            _model.MechanicIds.Remove(mechanicId);
+    }
+
+    private void NormalizeModelAccess()
+    {
+        var validStoreIds = Stores.Select(s => s.Id).ToHashSet();
+        _model.StoreIds.RemoveWhere(id => !validStoreIds.Contains(id));
+
+        var validMechanicIds = Mechanics
+            .Where(m => _model.StoreIds.Contains(m.StoreId))
+            .Select(m => m.Id)
+            .ToHashSet();
+        _model.MechanicIds.RemoveWhere(id => !validMechanicIds.Contains(id));
+    }
+
+    private IReadOnlyList<StoreMechanicGroup> MechanicsBySelectedStore =>
+        Stores
+            .Where(s => _model.StoreIds.Contains(s.Id))
+            .OrderBy(s => s.Name)
+            .Select(s => new StoreMechanicGroup(
+                s.Id,
+                s.Name,
+                Mechanics.Where(m => m.StoreId == s.Id).OrderBy(m => m.Name).ToList()))
+            .ToList();
+
+    private string GetStoreNames(int userId)
+    {
+        if (!UserStoreAccess.TryGetValue(userId, out var ids) || ids.Count == 0)
+            return "All";
+
+        var names = Stores
+            .Where(s => ids.Contains(s.Id))
+            .OrderBy(s => s.Name)
+            .Select(s => s.Name)
+            .ToList();
+
+        return names.Count == 0 ? "-" : string.Join(", ", names);
+    }
+
+    private string GetMechanicNames(int userId)
+    {
+        var userStoreIds = UserStoreAccess.TryGetValue(userId, out var stores) && stores.Count > 0
+            ? stores.ToHashSet()
+            : Stores.Select(s => s.Id).ToHashSet();
+
+        var availableMechanics = Mechanics
+            .Where(m => userStoreIds.Contains(m.StoreId))
+            .Select(m => m.Id)
+            .ToHashSet();
+
+        if (!UserMechanicAccess.TryGetValue(userId, out var ids) || ids.Count == 0)
+            return availableMechanics.Count == 0 ? "-" : "All in selected stores";
+
+        var names = Mechanics
+            .Where(m => ids.Contains(m.Id) && availableMechanics.Contains(m.Id))
+            .OrderBy(m => m.Name)
+            .Select(m => m.Name)
+            .ToList();
+
+        return names.Count == 0 ? "-" : string.Join(", ", names);
+    }
+
+    private sealed class UserFormModel
+    {
+        public int UserId { get; set; }
+        public bool IsEdit { get; set; }
+
+        [Required]
+        public string FullName { get; set; } = "";
+
+        [Required, EmailAddress]
+        public string Email { get; set; } = "";
+
+        public string Phone { get; set; } = "";
+
+        [Required]
+        public string Role { get; set; } = "User";
+
+        [Required]
+        [MinLength(8)]
+        public string Password { get; set; } = "";
+
+        public HashSet<int> StoreIds { get; set; } = new();
+        public HashSet<int> MechanicIds { get; set; } = new();
+
+        public void Reset()
+        {
+            UserId = 0;
+            IsEdit = false;
+            FullName = "";
+            Email = "";
+            Phone = "";
+            Role = "User";
+            Password = "";
+            StoreIds = new HashSet<int>();
+            MechanicIds = new HashSet<int>();
+        }
+    }
+
+    private sealed record StoreMechanicGroup(int StoreId, string StoreName, List<Mechanic> Mechanics);
+}

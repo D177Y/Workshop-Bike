@@ -1,23 +1,143 @@
-﻿@page "/"
+﻿@page "/app"
+@attribute [Authorize]
+@using Workshop.Models
+@using Workshop.Services
+@inject TenantSetupService SetupService
+@inject WorkshopData Data
+@inject UserAccessService UserAccess
+@inject SuggestedCatalogService SuggestedCatalog
+@inject Workshop.Data.TenantContext TenantContext
 
-<h1>Workshop</h1>
+<div class="setup-shell">
+    <h1>Welcome to VeloLabs</h1>
+    <p class="lead">
+        Let's get your workshop ready. Complete the setup steps below to unlock booking and scheduling features.
+    </p>
 
-<h3>Booking</h3>
-<ul>
-    <li><a href="/create-booking">Create booking</a></li>
-</ul>
+    <section class="progress-card">
+        <div class="progress-head">
+            <h2>Setup Progress</h2>
+            <div class="progress-count">@_status.CompletedSteps / @_status.TotalSteps complete</div>
+        </div>
+        <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="@_status.TotalSteps" aria-valuenow="@_status.CompletedSteps">
+            <div class="progress-fill" style="@ProgressStyle"></div>
+        </div>
+    </section>
 
-<h3>Store Schedules</h3>
-<ul>
-    <li><a href="/store/1">Taunton schedule</a></li>
-    <li><a href="/store/2">Yeovil schedule</a></li>
-    <li><a href="/store/3">Bristol schedule</a></li>
-    <li><a href="/store/4">Bridgwater schedule</a></li>
-    <li><a href="/store/5">Weston schedule</a></li>
-    <li><a href="/store/6">Hereford schedule</a></li>
-</ul>
+    <section class="steps-card">
+        <h2>Setup Checklist</h2>
+        <div class="step-list">
+            @foreach (var step in _status.Steps)
+            {
+                <article class="step-item @(step.IsComplete ? "done" : "todo")">
+                    <div class="step-state" aria-hidden="true">@((step.IsComplete) ? "OK" : "->")</div>
+                    <div class="step-body">
+                        <div class="step-title">@step.Title</div>
+                        <div class="step-desc">@step.Description</div>
+                    </div>
+                    <div class="step-action">
+                        @if (step.IsComplete)
+                        {
+                            <span class="pill done">Completed</span>
+                        }
+                        else
+                        {
+                            @if (step.Key == "services")
+                            {
+                                <button type="button" class="pill action" @onclick="ImportSuggestedSetupAsync">1-Click Setup</button>
+                                <a class="pill action" href="@step.ActionUrl">@step.ActionText</a>
+                            }
+                            else
+                            {
+                                <a class="pill action" href="@step.ActionUrl">@step.ActionText</a>
+                            }
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+    </section>
 
-<h3>Management</h3>
-<ul>
-    <li><a href="/manage-stores">Manage Stores</a></li>
-</ul>
+    <section class="unlock-card">
+        <h2>Feature Unlocks</h2>
+        <div class="unlock-grid">
+            @foreach (var unlock in Unlocks)
+            {
+                <div class="unlock-item @(unlock.Unlocked ? "open" : "locked")">
+                    <div class="unlock-title">@unlock.Title</div>
+                    @if (unlock.Unlocked)
+                    {
+                        <a href="@unlock.Url">Open</a>
+                    }
+                    else
+                    {
+                        <span>Locked</span>
+                    }
+                </div>
+            }
+        </div>
+    </section>
+
+    @if (_status.NextIncompleteStep is not null)
+    {
+        <section class="next-step-card">
+            <strong>Next step:</strong> @_status.NextIncompleteStep.Title
+            <a href="@_status.NextIncompleteStep.ActionUrl">@_status.NextIncompleteStep.ActionText</a>
+        </section>
+    }
+    else
+    {
+        <section class="next-step-card done">
+            Setup complete. All core features are unlocked.
+        </section>
+    }
+</div>
+
+@code {
+    private TenantSetupStatus _status = TenantSetupStatus.Empty;
+    private UserAccessScope _userAccess = UserAccessScope.AllowAll();
+
+    private string ProgressStyle
+    {
+        get
+        {
+            if (_status.TotalSteps == 0) return "width:0%;";
+            var pct = (_status.CompletedSteps * 100.0) / _status.TotalSteps;
+            return $"width:{pct:0}%";
+        }
+    }
+
+    private IReadOnlyList<FeatureUnlock> Unlocks => new List<FeatureUnlock>
+    {
+        new("Manage Stores", "/manage-stores", true),
+        new("Manage Mechanics", "/manage-mechanics", _status.CanManageMechanics),
+        new("Store Schedules", StoreScheduleUrl, _status.CanViewSchedules && HasAccessibleStore),
+        new("Create Booking", "/create-booking", _status.CanCreateBooking && HasAccessibleStore)
+    };
+
+    private IEnumerable<Store> AccessibleStores => Data.Stores
+        .Where(s => _userAccess.CanAccessStore(s.Id))
+        .OrderBy(s => s.Name);
+
+    private bool HasAccessibleStore => AccessibleStores.Any();
+
+    private string StoreScheduleUrl => !HasAccessibleStore
+        ? "/manage-stores"
+        : $"/store/{AccessibleStores.First().Id}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Data.EnsureInitializedAsync();
+        _userAccess = await UserAccess.GetCurrentAsync();
+        _status = await SetupService.GetStatusAsync();
+    }
+
+    private async Task ImportSuggestedSetupAsync()
+    {
+        await SuggestedCatalog.ImportSuggestedAsync(TenantContext.TenantId, SuggestedImportMode.FullSetup);
+        _status = await SetupService.GetStatusAsync();
+    }
+
+    private sealed record FeatureUnlock(string Title, string Url, bool Unlocked);
+}
+

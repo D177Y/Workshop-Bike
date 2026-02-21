@@ -1,0 +1,1740 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@page "/assessment"
+@attribute [Authorize]
+@using Syncfusion.Blazor.Popups
+@using Syncfusion.Blazor.Grids
+@using TooltipPosition = Syncfusion.Blazor.Popups.Position
+@using Workshop.Models
+@using Workshop.Services
+@inject WorkshopData Data
+@inject CustomerProfileService CustomerProfiles
+@inject QuoteWorkflowService QuoteWorkflow
+@inject JobCatalogService Catalog
+@inject UserAccessService UserAccess
+@inject NavigationManager Nav
+@inject ILogger<Assessment> Logger
+
+<div class="assessment-page">
+    <header class="assessment-header">
+        <h3>ASSESSMENT</h3>
+        <p>
+            Work through each check so nothing is missed on the shop floor. Flag issues, add notes, build the best-value estimate,
+            and send it straight to booking if needed.
+        </p>
+    </header>
+
+    @if (!HasStoreAccess)
+    {
+        <section class="assessment-panel">
+            <p>You do not currently have access to any stores. Contact an administrator to enable assessment and booking access.</p>
+        </section>
+    }
+    else
+    {
+        <section class="assessment-panel customer-panel">
+            <div class="customer-panel-head">
+                <h4>Customer Details</h4>
+            </div>
+
+            <div class="customer-grid">
+                <div class="field">
+                    <label>Account number</label>
+                    <input type="text" @bind="CustomerAccountNumber" />
+                </div>
+                <div class="field">
+                    <label>Customer first name <span class="required-marker">*</span></label>
+                    <input type="text" @bind="CustomerFirstName" />
+                </div>
+                <div class="field">
+                    <label>Customer last name <span class="required-marker">*</span></label>
+                    <input type="text" @bind="CustomerLastName" />
+                </div>
+                <div class="field">
+                    <label>Customer phone <span class="required-marker">*</span></label>
+                    <input type="text" @bind="CustomerPhone" />
+                </div>
+                <div class="field">
+                    <label>Customer email</label>
+                    <input type="email" @bind="CustomerEmail" />
+                </div>
+                <div class="field field-span-all">
+                    <label>Address line 1</label>
+                    <input type="text" @bind="CustomerAddressLine1" />
+                </div>
+                <div class="field field-span-all">
+                    <label>Address line 2</label>
+                    <input type="text" @bind="CustomerAddressLine2" />
+                </div>
+                <div class="field">
+                    <label>County</label>
+                    <input type="text" @bind="CustomerCounty" />
+                </div>
+                <div class="field">
+                    <label>Postcode</label>
+                    <input type="text" @bind="CustomerPostcode" />
+                </div>
+            </div>
+
+            <div class="customer-submit-row">
+                <button type="button" class="btn-primary" @onclick="AddCustomer">Add customer</button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_customerStatusMessage))
+            {
+                <div class="@(_customerStatusIsError ? "status error" : "status success")">@_customerStatusMessage</div>
+            }
+        </section>
+
+        <SfDialog Width="920px"
+                  IsModal="true"
+                  ShowCloseIcon="true"
+                  Header="Select Customer"
+                  @bind-Visible="_showSelectCustomerDialog">
+            <DialogTemplates>
+                <Content>
+                    @if (_matchedCustomers.Count == 0)
+                    {
+                        <div class="muted">No matching customers found.</div>
+                    }
+                    else
+                    {
+                        <div class="customer-dialog-copy">A matching customer already exists. Select one customer and continue.</div>
+                        <div class="customer-match-wrap">
+                            <table class="customer-match-table">
+                                <thead>
+                                    <tr>
+                                        <th>Select</th>
+                                        <th>Account</th>
+                                        <th>First Name</th>
+                                        <th>Last Name</th>
+                                        <th>Phone</th>
+                                        <th>Email</th>
+                                        <th>Address</th>
+                                        <th>Postcode</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var match in _matchedCustomers)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <input type="checkbox"
+                                                       checked="@string.Equals(_selectedMatchedCustomerAccount, match.AccountNumber, StringComparison.OrdinalIgnoreCase)"
+                                                       @onchange="e => SelectMatchedCustomer(match.AccountNumber, e)" />
+                                            </td>
+                                            <td>@match.AccountNumber</td>
+                                            <td>@match.FirstName</td>
+                                            <td>@match.LastName</td>
+                                            <td>@(string.IsNullOrWhiteSpace(match.Phone) ? "-" : match.Phone)</td>
+                                            <td>@(string.IsNullOrWhiteSpace(match.Email) ? "-" : match.Email)</td>
+                                            <td>@(string.IsNullOrWhiteSpace(match.AddressLine1) ? "-" : match.AddressLine1)</td>
+                                            <td>@(string.IsNullOrWhiteSpace(match.Postcode) ? "-" : match.Postcode)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </Content>
+            </DialogTemplates>
+            <DialogButtons>
+                <DialogButton Content="Cancel" IsPrimary="false" OnClick="CloseSelectCustomerDialog" />
+                <DialogButton Content="Create new customer" IsPrimary="false" OnClick="CreateNewCustomerFromSelectDialog" />
+                <DialogButton Content="Continue" IsPrimary="true" OnClick="ContinueWithSelectedCustomer" />
+            </DialogButtons>
+        </SfDialog>
+
+        <SfDialog Width="620px"
+                  IsModal="true"
+                  ShowCloseIcon="true"
+                  Header="Create Customer"
+                  @bind-Visible="_showCreateCustomerDialog">
+            <DialogTemplates>
+                <Content>
+                    @if (_pendingCustomerCreate is null)
+                    {
+                        <div class="muted">No customer details to confirm.</div>
+                    }
+                    else
+                    {
+                        <div class="customer-dialog-copy">No existing customer matched. Confirm to create this customer.</div>
+                        <dl class="customer-confirm-list">
+                            <dt>Account</dt>
+                            <dd>@_pendingCustomerCreate.AccountNumber</dd>
+                            <dt>First Name</dt>
+                            <dd>@(_pendingCustomerCreate.FirstName)</dd>
+                            <dt>Last Name</dt>
+                            <dd>@(_pendingCustomerCreate.LastName)</dd>
+                            <dt>Phone</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(_pendingCustomerCreate.Phone) ? "-" : _pendingCustomerCreate.Phone)</dd>
+                            <dt>Email</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(_pendingCustomerCreate.Email) ? "-" : _pendingCustomerCreate.Email)</dd>
+                            <dt>Address line 1</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(_pendingCustomerCreate.AddressLine1) ? "-" : _pendingCustomerCreate.AddressLine1)</dd>
+                            <dt>Address line 2</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(_pendingCustomerCreate.AddressLine2) ? "-" : _pendingCustomerCreate.AddressLine2)</dd>
+                            <dt>County</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(_pendingCustomerCreate.County) ? "-" : _pendingCustomerCreate.County)</dd>
+                            <dt>Postcode</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(_pendingCustomerCreate.Postcode) ? "-" : _pendingCustomerCreate.Postcode)</dd>
+                        </dl>
+                    }
+                </Content>
+            </DialogTemplates>
+            <DialogButtons>
+                <DialogButton Content="Cancel" IsPrimary="false" OnClick="CloseCreateCustomerDialog" />
+                <DialogButton Content="Confirm" IsPrimary="true" OnClick="ConfirmCreateCustomer" />
+            </DialogButtons>
+        </SfDialog>
+
+        <section class="assessment-panel bike-panel">
+            <div class="bike-panel-head">
+                <h4>Bike details</h4>
+            </div>
+
+            <CustomerBikeSelector Bikes="@CustomerBikes"
+                                  @bind-SelectedBikeId="_selectedBikeId"
+                                  OnBikesChanged="PersistCustomerBikeListAsync"
+                                  EmptyStateText="No bikes found for this customer yet. Add a bike to continue."
+                                  ErrorCssClass="status error" />
+        </section>
+
+        <section class="assessment-mode-switch" aria-label="Checklist mode">
+            <button type="button"
+                    class="mode-pill @ModeClass(AssessmentMode.Beginner)"
+                    @onclick="@(() => SetMode(AssessmentMode.Beginner))">
+                Beginner
+            </button>
+            <button type="button"
+                    class="mode-pill @ModeClass(AssessmentMode.Advanced)"
+                    @onclick="@(() => SetMode(AssessmentMode.Advanced))">
+                Advanced
+            </button>
+        </section>
+
+        <section class="assessment-workspace">
+            <div class="assessment-left">
+                @foreach (var category in GroupedChecks)
+                {
+                    <section class="assessment-panel">
+                        <h4>@category.Key</h4>
+                        <div class="checklist">
+                            @foreach (var item in category)
+                            {
+                                <article class="check-item @ResultClass(item)">
+                                    <div class="check-head">
+                                        <div class="check-options">
+                                            <label class="option pass">
+                                                <input type="radio"
+                                                       name="@($"result-{item.Key}")"
+                                                       checked="@(item.Outcome == AssessmentOutcome.Pass)"
+                                                       @onchange="@(() => SetOutcome(item, AssessmentOutcome.Pass))" />
+                                                <span>Pass</span>
+                                            </label>
+                                            <label class="option advisory">
+                                                <input type="radio"
+                                                       name="@($"result-{item.Key}")"
+                                                       checked="@(item.Outcome == AssessmentOutcome.Advisory)"
+                                                       @onchange="@(() => SetOutcome(item, AssessmentOutcome.Advisory))" />
+                                                <span>Advisory</span>
+                                            </label>
+                                            <label class="option fail">
+                                                <input type="radio"
+                                                       name="@($"result-{item.Key}")"
+                                                       checked="@(item.Outcome == AssessmentOutcome.Fail)"
+                                                       @onchange="@(() => SetOutcome(item, AssessmentOutcome.Fail))" />
+                                                <span>Fail</span>
+                                            </label>
+                                        </div>
+
+                                        <div class="check-title-row">
+                                            <div class="check-title">@item.Title</div>
+                                            <SfTooltip CssClass="assessment-tooltip"
+                                                       Content="@item.Tooltip"
+                                                       Position="@TooltipPosition.TopRight">
+                                                <span class="field-tip" tabindex="0" role="button" aria-label="@($"{item.Title} help")">?</span>
+                                            </SfTooltip>
+                                            <button type="button" class="clear-link" @onclick="@(() => SetOutcome(item, AssessmentOutcome.None))">Clear</button>
+                                        </div>
+                                    </div>
+
+                                    @if (RequiresNote(item))
+                                    {
+                                        <div class="check-note">
+                                            <label>Note required for advisory/fail</label>
+                                            <textarea rows="2" @bind="item.Note" placeholder="Add findings, measurements, or customer-facing explanation."></textarea>
+                                        </div>
+                                    }
+                                </article>
+                            }
+                        </div>
+                    </section>
+                }
+            </div>
+
+            <aside class="assessment-right">
+                <div class="stats-sticky">
+                    <section class="assessment-stats">
+                        <div class="stat pass">
+                            <span class="stat-label">Pass</span>
+                            <strong>@PassCount</strong>
+                        </div>
+                        <div class="stat advisory">
+                            <span class="stat-label">Advisory</span>
+                            <strong>@AdvisoryCount</strong>
+                        </div>
+                        <div class="stat fail">
+                            <span class="stat-label">Fail</span>
+                            <strong>@FailCount</strong>
+                        </div>
+                        <div class="stat pending">
+                            <span class="stat-label">Not set</span>
+                            <strong>@NotSetCount</strong>
+                        </div>
+                    </section>
+                </div>
+
+                <section class="assessment-panel issues-panel">
+                    <h4>Issues</h4>
+                    @if (Issues.Count == 0)
+                    {
+                        <div class="muted">No failed checks yet.</div>
+                    }
+                    else
+                    {
+                        <ul class="issue-list">
+                            @foreach (var issue in Issues)
+                            {
+                                <li>
+                                    <div class="issue-title">@issue.Title</div>
+                                    @if (!string.IsNullOrWhiteSpace(issue.Note))
+                                    {
+                                        <div class="issue-note">@issue.Note.Trim()</div>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+
+                <section class="assessment-panel issues-panel">
+                    <h4>Advisories</h4>
+                    @if (Advisories.Count == 0)
+                    {
+                        <div class="muted">No advisory checks yet.</div>
+                    }
+                    else
+                    {
+                        <ul class="issue-list">
+                            @foreach (var advisory in Advisories)
+                            {
+                                <li>
+                                    <div class="issue-title">@advisory.Title</div>
+                                    @if (!string.IsNullOrWhiteSpace(advisory.Note))
+                                    {
+                                        <div class="issue-note">@advisory.Note.Trim()</div>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+            </aside>
+        </section>
+
+        <section class="assessment-panel quote-panel">
+            <div class="quote-head">
+                <h4>Service Options and Estimate</h4>
+                <p>@BestValueSummary</p>
+            </div>
+
+            <div class="quote-actions">
+                <button type="button" class="btn-secondary" @onclick="ApplySuggestedPackage" disabled="@(SuggestedPackage is null)">Use suggested package</button>
+                <button type="button" class="btn-secondary" @onclick="UseTargetedRepairsOnly">Use targeted repairs only</button>
+            </div>
+
+            <div class="quote-job-list">
+                @if (RecommendedJobs.Count == 0)
+                {
+                    <div class="muted">No matching jobs available yet. Add services in Manage Services, then return here.</div>
+                }
+                else
+                {
+                    @foreach (var job in RecommendedJobs)
+                    {
+                        <label class="quote-job-row">
+                            <input type="checkbox"
+                                   checked="@_selectedQuoteJobIds.Contains(job.Id)"
+                                   @onchange="e => ToggleQuoteJob(job.Id, e)" />
+                            <span class="quote-job-name">@job.Name</span>
+                            <span class="quote-job-meta">@job.DefaultMinutes mins</span>
+                            <span class="quote-job-meta">GBP @job.BasePriceIncVat.ToString("0.00")</span>
+                            @if (IsServicePackage(job))
+                            {
+                                <span class="package-tag">Package</span>
+                            }
+                        </label>
+                    }
+                }
+            </div>
+
+            <div class="estimate-summary">
+                <div><strong>Selected options:</strong> @(SelectedQuoteJobs.Count == 0 ? "-" : string.Join(", ", SelectedQuoteJobs.Select(j => j.Name)))</div>
+                <div><strong>Estimated duration:</strong> @QuoteMinutes mins</div>
+                <div><strong>Estimated price:</strong> GBP @QuotePrice.ToString("0.00")</div>
+            </div>
+
+            <section class="saved-quote-panel">
+                <h5>Saved quotes for this customer</h5>
+                @if (CurrentCustomerSavedQuotes.Count == 0)
+                {
+                    <div class="muted">No saved quotes yet.</div>
+                }
+                else
+                {
+                    <div class="saved-quote-list">
+                        @foreach (var quote in CurrentCustomerSavedQuotes)
+                        {
+                            <div class="saved-quote-row">
+                                <div class="saved-quote-meta">
+                                    <strong>@quote.CreatedUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm")</strong>
+                                    <span>@(string.IsNullOrWhiteSpace(quote.BikeDetails) ? "-" : quote.BikeDetails)</span>
+                                </div>
+                                <div class="saved-quote-summary">
+                                    <span>@(quote.JobNames.Length == 0 ? "-" : string.Join(", ", quote.JobNames))</span>
+                                    <span class="status-pill @QuoteStatusClass(quote)">@GetQuoteStatus(quote)</span>
+                                    <span>GBP @quote.EstimatedPriceIncVat.ToString("0.00")</span>
+                                </div>
+                                <button type="button" class="btn-secondary" @onclick="() => LoadSavedQuote(quote.Id)">Load quote</button>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+
+            @if (MissingNoteCount > 0)
+            {
+                <div class="validation-banner">
+                    Add notes for @MissingNoteCount advisory/fail checks before passing this to booking.
+                </div>
+            }
+
+            <div class="final-actions">
+                <button type="button" class="btn-secondary" @onclick="SaveQuote">Save quote</button>
+                <button type="button" class="btn-secondary" @onclick="EmailQuote">Email quote to customer + booking</button>
+                <button type="button" class="btn-primary" @onclick="SendToBooking">Send to booking</button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_statusMessage))
+            {
+                <div class="@(_statusIsError ? "status error" : "status success")">@_statusMessage</div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private readonly List<AssessmentCheckState> _beginnerChecks = BuildBeginnerChecks();
+    private readonly List<AssessmentCheckState> _advancedChecks = BuildAdvancedChecks();
+    private readonly HashSet<string> _selectedQuoteJobIds = new(StringComparer.OrdinalIgnoreCase);
+    private UserAccessScope _userAccess = UserAccessScope.AllowAll();
+    private string _statusMessage = "";
+    private bool _statusIsError;
+    private AssessmentMode _mode = AssessmentMode.Beginner;
+
+    private int _selectedStoreId;
+    private readonly List<CustomerLookupRecord> _customerIndex = new();
+    private readonly List<CustomerBikeRow> CustomerBikes = new();
+
+    private string CustomerAccountNumber = "";
+    private string CustomerFirstName = "";
+    private string CustomerLastName = "";
+    private string CustomerPhone = "";
+    private string CustomerEmail = "";
+    private string CustomerCounty = "";
+    private string CustomerPostcode = "";
+    private string CustomerAddressLine1 = "";
+    private string CustomerAddressLine2 = "";
+    private string _customerStatusMessage = "";
+    private bool _customerStatusIsError;
+    private bool _showSelectCustomerDialog;
+    private bool _showCreateCustomerDialog;
+    private List<CustomerLookupRecord> _matchedCustomers = new();
+    private string? _selectedMatchedCustomerAccount;
+    private CustomerLookupRecord? _pendingCustomerCreate;
+    private string? _selectedBikeId;
+
+    private IEnumerable<Store> AccessibleStores =>
+        Data.Stores
+            .Where(s => _userAccess.CanAccessStore(s.Id))
+            .OrderBy(s => s.Name);
+
+    private bool HasStoreAccess => AccessibleStores.Any();
+    private List<AssessmentCheckState> ActiveChecks => _mode == AssessmentMode.Beginner ? _beginnerChecks : _advancedChecks;
+    private CustomerBikeRow? SelectedBike =>
+        string.IsNullOrWhiteSpace(_selectedBikeId)
+            ? null
+            : CustomerBikes.FirstOrDefault(b => b.RowId.Equals(_selectedBikeId, StringComparison.OrdinalIgnoreCase));
+    private string SelectedBikeDetails => BikeDetailsService.BuildBikeDetailsText(SelectedBike);
+    private CustomerLookupRecord? ActiveCustomer =>
+        string.IsNullOrWhiteSpace(CustomerAccountNumber)
+            ? null
+            : _customerIndex.FirstOrDefault(c => c.AccountNumber.Equals(CustomerAccountNumber.Trim(), StringComparison.OrdinalIgnoreCase));
+    private List<CustomerQuoteRecord> CurrentCustomerSavedQuotes =>
+        ActiveCustomer?.Quotes
+            .OrderByDescending(q => q.CreatedUtc)
+            .Take(6)
+            .Select(CloneQuote)
+            .ToList() ?? new List<CustomerQuoteRecord>();
+
+    private static string GetQuoteStatus(CustomerQuoteRecord quote) =>
+        QuoteLifecycleService.ResolveStatus(quote, DateTime.UtcNow);
+
+    private static string QuoteStatusClass(CustomerQuoteRecord quote)
+    {
+        var status = GetQuoteStatus(quote);
+        if (status.Equals(QuoteLifecycleStatus.Sent, StringComparison.OrdinalIgnoreCase))
+            return "sent";
+        if (status.Equals(QuoteLifecycleStatus.Accepted, StringComparison.OrdinalIgnoreCase))
+            return "accepted";
+        if (status.Equals(QuoteLifecycleStatus.Expired, StringComparison.OrdinalIgnoreCase))
+            return "expired";
+        return "draft";
+    }
+
+    private int SelectedStoreId
+    {
+        get => _selectedStoreId;
+        set
+        {
+            if (value != 0 && !AccessibleStores.Any(s => s.Id == value))
+                return;
+
+            _selectedStoreId = value;
+        }
+    }
+
+    private IReadOnlyList<IGrouping<string, AssessmentCheckState>> GroupedChecks =>
+        ActiveChecks.GroupBy(c => c.Category).ToList();
+
+    private int PassCount => ActiveChecks.Count(c => c.Outcome == AssessmentOutcome.Pass);
+    private int AdvisoryCount => ActiveChecks.Count(c => c.Outcome == AssessmentOutcome.Advisory);
+    private int FailCount => ActiveChecks.Count(c => c.Outcome == AssessmentOutcome.Fail);
+    private int NotSetCount => ActiveChecks.Count(c => c.Outcome == AssessmentOutcome.None);
+
+    private List<AssessmentCheckState> FlaggedChecks =>
+        ActiveChecks.Where(c => c.Outcome == AssessmentOutcome.Advisory || c.Outcome == AssessmentOutcome.Fail).ToList();
+
+    private List<AssessmentCheckState> Issues =>
+        ActiveChecks.Where(c => c.Outcome == AssessmentOutcome.Fail).ToList();
+
+    private List<AssessmentCheckState> Advisories =>
+        ActiveChecks.Where(c => c.Outcome == AssessmentOutcome.Advisory).ToList();
+
+    private List<JobDefinition> SelectedQuoteJobs =>
+        Catalog.Jobs
+            .Where(j => _selectedQuoteJobIds.Contains(j.Id))
+            .OrderBy(j => IsServicePackage(j) ? 1 : 0)
+            .ThenBy(j => j.Name)
+            .ToList();
+
+    private List<JobDefinition> ServicePackageJobs =>
+        Catalog.Jobs
+            .Where(IsServicePackage)
+            .OrderBy(j => j.BasePriceIncVat)
+            .ToList();
+
+    private List<JobDefinition> RecommendedJobs => GetRecommendedJobs();
+
+    private int QuoteMinutes => SelectedQuoteJobs.Sum(j => j.DefaultMinutes);
+    private decimal QuotePrice => SelectedQuoteJobs.Sum(j => j.BasePriceIncVat);
+    private decimal TargetedRepairTotal => SelectedQuoteJobs.Where(j => !IsServicePackage(j)).Sum(j => j.BasePriceIncVat);
+    private int MissingNoteCount => ActiveChecks.Count(c => RequiresNote(c) && string.IsNullOrWhiteSpace(c.Note));
+
+    private JobDefinition? SuggestedPackage
+    {
+        get
+        {
+            var packages = ServicePackageJobs;
+            if (packages.Count == 0)
+                return null;
+
+            var issueScore = (FailCount * 2) + AdvisoryCount;
+            if (issueScore >= 8)
+                return packages[^1];
+
+            if (issueScore >= 4)
+                return packages[Math.Min(1, packages.Count - 1)];
+
+            return packages[0];
+        }
+    }
+
+    private string BestValueSummary
+    {
+        get
+        {
+            if (SelectedQuoteJobs.Count == 0)
+                return "Select one or more service options to produce an estimate.";
+
+            var package = SuggestedPackage;
+            if (package is null)
+                return "Best value estimate is currently based on your selected repair options.";
+
+            var targeted = TargetedRepairTotal;
+            if (targeted <= 0)
+                return $"Suggested package for best value: {package.Name} (GBP {package.BasePriceIncVat:0.00}).";
+
+            return package.BasePriceIncVat < targeted
+                ? $"Best value currently looks like {package.Name} at GBP {package.BasePriceIncVat:0.00} (targeted repairs GBP {targeted:0.00})."
+                : $"Best value currently looks like targeted repairs at GBP {targeted:0.00} ({package.Name} is GBP {package.BasePriceIncVat:0.00}).";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Data.EnsureInitializedAsync();
+            await Catalog.EnsureInitializedAsync();
+            _userAccess = await UserAccess.GetCurrentAsync();
+
+            if (HasStoreAccess)
+                SelectedStoreId = AccessibleStores.First().Id;
+
+            RebuildCustomerIndex();
+            RefreshRecommendations();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize assessment page.");
+            _statusMessage = "Could not load assessment data. Please refresh and try again.";
+            _statusIsError = true;
+        }
+    }
+
+    private static bool IsServicePackage(JobDefinition job) =>
+        job.Category.Equals("Service Packages", StringComparison.OrdinalIgnoreCase);
+
+    private void SetOutcome(AssessmentCheckState item, AssessmentOutcome outcome)
+    {
+        if (item.Outcome == outcome)
+            return;
+
+        item.Outcome = outcome;
+        if (outcome is AssessmentOutcome.Pass or AssessmentOutcome.None)
+            item.Note = "";
+
+        _statusMessage = "";
+        _statusIsError = false;
+        RefreshRecommendations();
+    }
+
+    private static bool RequiresNote(AssessmentCheckState item) =>
+        item.Outcome is AssessmentOutcome.Advisory or AssessmentOutcome.Fail;
+
+    private static string OutcomeLabel(AssessmentOutcome outcome) => outcome switch
+    {
+        AssessmentOutcome.Pass => "Pass",
+        AssessmentOutcome.Advisory => "Advisory",
+        AssessmentOutcome.Fail => "Fail",
+        _ => "Not set"
+    };
+
+    private static string ResultClass(AssessmentCheckState item) => item.Outcome switch
+    {
+        AssessmentOutcome.Pass => "result-pass",
+        AssessmentOutcome.Advisory => "result-advisory",
+        AssessmentOutcome.Fail => "result-fail",
+        _ => "result-none"
+    };
+
+    private string ModeClass(AssessmentMode mode) => _mode == mode ? "active" : "";
+
+    private void SetMode(AssessmentMode mode)
+    {
+        if (_mode == mode)
+            return;
+
+        _mode = mode;
+        _statusMessage = "";
+        _statusIsError = false;
+        RefreshRecommendations();
+    }
+
+    private void AddCustomer()
+    {
+        _customerStatusMessage = "";
+        _customerStatusIsError = false;
+
+        var request = BuildCustomerRequestFromForm();
+        var firstName = request.FirstName;
+        var lastName = request.LastName;
+        var phone = request.Phone;
+
+        if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName) || string.IsNullOrWhiteSpace(phone))
+        {
+            _customerStatusMessage = "First name, last name and phone are required.";
+            _customerStatusIsError = true;
+            return;
+        }
+
+        _matchedCustomers = FindDuplicateCustomers(request);
+        if (_matchedCustomers.Count > 0)
+        {
+            _selectedMatchedCustomerAccount = null;
+            _showSelectCustomerDialog = true;
+            return;
+        }
+
+        request.AccountNumber = GenerateNextCustomerAccountNumber();
+        _pendingCustomerCreate = request;
+        _showCreateCustomerDialog = true;
+    }
+
+    private void CreateNewCustomerFromSelectDialog()
+    {
+        var request = BuildCustomerRequestFromForm();
+        if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName) || string.IsNullOrWhiteSpace(request.Phone))
+        {
+            _customerStatusMessage = "First name, last name and phone are required.";
+            _customerStatusIsError = true;
+            return;
+        }
+
+        request.AccountNumber = GenerateNextCustomerAccountNumber();
+        _pendingCustomerCreate = request;
+
+        _showSelectCustomerDialog = false;
+        _selectedMatchedCustomerAccount = null;
+        _matchedCustomers = new List<CustomerLookupRecord>();
+
+        _showCreateCustomerDialog = true;
+    }
+
+    private List<CustomerLookupRecord> FindDuplicateCustomers(CustomerLookupRecord request)
+    {
+        var requestPhoneDigits = NormalizeDigits(request.Phone);
+        var requestAccount = request.AccountNumber.Trim();
+        var requestEmail = request.Email.Trim();
+        var requestLast = request.LastName.Trim();
+        var requestPostcode = request.Postcode.Trim();
+
+        return _customerIndex
+            .Where(customer =>
+                (!string.IsNullOrWhiteSpace(requestAccount) &&
+                 customer.AccountNumber.Equals(requestAccount, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(requestPhoneDigits) &&
+                    NormalizeDigits(customer.Phone).Equals(requestPhoneDigits, StringComparison.Ordinal))
+                || (!string.IsNullOrWhiteSpace(requestEmail) &&
+                    customer.Email.Equals(requestEmail, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(requestLast) &&
+                    !string.IsNullOrWhiteSpace(requestPostcode) &&
+                    customer.LastName.Equals(requestLast, StringComparison.OrdinalIgnoreCase) &&
+                    customer.Postcode.Equals(requestPostcode, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+    }
+
+    private void SelectMatchedCustomer(string accountNumber, ChangeEventArgs e)
+    {
+        var isChecked = e?.Value is bool b && b;
+        if (isChecked)
+        {
+            _selectedMatchedCustomerAccount = accountNumber;
+            return;
+        }
+
+        if (string.Equals(_selectedMatchedCustomerAccount, accountNumber, StringComparison.OrdinalIgnoreCase))
+            _selectedMatchedCustomerAccount = null;
+    }
+
+    private void CloseSelectCustomerDialog()
+    {
+        _showSelectCustomerDialog = false;
+        _selectedMatchedCustomerAccount = null;
+        _matchedCustomers = new List<CustomerLookupRecord>();
+    }
+
+    private void ContinueWithSelectedCustomer()
+    {
+        if (string.IsNullOrWhiteSpace(_selectedMatchedCustomerAccount))
+        {
+            _customerStatusMessage = "Select one customer to continue.";
+            _customerStatusIsError = true;
+            return;
+        }
+
+        var customer = _customerIndex.FirstOrDefault(c =>
+            c.AccountNumber.Equals(_selectedMatchedCustomerAccount, StringComparison.OrdinalIgnoreCase));
+        if (customer is null)
+        {
+            _customerStatusMessage = "Selected customer was not found.";
+            _customerStatusIsError = true;
+            CloseSelectCustomerDialog();
+            return;
+        }
+
+        ApplyCustomerToForm(customer, copyBikes: true);
+        _customerStatusMessage = $"Using existing customer {customer.AccountNumber}.";
+        _customerStatusIsError = false;
+        CloseSelectCustomerDialog();
+    }
+
+    private void CloseCreateCustomerDialog()
+    {
+        _showCreateCustomerDialog = false;
+        _pendingCustomerCreate = null;
+    }
+
+    private async Task ConfirmCreateCustomer()
+    {
+        if (_pendingCustomerCreate is null)
+        {
+            _customerStatusMessage = "No customer details available to create.";
+            _customerStatusIsError = true;
+            CloseCreateCustomerDialog();
+            return;
+        }
+
+        try
+        {
+            var created = CloneCustomer(_pendingCustomerCreate);
+            var saved = await SaveCustomerLookupAsync(created);
+            ApplyCustomerToForm(saved, copyBikes: false);
+            _customerStatusMessage = $"Customer created as {saved.AccountNumber}.";
+            _customerStatusIsError = false;
+            CloseCreateCustomerDialog();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to create customer profile.");
+            _customerStatusMessage = "Could not create customer profile. Please try again.";
+            _customerStatusIsError = true;
+        }
+    }
+
+    private CustomerLookupRecord BuildCustomerRequestFromForm() =>
+        new()
+        {
+            AccountNumber = CustomerAccountNumber.Trim(),
+            FirstName = CustomerFirstName.Trim(),
+            LastName = CustomerLastName.Trim(),
+            Phone = CustomerPhone.Trim(),
+            Email = CustomerEmail.Trim(),
+            County = CustomerCounty.Trim(),
+            Postcode = CustomerPostcode.Trim(),
+            AddressLine1 = CustomerAddressLine1.Trim(),
+            AddressLine2 = CustomerAddressLine2.Trim(),
+            Bikes = CustomerBikes.Select(CloneBike).ToList(),
+            Quotes = new List<CustomerQuoteRecord>(),
+            Communications = new List<CustomerCommunicationRecord>()
+        };
+
+    private void ApplyCustomerToForm(CustomerLookupRecord customer, bool copyBikes)
+    {
+        CustomerAccountNumber = customer.AccountNumber;
+        CustomerFirstName = customer.FirstName;
+        CustomerLastName = customer.LastName;
+        CustomerPhone = customer.Phone;
+        CustomerEmail = customer.Email;
+        CustomerCounty = customer.County;
+        CustomerPostcode = customer.Postcode;
+        CustomerAddressLine1 = customer.AddressLine1;
+        CustomerAddressLine2 = customer.AddressLine2;
+
+        if (copyBikes)
+            LoadCustomerBikes(customer.Bikes);
+    }
+
+    private void ToggleQuoteJob(string jobId, ChangeEventArgs e)
+    {
+        var isChecked = e?.Value is bool b && b;
+        if (isChecked)
+        {
+            _selectedQuoteJobIds.Add(jobId);
+        }
+        else
+        {
+            _selectedQuoteJobIds.Remove(jobId);
+        }
+    }
+
+    private void ApplySuggestedPackage()
+    {
+        var package = SuggestedPackage;
+        if (package is null)
+            return;
+
+        foreach (var servicePackage in ServicePackageJobs)
+            _selectedQuoteJobIds.Remove(servicePackage.Id);
+
+        _selectedQuoteJobIds.Add(package.Id);
+    }
+
+    private void UseTargetedRepairsOnly()
+    {
+        foreach (var servicePackage in ServicePackageJobs)
+            _selectedQuoteJobIds.Remove(servicePackage.Id);
+    }
+
+    private void LoadSavedQuote(string quoteId)
+    {
+        if (string.IsNullOrWhiteSpace(quoteId))
+            return;
+
+        var quote = ActiveCustomer?.Quotes.FirstOrDefault(q =>
+            q.Id.Equals(quoteId, StringComparison.OrdinalIgnoreCase));
+        if (quote is null)
+        {
+            _statusMessage = "Saved quote not found.";
+            _statusIsError = true;
+            return;
+        }
+
+        _selectedQuoteJobIds.Clear();
+        foreach (var jobId in quote.JobIds)
+        {
+            if (Catalog.Jobs.Any(j => j.Id.Equals(jobId, StringComparison.OrdinalIgnoreCase)))
+                _selectedQuoteJobIds.Add(jobId);
+        }
+
+        _statusMessage = $"Loaded quote from {quote.CreatedUtc.ToLocalTime():dd MMM yyyy HH:mm}.";
+        _statusIsError = false;
+    }
+
+    private async Task SaveQuote()
+    {
+        await SaveCurrentQuoteAsync(showSuccessMessage: true);
+    }
+
+    private async Task EmailQuote()
+    {
+        var (customer, quote) = await SaveCurrentQuoteAsync(showSuccessMessage: false);
+        if (customer is null || quote is null)
+            return;
+
+        var customerEmail = (customer.Email ?? "").Trim();
+        var store = Data.Stores.FirstOrDefault(s => s.Id == SelectedStoreId);
+        var bookingEmail = (store?.Email ?? "").Trim();
+
+        var validation = QuoteValidationService.ValidateCanEmailQuote(customerEmail);
+        if (!validation.IsValid)
+        {
+            _statusMessage = validation.Message;
+            _statusIsError = true;
+            return;
+        }
+
+        var emailResult = await QuoteWorkflow.EmailQuoteAsync(new QuoteEmailDispatchRequest(
+            customer.AccountNumber,
+            customer.FirstName,
+            customer.LastName,
+            customerEmail,
+            bookingEmail,
+            quote));
+
+        RebuildCustomerIndex();
+
+        if (emailResult.Sent.Count == 0)
+        {
+            _statusMessage = "Quote email failed. Check email configuration and try again.";
+            _statusIsError = true;
+            return;
+        }
+
+        if (emailResult.Failed.Count == 0)
+        {
+            _statusMessage = $"Quote emailed to {string.Join(" and ", emailResult.Sent)}.";
+            _statusIsError = false;
+            return;
+        }
+
+        _statusMessage = $"Quote emailed to {string.Join(" and ", emailResult.Sent)}. Retry queued for {string.Join(" and ", emailResult.Failed)}.";
+        _statusIsError = true;
+    }
+
+    private async Task<(CustomerLookupRecord? Customer, CustomerQuoteRecord? Quote)> SaveCurrentQuoteAsync(bool showSuccessMessage)
+    {
+        if (SelectedQuoteJobs.Count == 0)
+        {
+            _statusMessage = "Select at least one service option before saving a quote.";
+            _statusIsError = true;
+            return (null, null);
+        }
+
+        if (MissingNoteCount > 0)
+        {
+            _statusMessage = "Add notes to all advisory/fail checks before saving this quote.";
+            _statusIsError = true;
+            return (null, null);
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedBikeDetails))
+        {
+            _statusMessage = "Select one bike for this quote before saving.";
+            _statusIsError = true;
+            return (null, null);
+        }
+
+        var customer = await EnsureCustomerProfileAsync(showValidationError: true);
+        if (customer is null)
+            return (null, null);
+
+        var store = Data.Stores.FirstOrDefault(s => s.Id == SelectedStoreId);
+        var quote = new CustomerQuoteRecord
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            CreatedUtc = DateTime.UtcNow,
+            StoreId = SelectedStoreId,
+            StoreName = store?.Name ?? "",
+            BikeDetails = SelectedBikeDetails,
+            JobIds = SelectedQuoteJobs.Select(j => j.Id).ToArray(),
+            JobNames = SelectedQuoteJobs.Select(j => j.Name).ToArray(),
+            EstimatedMinutes = QuoteMinutes,
+            EstimatedPriceIncVat = QuotePrice,
+            Notes = BuildBookingNotes(),
+            CreatedBy = "Assessment"
+        };
+
+        var saved = await QuoteWorkflow.SaveQuoteAsync(customer.AccountNumber, quote);
+        if (saved is null)
+        {
+            _statusMessage = "Could not save quote to customer account.";
+            _statusIsError = true;
+            return (null, null);
+        }
+
+        var updatedCustomer = UpsertLookupFromProfile(saved);
+        if (showSuccessMessage)
+        {
+            _statusMessage = $"Quote saved to customer account {updatedCustomer.AccountNumber}.";
+            _statusIsError = false;
+        }
+
+        return (updatedCustomer, quote);
+    }
+
+    private void RefreshRecommendations()
+    {
+        var recommendedIds = GetRecommendedJobs()
+            .Select(j => j.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        _selectedQuoteJobIds.RemoveWhere(id => !recommendedIds.Contains(id));
+
+        if (_selectedQuoteJobIds.Count == 0)
+        {
+            foreach (var job in GetRecommendedJobs().Where(j => !IsServicePackage(j)).Take(4))
+                _selectedQuoteJobIds.Add(job.Id);
+
+            if (_selectedQuoteJobIds.Count == 0)
+            {
+                var fallbackPackage = SuggestedPackage;
+                if (fallbackPackage is not null)
+                    _selectedQuoteJobIds.Add(fallbackPackage.Id);
+            }
+        }
+    }
+
+    private void RebuildCustomerIndex()
+    {
+        _customerIndex.Clear();
+
+        foreach (var profile in Data.CustomerProfiles
+                     .OrderBy(c => c.LastName)
+                     .ThenBy(c => c.FirstName)
+                     .ThenBy(c => c.AccountNumber))
+        {
+            _customerIndex.Add(MapProfileToLookup(profile));
+        }
+
+        var groups = Data.Bookings
+            .Where(b => _userAccess.CanAccessStore(b.StoreId))
+            .Where(b =>
+                !string.IsNullOrWhiteSpace(b.CustomerFirstName) ||
+                !string.IsNullOrWhiteSpace(b.CustomerLastName) ||
+                !string.IsNullOrWhiteSpace(b.CustomerPhone) ||
+                !string.IsNullOrWhiteSpace(b.CustomerEmail))
+            .GroupBy(BuildCustomerLookupKey)
+            .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var group in groups)
+        {
+            var latest = group.OrderByDescending(b => b.Start).First();
+            var bikes = group
+                .Select(b => ParseBikeFromDetails(b.BikeDetails))
+                .Where(b => b is not null)
+                .Cast<CustomerBikeRow>()
+                .GroupBy(GetBikeFingerprint, StringComparer.OrdinalIgnoreCase)
+                .Select(g => CloneBike(g.First()))
+                .ToList();
+
+            var existing = _customerIndex.FirstOrDefault(c =>
+                (!string.IsNullOrWhiteSpace(latest.CustomerAccountNumber) &&
+                 c.AccountNumber.Equals(latest.CustomerAccountNumber.Trim(), StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(latest.CustomerEmail) &&
+                    c.Email.Equals(latest.CustomerEmail.Trim(), StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(latest.CustomerPhone) &&
+                    NormalizeDigits(c.Phone).Equals(NormalizeDigits(latest.CustomerPhone), StringComparison.Ordinal)));
+
+            if (existing is not null)
+            {
+                foreach (var bike in bikes)
+                {
+                    var fingerprint = GetBikeFingerprint(bike);
+                    if (!existing.Bikes.Any(b => GetBikeFingerprint(b).Equals(fingerprint, StringComparison.OrdinalIgnoreCase)))
+                        existing.Bikes.Add(CloneBike(bike));
+                }
+                continue;
+            }
+
+            _customerIndex.Add(new CustomerLookupRecord
+            {
+                AccountNumber = !string.IsNullOrWhiteSpace(latest.CustomerAccountNumber)
+                    ? latest.CustomerAccountNumber.Trim()
+                    : GenerateNextCustomerAccountNumber(),
+                FirstName = latest.CustomerFirstName.Trim(),
+                LastName = latest.CustomerLastName.Trim(),
+                Phone = latest.CustomerPhone.Trim(),
+                Email = latest.CustomerEmail.Trim(),
+                County = "",
+                Postcode = "",
+                AddressLine1 = "",
+                AddressLine2 = "",
+                Bikes = bikes,
+                Quotes = new List<CustomerQuoteRecord>(),
+                Communications = new List<CustomerCommunicationRecord>()
+            });
+        }
+    }
+
+    private void LoadCustomerBikes(IEnumerable<CustomerBikeRow> bikes)
+    {
+        CustomerBikes.Clear();
+        foreach (var bike in bikes)
+            CustomerBikes.Add(CloneBike(bike));
+
+        _selectedBikeId = CustomerBikes.FirstOrDefault()?.RowId;
+    }
+
+    private async Task PersistCustomerBikeListAsync()
+    {
+        if (string.IsNullOrWhiteSpace(CustomerAccountNumber))
+            return;
+
+        var accountNumber = CustomerAccountNumber.Trim();
+        var customer = _customerIndex.FirstOrDefault(c => c.AccountNumber.Equals(accountNumber, StringComparison.OrdinalIgnoreCase));
+        if (customer is null)
+        {
+            customer = new CustomerLookupRecord
+            {
+                AccountNumber = accountNumber,
+                FirstName = CustomerFirstName.Trim(),
+                LastName = CustomerLastName.Trim(),
+                Phone = CustomerPhone.Trim(),
+                Email = CustomerEmail.Trim(),
+                County = CustomerCounty.Trim(),
+                Postcode = CustomerPostcode.Trim(),
+                AddressLine1 = CustomerAddressLine1.Trim(),
+                AddressLine2 = CustomerAddressLine2.Trim(),
+                Bikes = new List<CustomerBikeRow>(),
+                Quotes = new List<CustomerQuoteRecord>(),
+                Communications = new List<CustomerCommunicationRecord>()
+            };
+            _customerIndex.Add(customer);
+        }
+
+        customer.FirstName = CustomerFirstName.Trim();
+        customer.LastName = CustomerLastName.Trim();
+        customer.Phone = CustomerPhone.Trim();
+        customer.Email = CustomerEmail.Trim();
+        customer.County = CustomerCounty.Trim();
+        customer.Postcode = CustomerPostcode.Trim();
+        customer.AddressLine1 = CustomerAddressLine1.Trim();
+        customer.AddressLine2 = CustomerAddressLine2.Trim();
+        customer.Bikes = CustomerBikes.Select(CloneBike).ToList();
+
+        try
+        {
+            var saved = await SaveCustomerLookupAsync(customer);
+            customer.ProfileId = saved.ProfileId;
+            customer.AccountNumber = saved.AccountNumber;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to persist customer bikes for account {AccountNumber}.", accountNumber);
+        }
+    }
+
+    private async Task<CustomerLookupRecord?> EnsureCustomerProfileAsync(bool showValidationError)
+    {
+        var first = CustomerFirstName.Trim();
+        var last = CustomerLastName.Trim();
+        var phone = CustomerPhone.Trim();
+        if (string.IsNullOrWhiteSpace(first) || string.IsNullOrWhiteSpace(last) || string.IsNullOrWhiteSpace(phone))
+        {
+            if (showValidationError)
+            {
+                _statusMessage = "Customer first name, last name and phone are required.";
+                _statusIsError = true;
+            }
+
+            return null;
+        }
+
+        var account = CustomerAccountNumber.Trim();
+
+        var existing = _customerIndex.FirstOrDefault(c =>
+            (!string.IsNullOrWhiteSpace(account) &&
+             c.AccountNumber.Equals(account, StringComparison.OrdinalIgnoreCase))
+            || (!string.IsNullOrWhiteSpace(CustomerEmail) &&
+                c.Email.Equals(CustomerEmail.Trim(), StringComparison.OrdinalIgnoreCase))
+            || (!string.IsNullOrWhiteSpace(CustomerPhone) &&
+                NormalizeDigits(c.Phone).Equals(NormalizeDigits(CustomerPhone), StringComparison.Ordinal)));
+
+        var customer = existing is null ? new CustomerLookupRecord() : CloneCustomer(existing);
+        customer.AccountNumber = string.IsNullOrWhiteSpace(account)
+            ? (existing?.AccountNumber ?? GenerateNextCustomerAccountNumber())
+            : account;
+        customer.FirstName = first;
+        customer.LastName = last;
+        customer.Phone = phone;
+        customer.Email = CustomerEmail.Trim();
+        customer.County = CustomerCounty.Trim();
+        customer.Postcode = CustomerPostcode.Trim();
+        customer.AddressLine1 = CustomerAddressLine1.Trim();
+        customer.AddressLine2 = CustomerAddressLine2.Trim();
+        customer.Bikes = CustomerBikes.Select(CloneBike).ToList();
+
+        if (existing is not null)
+        {
+            customer.ProfileId = existing.ProfileId;
+            customer.Quotes = existing.Quotes.Select(CloneQuote).ToList();
+            customer.Communications = existing.Communications.Select(CloneCommunication).ToList();
+        }
+        else
+        {
+            customer.Quotes = new List<CustomerQuoteRecord>();
+            customer.Communications = new List<CustomerCommunicationRecord>();
+        }
+
+        var saved = await SaveCustomerLookupAsync(customer);
+        ApplyCustomerToForm(saved, copyBikes: false);
+        return saved;
+    }
+
+    private async Task<CustomerLookupRecord> SaveCustomerLookupAsync(CustomerLookupRecord customer)
+    {
+        var profile = BuildProfileFromLookup(customer);
+        var saved = await CustomerProfiles.UpsertAsync(profile);
+        return UpsertLookupFromProfile(saved);
+    }
+
+    private CustomerLookupRecord UpsertLookupFromProfile(CustomerProfile profile)
+    {
+        var lookup = MapProfileToLookup(profile);
+        var existingIndex = _customerIndex.FindIndex(c =>
+            c.AccountNumber.Equals(lookup.AccountNumber, StringComparison.OrdinalIgnoreCase));
+
+        if (existingIndex >= 0)
+        {
+            _customerIndex[existingIndex] = lookup;
+        }
+        else
+        {
+            _customerIndex.Add(lookup);
+        }
+
+        return lookup;
+    }
+
+    private static CustomerLookupRecord MapProfileToLookup(CustomerProfile profile)
+    {
+        return new CustomerLookupRecord
+        {
+            ProfileId = profile.Id,
+            AccountNumber = profile.AccountNumber,
+            FirstName = profile.FirstName,
+            LastName = profile.LastName,
+            Phone = profile.Phone,
+            Email = profile.Email,
+            County = profile.County,
+            Postcode = profile.Postcode,
+            AddressLine1 = profile.AddressLine1,
+            AddressLine2 = profile.AddressLine2,
+            Bikes = profile.Bikes
+                .Select(b => new CustomerBikeRow
+                {
+                    RowId = string.IsNullOrWhiteSpace(b.Id) ? NewBikeRowId() : b.Id,
+                    Make = b.Make,
+                    Model = b.Model,
+                    Size = b.Size,
+                    FrameNumber = b.FrameNumber,
+                    StockNumber = b.StockNumber
+                })
+                .Select(CloneBike)
+                .ToList(),
+            Quotes = profile.Quotes.Select(CloneQuote).ToList(),
+            Communications = profile.Communications.Select(CloneCommunication).ToList()
+        };
+    }
+
+    private static CustomerProfile BuildProfileFromLookup(CustomerLookupRecord customer)
+    {
+        return new CustomerProfile
+        {
+            Id = customer.ProfileId,
+            AccountNumber = customer.AccountNumber.Trim(),
+            FirstName = customer.FirstName.Trim(),
+            LastName = customer.LastName.Trim(),
+            Phone = customer.Phone.Trim(),
+            Email = customer.Email.Trim(),
+            County = customer.County.Trim(),
+            Postcode = customer.Postcode.Trim(),
+            AddressLine1 = customer.AddressLine1.Trim(),
+            AddressLine2 = customer.AddressLine2.Trim(),
+            Bikes = customer.Bikes
+                .Select(b => new CustomerBikeProfile
+                {
+                    Id = b.RowId,
+                    Make = b.Make,
+                    Model = b.Model,
+                    Size = b.Size,
+                    FrameNumber = b.FrameNumber,
+                    StockNumber = b.StockNumber
+                })
+                .ToList(),
+            Quotes = customer.Quotes.Select(CloneQuote).ToList(),
+            Communications = customer.Communications.Select(CloneCommunication).ToList()
+        };
+    }
+
+    private static string BuildCustomerLookupKey(Booking booking)
+    {
+        var email = booking.CustomerEmail.Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(email))
+            return $"email:{email}";
+
+        var phone = NormalizeDigits(booking.CustomerPhone);
+        if (!string.IsNullOrWhiteSpace(phone))
+            return $"phone:{phone}";
+
+        var first = booking.CustomerFirstName.Trim().ToLowerInvariant();
+        var last = booking.CustomerLastName.Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(first) || !string.IsNullOrWhiteSpace(last))
+            return $"name:{first}|{last}";
+
+        return "";
+    }
+
+    private static string NormalizeDigits(string input) =>
+        new(input.Where(char.IsDigit).ToArray());
+
+    private static CustomerBikeRow? ParseBikeFromDetails(string bikeDetails) =>
+        BikeDetailsService.ParseBikeFromDetails(bikeDetails);
+
+    private static CustomerBikeRow CloneBike(CustomerBikeRow bike) =>
+        BikeDetailsService.CloneBike(bike);
+
+    private static string NewBikeRowId() => BikeDetailsService.NewBikeRowId();
+
+    private static string GetBikeFingerprint(CustomerBikeRow bike) =>
+        BikeDetailsService.GetBikeFingerprint(bike);
+
+    private static string BuildBikeDetailsText(CustomerBikeRow? bike) =>
+        BikeDetailsService.BuildBikeDetailsText(bike);
+
+    private static CustomerLookupRecord CloneCustomer(CustomerLookupRecord customer) =>
+        new()
+        {
+            ProfileId = customer.ProfileId,
+            AccountNumber = customer.AccountNumber,
+            FirstName = customer.FirstName,
+            LastName = customer.LastName,
+            Phone = customer.Phone,
+            Email = customer.Email,
+            County = customer.County,
+            Postcode = customer.Postcode,
+            AddressLine1 = customer.AddressLine1,
+            AddressLine2 = customer.AddressLine2,
+            Bikes = customer.Bikes.Select(CloneBike).ToList(),
+            Quotes = customer.Quotes.Select(CloneQuote).ToList(),
+            Communications = customer.Communications.Select(CloneCommunication).ToList()
+        };
+
+    private static CustomerQuoteRecord CloneQuote(CustomerQuoteRecord quote) =>
+        new()
+        {
+            Id = string.IsNullOrWhiteSpace(quote.Id) ? Guid.NewGuid().ToString("N") : quote.Id,
+            CreatedUtc = quote.CreatedUtc,
+            Status = quote.Status,
+            StatusUpdatedUtc = quote.StatusUpdatedUtc,
+            SentAtUtc = quote.SentAtUtc,
+            AcceptedAtUtc = quote.AcceptedAtUtc,
+            ExpiresAtUtc = quote.ExpiresAtUtc,
+            StatusDetail = quote.StatusDetail,
+            StoreId = quote.StoreId,
+            StoreName = quote.StoreName,
+            BikeDetails = quote.BikeDetails,
+            JobIds = quote.JobIds.ToArray(),
+            JobNames = quote.JobNames.ToArray(),
+            EstimatedMinutes = quote.EstimatedMinutes,
+            EstimatedPriceIncVat = quote.EstimatedPriceIncVat,
+            Notes = quote.Notes,
+            CreatedBy = quote.CreatedBy
+        };
+
+    private static CustomerCommunicationRecord CloneCommunication(CustomerCommunicationRecord communication) =>
+        new()
+        {
+            Id = string.IsNullOrWhiteSpace(communication.Id) ? Guid.NewGuid().ToString("N") : communication.Id,
+            SentAtUtc = communication.SentAtUtc,
+            Channel = communication.Channel,
+            Direction = communication.Direction,
+            Recipient = communication.Recipient,
+            Summary = communication.Summary,
+            DeliveryStatus = communication.DeliveryStatus,
+            DeliveryError = communication.DeliveryError,
+            IsAutomated = communication.IsAutomated,
+            Source = communication.Source
+        };
+
+    private string GenerateNextCustomerAccountNumber()
+    {
+        var highest = 0;
+        foreach (var account in _customerIndex.Select(c => c.AccountNumber))
+        {
+            if (string.IsNullOrWhiteSpace(account))
+                continue;
+
+            var digits = new string(account.Where(char.IsDigit).ToArray());
+            if (int.TryParse(digits, out var parsed) && parsed > highest)
+                highest = parsed;
+        }
+
+        return $"CUST-{highest + 1:00000}";
+    }
+
+    private List<JobDefinition> GetRecommendedJobs()
+    {
+        var allJobs = Catalog.Jobs.ToList();
+        if (allJobs.Count == 0)
+            return new List<JobDefinition>();
+
+        var flagged = FlaggedChecks;
+        if (flagged.Count == 0)
+        {
+            var seed = new List<JobDefinition>();
+            seed.AddRange(ServicePackageJobs);
+            seed.AddRange(allJobs.Where(j => !IsServicePackage(j)).Take(8));
+            return seed.DistinctBy(j => j.Id).ToList();
+        }
+
+        var scores = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var check in flagged)
+        {
+            foreach (var job in allJobs)
+            {
+                var score = ScoreJob(check, job);
+                if (score <= 0)
+                    continue;
+
+                if (check.Outcome == AssessmentOutcome.Fail)
+                    score += 1;
+
+                scores[job.Id] = scores.GetValueOrDefault(job.Id) + score;
+            }
+        }
+
+        foreach (var package in ServicePackageJobs)
+            scores[package.Id] = scores.GetValueOrDefault(package.Id) + Math.Max(1, flagged.Count / 2);
+
+        return allJobs
+            .Where(j => scores.ContainsKey(j.Id))
+            .OrderByDescending(j => scores[j.Id])
+            .ThenBy(j => IsServicePackage(j) ? 1 : 0)
+            .ThenBy(j => j.BasePriceIncVat)
+            .Take(16)
+            .ToList();
+    }
+
+    private static int ScoreJob(AssessmentCheckState check, JobDefinition job)
+    {
+        var name = job.Name.ToLowerInvariant();
+        var category = job.Category.ToLowerInvariant();
+        var score = 0;
+
+        foreach (var term in check.MatchTerms)
+        {
+            if (name.Contains(term) || category.Contains(term))
+                score += 2;
+        }
+
+        if (check.Category.Equals("Brakes", StringComparison.OrdinalIgnoreCase) &&
+            (name.Contains("brake") || category.Contains("brake")))
+        {
+            score += 2;
+        }
+
+        if (check.Category.Equals("Gear", StringComparison.OrdinalIgnoreCase) &&
+            (name.Contains("gear") || name.Contains("chain") || category.Contains("gear")))
+        {
+            score += 2;
+        }
+
+        if (check.Category.Equals("E-Bike", StringComparison.OrdinalIgnoreCase) &&
+            (name.Contains("e-bike") || name.Contains("ebike") || name.Contains("motor") || name.Contains("software")))
+        {
+            score += 3;
+        }
+
+        if (check.Title.Contains("chain wear", StringComparison.OrdinalIgnoreCase) &&
+            job.Id.Equals("GEAR_CHAIN", StringComparison.OrdinalIgnoreCase))
+        {
+            score += 4;
+        }
+
+        if (check.Category.Equals("Brakes", StringComparison.OrdinalIgnoreCase) &&
+            job.Id.Equals("BRAKE_BLEED", StringComparison.OrdinalIgnoreCase))
+        {
+            score += 4;
+        }
+
+        if (check.Category.Equals("E-Bike", StringComparison.OrdinalIgnoreCase) &&
+            job.Id.Equals("EBIKE_SW", StringComparison.OrdinalIgnoreCase))
+        {
+            score += 5;
+        }
+
+        if (IsServicePackage(job))
+            score += 1;
+
+        return score;
+    }
+
+    private sealed class CustomerLookupRecord
+    {
+        public int ProfileId { get; set; }
+        public string AccountNumber { get; set; } = "";
+        public string FirstName { get; set; } = "";
+        public string LastName { get; set; } = "";
+        public string Phone { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string County { get; set; } = "";
+        public string Postcode { get; set; } = "";
+        public string AddressLine1 { get; set; } = "";
+        public string AddressLine2 { get; set; } = "";
+        public List<CustomerBikeRow> Bikes { get; set; } = new();
+        public List<CustomerQuoteRecord> Quotes { get; set; } = new();
+        public List<CustomerCommunicationRecord> Communications { get; set; } = new();
+    }
+
+    private enum AssessmentMode
+    {
+        Beginner = 0,
+        Advanced = 1
+    }
+
+    private enum AssessmentOutcome
+    {
+        None = 0,
+        Pass = 1,
+        Advisory = 2,
+        Fail = 3
+    }
+
+    private sealed class AssessmentCheckState
+    {
+        public string Key { get; init; } = "";
+        public string Category { get; init; } = "";
+        public string Title { get; init; } = "";
+        public string Tooltip { get; init; } = "";
+        public string[] MatchTerms { get; init; } = Array.Empty<string>();
+        public AssessmentOutcome Outcome { get; set; }
+        public string Note { get; set; } = "";
+    }
+
+    private static AssessmentCheckState CreateCheck(
+        string key,
+        string category,
+        string title,
+        string tooltip,
+        params string[] matchTerms) =>
+        new()
+        {
+            Key = key,
+            Category = category,
+            Title = title,
+            Tooltip = tooltip,
+            MatchTerms = matchTerms
+        };
+
+    private static List<AssessmentCheckState> BuildBeginnerChecks() =>
+        new()
+        {
+            CreateCheck("frame-cracks", "Frame", "Check frame for damage / cracks",
+                "Wipe key areas if dirty. Look closely around head tube, down tube, BB shell, chainstays, seatstays, dropouts, welds and pivot areas. Flex the bike gently side to side and listen for creaks. Photograph anything suspicious.",
+                "frame", "crack", "weld", "pivot"),
+            CreateCheck("bottom-bracket", "Frame", "Check bottom bracket for wear / play",
+                "Hold a crank at 3 o'clock and 9 o'clock and push-pull laterally. Then repeat at 12 and 6. Any knock or visible movement is a fail. Spin cranks to feel roughness.",
+                "bottom bracket", "bb", "crank"),
+            CreateCheck("headset", "Frame", "Check headset for wear / play",
+                "Apply front brake and rock bike fore/aft. Feel at upper headset and lower crown race for a knock. Lift front end and turn bars slowly for notchiness.",
+                "headset", "steering"),
+            CreateCheck("stem-bars", "Frame", "Check stem and handlebars are secure",
+                "Front wheel between knees, try to twist bars. Check faceplate and steerer bolts are tight, no gap changes. Look for bar slip marks, crushed carbon, creaks.",
+                "stem", "handlebar", "cockpit"),
+            CreateCheck("seat-dropper", "Frame", "Check seat post or dropper post function / height / secure",
+                "Try to twist saddle left/right. If it rotates or drops under body weight it needs attention. For droppers, cycle it fully, check return speed, side play, remote feel.",
+                "seat", "dropper", "post", "saddle"),
+            CreateCheck("seat-position", "Frame", "Check seat position / secure",
+                "Check saddle clamp bolts, rails not cracked or bent. Try to move saddle by hand. Confirm saddle height, tilt and fore/aft are sensible to customer request.",
+                "seat", "saddle", "clamp"),
+            CreateCheck("pedals", "Frame", "Check pedals for wear / play / secure",
+                "Check pedals are tight in cranks. Wiggle pedal body for bearing play. Spin for roughness. Check cleat mechanism or pins for wear.",
+                "pedal", "cleat"),
+
+            CreateCheck("front-suspension", "Suspension", "Check front suspension feel / wear / play / leaks",
+                "Inspect stanchions for scratches, oil on seals. Compress hard a few times: should be smooth with controlled rebound. Check for CSU knock by front brake on and rocking.",
+                "suspension", "fork", "stanchion"),
+            CreateCheck("rear-suspension", "Suspension", "Check rear suspension feel / pivot points / wear / play / leaks",
+                "Inspect shock shaft for marks and oil. Compress rear suspension and listen for knock. Side-load rear triangle to feel pivot play. Check pivot bolts visually.",
+                "suspension", "shock", "pivot"),
+            CreateCheck("frame-bearings", "Suspension", "Check frame bearings for wear / play",
+                "Hold frame and rear wheel, push rear end side to side. Any clunk, movement or clicking points to pivot bearings or hardware.",
+                "bearing", "pivot", "suspension"),
+
+            CreateCheck("chain", "Gear", "Check chain wear / damage",
+                "Use chain checker. Note % wear. Check for stiff links, rust, side plate damage.",
+                "chain", "drive"),
+            CreateCheck("cassette", "Gear", "Check cassette wear",
+                "Look for hooked teeth and shark-fin shapes. Ask about skipping. Check lockring tightness if accessible.",
+                "cassette", "gear"),
+            CreateCheck("chainring", "Gear", "Check chain ring wear",
+                "Look for hooked teeth, bent teeth, abnormal wear on a few teeth only. Check chainring bolts tight.",
+                "chainring", "ring", "gear"),
+            CreateCheck("crank", "Gear", "Check crank for damage / play / secure",
+                "Check crank arms for cracks and pedal insert damage. Check crank bolt and preload system. Side-load for BB play, rotate for smoothness.",
+                "crank", "bottom bracket"),
+            CreateCheck("hanger", "Gear", "Check mech hanger straight / damage",
+                "From behind, sight derailleur pulleys relative to cassette. If it looks inboard/outboard or shifting won't index cleanly, suspect hanger. Inspect for cracks at dropout.",
+                "hanger", "derailleur", "gear"),
+            CreateCheck("front-shift", "Gear", "Check front gears shifting",
+                "Shift up and down while pedalling lightly. Listen for rub. Confirm it won't throw chain off either side.",
+                "front derailleur", "shift", "gear"),
+            CreateCheck("rear-shift", "Gear", "Check rear gears shifting",
+                "Shift across full cassette. Listen for chatter. Check it won't over-shift into spokes or off smallest cog.",
+                "rear derailleur", "shift", "cassette"),
+
+            CreateCheck("front-pad", "Brakes", "Check front brake pad wear",
+                "Inspect pad material thickness. On discs, check both pads. On rim, check for embedded grit and pad toe.",
+                "brake", "pad"),
+            CreateCheck("front-rotor", "Brakes", "Check front brake rotor wear / alignment",
+                "Spin wheel and watch rotor through calliper. Look for wobble, rub, scoring. Check rotor bolts.",
+                "brake", "rotor"),
+            CreateCheck("front-caliper", "Brakes", "Check front calliper working / no leaks",
+                "Squeeze lever firmly and hold. Lever should not creep to bar. Inspect calliper and hose junction for fluid.",
+                "brake", "calliper", "caliper", "bleed"),
+            CreateCheck("front-hose", "Brakes", "Check front cable / hose",
+                "Look for kinks, crushed sections, abrasion, loose routing, frayed cable ends and damaged outer.",
+                "brake", "hose", "cable"),
+            CreateCheck("front-lever", "Brakes", "Check front lever position / feel / no leaks",
+                "Confirm reach position, firm bite point. Check for fluid around lever, pivot, reservoir.",
+                "brake", "lever", "bleed"),
+            CreateCheck("rear-pad", "Brakes", "Check rear brake pad wear",
+                "Same as front. Confirm both pads and no contamination.",
+                "brake", "pad"),
+            CreateCheck("rear-rotor", "Brakes", "Check rear brake rotor wear / alignment",
+                "Same as front. Check for rub and rotor true.",
+                "brake", "rotor"),
+            CreateCheck("rear-caliper", "Brakes", "Check rear calliper working / no leaks",
+                "Same as front. Check for lever creep and leaks.",
+                "brake", "calliper", "caliper", "bleed"),
+            CreateCheck("rear-lever", "Brakes", "Check rear lever position / feel / no leaks",
+                "Same as front.",
+                "brake", "lever", "bleed"),
+            CreateCheck("rear-hose", "Brakes", "Check rear cable / hose",
+                "Same as front.",
+                "brake", "hose", "cable"),
+
+            CreateCheck("front-wheel-true", "Wheels", "Check front wheel true / missing spoke / tension",
+                "Lift front slightly and spin if possible. Watch rim vs brake pad/fork leg. Pluck or squeeze spokes in pairs for obvious tension differences.",
+                "wheel", "spoke", "tension"),
+            CreateCheck("front-hub", "Wheels", "Check front hub wear / play",
+                "Hold tyre at top and push side to side. Feel for knock at hub. Spin for roughness.",
+                "hub", "bearing", "wheel"),
+            CreateCheck("front-tyre", "Wheels", "Check front tyre for puncture / wear / damage",
+                "Check tread, sidewalls, cuts, bulges, embedded debris. Check valve area. Confirm pressure feels appropriate.",
+                "tyre", "tire", "wheel"),
+            CreateCheck("rear-wheel-true", "Wheels", "Check rear wheel true / missing spoke / tension",
+                "Same as front, plus check rim near cassette side for dents.",
+                "wheel", "spoke", "tension"),
+            CreateCheck("rear-hub", "Wheels", "Check rear hub wear / play",
+                "Same as front. Also feel freehub engagement and listen for grinding.",
+                "hub", "bearing", "freehub"),
+            CreateCheck("rear-tyre", "Wheels", "Check rear wheel for puncture / wear / damage",
+                "Same as front.",
+                "tyre", "tire", "wheel"),
+
+            CreateCheck("ebike-system", "E-Bike", "Are there any issues with motor / electronics",
+                "Power on, check for error codes. Confirm assist engages on roll test. Inspect wiring, sensor alignment, battery security and charger condition.",
+                "e-bike", "ebike", "motor", "electronics", "software", "battery")
+        };
+
+    private static List<AssessmentCheckState> BuildAdvancedChecks() =>
+        new()
+        {
+            CreateCheck("adv-frame-damage", "Frame", "Check for damage",
+                "Inspect frame and fork for cracks, dents, deep chips and impact marks. Focus on head tube, down tube, BB shell, chainstays, seatstays, dropouts, around welds, bottle bosses, brake mounts, pivot areas. Flex bike gently and listen for creaks. Photo anything suspicious.",
+                "frame", "fork", "crack", "dent", "impact", "weld"),
+            CreateCheck("adv-bottom-bracket", "Frame", "Check bottom bracket",
+                "Check lateral play by pushing-pulling crank arms side to side. Spin cranks to feel roughness or binding. Check crank bolts or preload system is secure. Note any creak under light load.",
+                "bottom bracket", "bb", "crank", "preload", "creak"),
+            CreateCheck("adv-headset-stem-bars", "Frame", "Check headset, stem and handlebars",
+                "Front brake on, rock bike fore/aft to feel headset knock. Lift front end and turn bars slowly for notchiness. Front wheel between knees, twist bars to check stem clamp and bar slip. Visual check for crushed carbon, slipped bar marks and loose faceplate bolts.",
+                "headset", "stem", "handlebar", "steerer", "faceplate"),
+            CreateCheck("adv-seatpost-seat", "Frame", "Check seat post or dropper post and seat",
+                "Try to twist saddle, check for slip or rotation. Confirm clamp is secure and not overtightened on carbon. For droppers: full travel cycle, return speed, side play, remote feel, cable routing. Check saddle rails, clamp hardware, tilt, fore/aft and height.",
+                "seat", "saddle", "dropper", "post", "rails"),
+            CreateCheck("adv-pedals", "Frame", "Check pedals",
+                "Confirm pedals are tight in cranks. Wiggle pedal body for bearing play. Spin for roughness. Check pedal threads, cleat mechanism or pins, pedal body damage.",
+                "pedal", "cleat", "pins", "threads"),
+
+            CreateCheck("adv-suspension-front-rear", "Suspension", "Check front and rear suspension",
+                "Inspect stanchions or shock shaft for scratches and oil residue at seals. Compress firmly several times: should be smooth with controlled rebound. Listen for topout or knocking. Check air pressure or sag if relevant to complaint.",
+                "suspension", "fork", "shock", "seal", "rebound", "sag"),
+            CreateCheck("adv-frame-bearings", "Suspension", "Check frame bearings",
+                "With rear brake on, side-load rear triangle and feel for play at pivots. Listen for clicks. Check pivot hardware is present and seated. If accessible, inspect pivot areas for rust, missing seals or dry bearings.",
+                "frame bearings", "pivot", "hardware", "rust", "seal"),
+
+            CreateCheck("adv-chain-cassette-ring-crank", "Gear", "Check chain, cassette, chain rings and crank",
+                "Measure chain wear with gauge and note %. Check chain for stiff links, damage and corrosion. Inspect cassette and rings for hooked teeth, bent teeth and uneven wear. Check crank arms for cracks, pedal insert damage and that crank fixing and preload are correct.",
+                "chain", "cassette", "ring", "crank", "wear"),
+            CreateCheck("adv-mech-hanger", "Gear", "Check front mech, rear mech and hanger",
+                "Inspect hanger for bends and cracks at dropout area. Sight rear mech from behind to see if pulleys track parallel with cassette. Check rear mech cage is straight, jockey wheels wear, clutch function if fitted. Check front mech alignment, cage clearance and rub points if fitted.",
+                "front mech", "rear mech", "hanger", "derailleur", "jockey", "clutch"),
+            CreateCheck("adv-shifting", "Gear", "Check gears shifting",
+                "Shift across full range while pedalling lightly. Confirm indexing, no hesitation, no chain rub. Confirm it will not overshift into spokes or drop off small ring. Note any skipping under light load.",
+                "shifting", "indexing", "skip", "chain rub", "overshift"),
+
+            CreateCheck("adv-front-brakes", "Brakes", "Check front brakes",
+                "Inspect pad wear and contamination. Check rotor condition and rub. Squeeze lever firmly and hold: no creep. Confirm bite point and modulation. Inspect calliper and hose or cable for leaks, kinks, frays and secure routing. Quick roll and stop test for power and vibration.",
+                "front brake", "pad", "rotor", "lever", "calliper", "cable", "hose"),
+            CreateCheck("adv-rear-brakes", "Brakes", "Check rear brakes",
+                "Same as front, plus listen for noise that suggests contamination. Confirm rear brake can lock wheel with controlled lever force. Check hose or cable routing around chainstay and pivots for chafe.",
+                "rear brake", "pad", "rotor", "lever", "calliper", "hose", "cable"),
+
+            CreateCheck("adv-front-wheel-hub", "Wheels", "Check front wheel and hub",
+                "Spin wheel and check for wobble and hop. Check spokes for missing, loose or uneven tension by squeeze or pluck. Check hub play by rocking rim side to side. Spin to feel bearing roughness. Check axle or QR is tight and seated.",
+                "front wheel", "hub", "spoke", "tension", "axle", "qr"),
+            CreateCheck("adv-rear-wheel-hub", "Wheels", "Check rear wheel and hub",
+                "Same as front, plus check freehub engagement and any grinding or slip. Inspect rim near cassette side for dents. Check axle seating and hanger area alignment.",
+                "rear wheel", "hub", "freehub", "axle", "rim", "hanger"),
+
+            CreateCheck("adv-ebike-electronics", "E-Bike", "Check motor / electronics",
+                "Power on and record any error codes. Confirm assist engages smoothly on roll test. Check battery security, terminals and key. Inspect wiring, connectors and sensor alignment. Listen for abnormal motor noise, cut-outs or vibration. Confirm correct charger if supplied.",
+                "e-bike", "ebike", "motor", "electronics", "battery", "sensor", "charger")
+        };
+}

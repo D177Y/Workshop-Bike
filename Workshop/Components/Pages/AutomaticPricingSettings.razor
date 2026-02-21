@@ -1,0 +1,414 @@
+@page "/settings/automatic-pricing"
+@attribute [Authorize]
+@using Workshop.Models
+@using Workshop.Services
+@inject JobCatalogService Catalog
+
+<h3>Automatic Pricing</h3>
+
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="@(IsError ? "error-message" : "success-message")">@Message</div>
+}
+
+<section class="settings-card">
+    <h4>Automatic Service Pricing</h4>
+    <div class="row">
+        <label class="check">
+            <input type="checkbox" @bind="AutomaticEnabled" />
+            <span>Turn on automatic pricing</span>
+        </label>
+    </div>
+    <div class="grid">
+        <label>Default Hourly Rate (Suggested GBP 70 - 85)
+            <input type="number" min="0" step="0.01" @bind="DefaultHourlyRate" />
+        </label>
+        <label>Discounted Hourly Rate (Suggested GBP 60 - 70)
+            <input type="number" min="0" step="0.01" @bind="DiscountedHourlyRate" />
+        </label>
+        <label>Loss leader Hourly Rate (Suggested GBP 50 - 60)
+            <input type="number" min="0" step="0.01" @bind="LossLeaderHourlyRate" />
+        </label>
+    </div>
+
+    <h5>Service Hourly Rate Tier</h5>
+    @if (IndividualServices.Count == 0)
+    {
+        <p class="muted">No services found.</p>
+    }
+    else
+    {
+        @foreach (var group in ServiceGroups)
+        {
+            <div class="group-card">
+                <div class="group-title">@group.Category1 / @group.Category2</div>
+                @foreach (var service in group.Services)
+                {
+                    <div class="service-row">
+                        <span>@service.Name</span>
+                        <div class="rate-options">
+                            <label>
+                                <input type="radio"
+                                       name="@($"tier-{service.Id}")"
+                                       checked="@(GetTier(service.Id) == ServiceHourlyRateTier.Default)"
+                                       @onchange="@(() => SetTier(service.Id, ServiceHourlyRateTier.Default))" />
+                                Default
+                            </label>
+                            <label>
+                                <input type="radio"
+                                       name="@($"tier-{service.Id}")"
+                                       checked="@(GetTier(service.Id) == ServiceHourlyRateTier.Discounted)"
+                                       @onchange="@(() => SetTier(service.Id, ServiceHourlyRateTier.Discounted))" />
+                                Discounted
+                            </label>
+                            <label>
+                                <input type="radio"
+                                       name="@($"tier-{service.Id}")"
+                                       checked="@(GetTier(service.Id) == ServiceHourlyRateTier.LossLeader)"
+                                       @onchange="@(() => SetTier(service.Id, ServiceHourlyRateTier.LossLeader))" />
+                                Loss leader
+                            </label>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+</section>
+
+<section class="settings-card">
+    <h4>Rounding</h4>
+    <div class="grid">
+        <label>Rounding strategy
+            <select @bind="RoundingMode">
+                <option value="@PriceRoundingMode.Down">Round down</option>
+                <option value="@PriceRoundingMode.Nearest">Round to nearest</option>
+                <option value="@PriceRoundingMode.Up">Round up</option>
+            </select>
+        </label>
+        <label>Rounding increment
+            <select @bind="RoundingIncrement">
+                <option value="0.01">GBP 0.01</option>
+                <option value="0.25">GBP 0.25</option>
+                <option value="0.50">GBP 0.50</option>
+                <option value="1.00">GBP 1.00</option>
+            </select>
+        </label>
+    </div>
+</section>
+
+<section class="settings-card">
+    <h4>Automatic Add-On Pricing</h4>
+    @if (ServicePackages.Count == 0)
+    {
+        <p class="muted">No service packages found. Create service packages first.</p>
+    }
+    else
+    {
+        <div class="package-reduction-grid">
+            @foreach (var package in ServicePackages)
+            {
+                <label>@package.Name add-on time reduction (mins)
+                    <input type="number"
+                           min="0"
+                           step="1"
+                           value="@GetPackageReduction(package.Id)"
+                           @onchange="(e => SetPackageReduction(package.Id, e.Value?.ToString()))" />
+                </label>
+            }
+        </div>
+
+        <h5>Service Package Add-On Availability</h5>
+        @foreach (var group in ServiceGroups)
+        {
+            <div class="group-card">
+                <div class="group-title">@group.Category1 / @group.Category2</div>
+                <div class="matrix-header" style="@MatrixColumnsStyle">
+                    <span>Service</span>
+                    @foreach (var package in ServicePackages)
+                    {
+                        <span>@package.Name</span>
+                    }
+                </div>
+                @foreach (var service in group.Services)
+                {
+                    <div class="matrix-row" style="@MatrixColumnsStyle">
+                        <span>@service.Name</span>
+                        @foreach (var package in ServicePackages)
+                        {
+                            <label class="check-center">
+                                <input type="checkbox"
+                                       checked="@GetAddOnAvailability(service.Id, package.Id)"
+                                       @onchange="(e => SetAddOnAvailability(service.Id, package.Id, e.Value))" />
+                            </label>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    }
+    <p class="muted">Saving will recalculate add-on minutes and prices for all services using the selected package reductions.</p>
+</section>
+
+<div class="row">
+    <button class="btn btn-primary" @onclick="SaveAsync">Save automatic pricing settings</button>
+</div>
+
+<style>
+    .settings-card { margin-bottom: 16px; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+    .package-reduction-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .check { display: inline-flex; align-items: center; gap: 8px; }
+    .group-card { margin-top: 10px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background: #f8fafc; }
+    .group-title { font-weight: 600; margin-bottom: 8px; }
+    .service-row { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 10px; align-items: center; padding: 4px 0; }
+    .rate-options { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .matrix-header, .matrix-row { display: grid; gap: 8px; align-items: center; }
+    .matrix-header { font-weight: 600; color: #334155; margin-bottom: 4px; }
+    .matrix-row { padding: 4px 0; border-top: 1px solid #e2e8f0; }
+    .check-center { display: inline-flex; justify-content: center; }
+    .muted { color: #64748b; font-size: 12px; margin-top: 8px; }
+    input, select { width: 100%; padding: 6px; margin-top: 4px; }
+    .rate-options input, .check input, .check-center input { width: auto; margin-top: 0; }
+    .btn { padding: 8px 14px; border: none; border-radius: 999px; cursor: pointer; }
+    .btn-primary { background: #0d6efd; color: #fff; }
+    .error-message { color: #b91c1c; margin: 10px 0; }
+    .success-message { color: #166534; margin: 10px 0; }
+</style>
+
+@code {
+    private string Message = "";
+    private bool IsError;
+
+    private bool AutomaticEnabled;
+    private decimal DefaultHourlyRate;
+    private decimal DiscountedHourlyRate;
+    private decimal LossLeaderHourlyRate;
+    private decimal RoundingIncrement = 0.50m;
+    private PriceRoundingMode RoundingMode = PriceRoundingMode.Down;
+
+    private readonly Dictionary<string, ServiceHourlyRateTier> TierByServiceId = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> PackageReductionByPackageId = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Dictionary<string, bool>> AddOnAvailabilityByServiceId = new(StringComparer.OrdinalIgnoreCase);
+
+    private List<JobDefinition> ServicePackages = new();
+    private List<JobDefinition> IndividualServices = new();
+    private List<ServiceGroup> ServiceGroups = new();
+    private string MatrixColumnsStyle => $"grid-template-columns: minmax(240px, 1fr) repeat({Math.Max(1, ServicePackages.Count)}, minmax(90px, 1fr));";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Catalog.EnsureInitializedAsync();
+        LoadFromCatalog();
+    }
+
+    private void LoadFromCatalog()
+    {
+        AutomaticEnabled = Catalog.AutomaticServicePricingEnabled;
+        DefaultHourlyRate = Catalog.DefaultHourlyRate;
+        DiscountedHourlyRate = Catalog.DiscountedHourlyRate;
+        LossLeaderHourlyRate = Catalog.LossLeaderHourlyRate;
+        RoundingIncrement = Catalog.AutoPriceRoundingIncrement;
+        RoundingMode = Catalog.AutoPriceRoundingMode;
+
+        ServicePackages = Catalog.Jobs
+            .Where(Catalog.IsServicePackage)
+            .OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        IndividualServices = Catalog.Jobs
+            .Where(j => !Catalog.IsServicePackage(j))
+            .OrderBy(j => NormalizeCategory1(j.Category), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(j => NormalizeCategory2(j.Category2), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(j => j.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        ServiceGroups = IndividualServices
+            .GroupBy(j => NormalizeCategory1(j.Category), StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(category1Group =>
+                category1Group
+                    .GroupBy(j => NormalizeCategory2(j.Category2), StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+                    .Select(category2Group => new ServiceGroup(
+                        category1Group.Key,
+                        category2Group.Key,
+                        category2Group.ToList())))
+            .ToList();
+
+        TierByServiceId.Clear();
+        foreach (var service in IndividualServices)
+            TierByServiceId[service.Id] = service.AutoPricingTier;
+
+        PackageReductionByPackageId.Clear();
+        foreach (var package in ServicePackages)
+        {
+            var reduction = Catalog.ServicePackageAddOnTimeReductions.TryGetValue(package.Id, out var value)
+                ? value
+                : 0;
+            PackageReductionByPackageId[package.Id] = Math.Max(0, reduction);
+        }
+
+        AddOnAvailabilityByServiceId.Clear();
+        foreach (var service in IndividualServices)
+        {
+            var packageMap = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            foreach (var package in ServicePackages)
+            {
+                var existing = service.PackageOverrides
+                    .FirstOrDefault(o => o.ServicePackageJobId.Equals(package.Id, StringComparison.OrdinalIgnoreCase));
+                packageMap[package.Id] = existing?.IsAvailableAsAdditionalService ?? true;
+            }
+
+            AddOnAvailabilityByServiceId[service.Id] = packageMap;
+        }
+    }
+
+    private ServiceHourlyRateTier GetTier(string serviceId)
+        => TierByServiceId.TryGetValue(serviceId, out var tier) ? tier : ServiceHourlyRateTier.Default;
+
+    private void SetTier(string serviceId, ServiceHourlyRateTier tier)
+    {
+        TierByServiceId[serviceId] = tier;
+    }
+
+    private int GetPackageReduction(string packageId)
+        => PackageReductionByPackageId.TryGetValue(packageId, out var value) ? value : 0;
+
+    private void SetPackageReduction(string packageId, string? rawValue)
+    {
+        if (int.TryParse(rawValue, out var parsed))
+            PackageReductionByPackageId[packageId] = Math.Max(0, parsed);
+        else
+            PackageReductionByPackageId[packageId] = 0;
+    }
+
+    private bool GetAddOnAvailability(string serviceId, string packageId)
+    {
+        if (!AddOnAvailabilityByServiceId.TryGetValue(serviceId, out var packageMap))
+            return true;
+        return packageMap.TryGetValue(packageId, out var available) ? available : true;
+    }
+
+    private void SetAddOnAvailability(string serviceId, string packageId, object? rawValue)
+    {
+        var isChecked = rawValue switch
+        {
+            bool value => value,
+            string text when bool.TryParse(text, out var parsed) => parsed,
+            _ => false
+        };
+        if (!AddOnAvailabilityByServiceId.TryGetValue(serviceId, out var packageMap))
+        {
+            packageMap = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            AddOnAvailabilityByServiceId[serviceId] = packageMap;
+        }
+
+        packageMap[packageId] = isChecked;
+    }
+
+    private async Task SaveAsync()
+    {
+        Message = "";
+        IsError = false;
+
+        if (DefaultHourlyRate < 0 || DiscountedHourlyRate < 0 || LossLeaderHourlyRate < 0)
+        {
+            Message = "Hourly rates must be 0 or greater.";
+            IsError = true;
+            return;
+        }
+
+        Catalog.AutomaticServicePricingEnabled = AutomaticEnabled;
+        Catalog.DefaultHourlyRate = DefaultHourlyRate;
+        Catalog.DiscountedHourlyRate = DiscountedHourlyRate;
+        Catalog.LossLeaderHourlyRate = LossLeaderHourlyRate;
+        Catalog.AutoPriceRoundingIncrement = RoundingIncrement;
+        Catalog.AutoPriceRoundingMode = RoundingMode;
+        Catalog.ReplaceServicePackageAddOnTimeReductions(new Dictionary<string, int>(PackageReductionByPackageId, StringComparer.OrdinalIgnoreCase));
+
+        foreach (var service in IndividualServices)
+        {
+            service.AutoPricingTier = GetTier(service.Id);
+            service.PackageOverrides = BuildAutomaticPackageOverrides(service);
+            await Catalog.SaveJobAsync(service);
+        }
+
+        await Catalog.SaveSettingsAsync();
+        await Catalog.ReloadAsync();
+        LoadFromCatalog();
+        Message = "Automatic pricing settings saved.";
+    }
+
+    private List<JobServicePackageOverride> BuildAutomaticPackageOverrides(JobDefinition service)
+    {
+        var overrides = new List<JobServicePackageOverride>();
+        var defaultMinutes = Math.Max(0, service.DefaultMinutes);
+        var defaultPrice = ResolveServicePriceForMinutes(service, defaultMinutes);
+
+        foreach (var package in ServicePackages)
+        {
+            var available = GetAddOnAvailability(service.Id, package.Id);
+            if (!available)
+            {
+                overrides.Add(new JobServicePackageOverride
+                {
+                    ServicePackageJobId = package.Id,
+                    IsAvailableAsAdditionalService = false,
+                    Minutes = 0,
+                    PriceIncVat = 0m
+                });
+                continue;
+            }
+
+            var reduction = GetPackageReduction(package.Id);
+            var reducedMinutes = Math.Max(0, defaultMinutes - reduction);
+            var reducedPrice = ResolveServicePriceForMinutes(service, reducedMinutes);
+
+            if (reducedMinutes == defaultMinutes && reducedPrice == defaultPrice)
+                continue;
+
+            overrides.Add(new JobServicePackageOverride
+            {
+                ServicePackageJobId = package.Id,
+                IsAvailableAsAdditionalService = true,
+                Minutes = reducedMinutes,
+                PriceIncVat = reducedPrice
+            });
+        }
+
+        return overrides;
+    }
+
+    private decimal ResolveServicePriceForMinutes(JobDefinition service, int minutes)
+    {
+        if (minutes <= 0)
+            return 0m;
+
+        if (service.PricingMode == ServicePricingMode.AutoRate)
+            return Catalog.CalculatePriceForMinutes(service, minutes);
+
+        var defaultMinutes = Math.Max(1, service.DefaultMinutes);
+        var basePrice = service.PricingMode == ServicePricingMode.EstimatedPrice
+            ? (service.EstimatedPriceIncVat > 0 ? service.EstimatedPriceIncVat : service.BasePriceIncVat)
+            : service.BasePriceIncVat;
+
+        var proRated = (minutes / (decimal)defaultMinutes) * Math.Max(0m, basePrice);
+        return decimal.Round(proRated, 2, MidpointRounding.AwayFromZero);
+    }
+
+    private static string NormalizeCategory1(string? category1)
+    {
+        var normalized = (category1 ?? "").Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? "Uncategorized" : normalized;
+    }
+
+    private static string NormalizeCategory2(string? category2)
+    {
+        var normalized = (category2 ?? "").Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? "General" : normalized;
+    }
+
+    private sealed record ServiceGroup(string Category1, string Category2, List<JobDefinition> Services);
+}

@@ -1,0 +1,37 @@
+<div class="booking-summary">
+    <div class="summary-block">
+        <h4>EARLIEST DATE</h4>
+        <div class="summary-center">@SummaryEarliestDate</div>
+    </div>
+    <div class="summary-block">
+        <h4>SUMMARY</h4>
+        <div><b>Store:</b> @SummaryStore</div>
+        <div><b>Mechanic:</b> @SummaryMechanic</div>
+        <div class="summary-spacer"></div>
+        <div><b>Service:</b> @SummaryJobs</div>
+        <div><b>Notes:</b> @SummaryNotes</div>
+        <div class="summary-spacer"></div>
+        <div><b>Name:</b> @SummaryCustomer</div>
+        <div><b>Phone:</b> @SummaryPhone</div>
+        <div class="summary-spacer"></div>
+        <div><b>Bike:</b> @SummaryBike</div>
+        <div class="summary-spacer"></div>
+        <div class="summary-metrics"><b>Date:</b> @SummarySelectedDate</div>
+        <div class="summary-metrics"><b>Minutes:</b> @CalculatedMinutes</div>
+        <div class="summary-metrics"><b>Estimate:</b> £@CalculatedPrice.ToString("0.00")</div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string SummaryEarliestDate { get; set; } = "-";
+    [Parameter] public string SummaryStore { get; set; } = "-";
+    [Parameter] public string SummaryMechanic { get; set; } = "-";
+    [Parameter] public string SummaryJobs { get; set; } = "-";
+    [Parameter] public string SummaryNotes { get; set; } = "-";
+    [Parameter] public string SummaryCustomer { get; set; } = "-";
+    [Parameter] public string SummaryPhone { get; set; } = "-";
+    [Parameter] public string SummaryBike { get; set; } = "-";
+    [Parameter] public string SummarySelectedDate { get; set; } = "-";
+    [Parameter] public int CalculatedMinutes { get; set; }
+    [Parameter] public decimal CalculatedPrice { get; set; }
+}

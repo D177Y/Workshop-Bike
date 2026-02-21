@@ -1,0 +1,207 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@page "/dashboard/top-mechanic"
+@attribute [Authorize]
+@using Syncfusion.Blazor.Layouts
+@using Workshop.Models
+@using Workshop.Services
+@inject WorkshopData Data
+@inject UserAccessService UserAccess
+@inject FinancialYearService FinancialYears
+@inject DashboardAnalyticsService Analytics
+@inject ILogger<DashboardTopMechanic> Logger
+
+<div class="dashboard-page">
+    <header class="dashboard-header">
+        <h3>Top Mechanic</h3>
+        <p>Rank mechanics by revenue for each month and across the full financial year.</p>
+        @if (_financialYearRange is not null)
+        {
+            <p class="fy-pill">Financial year: @_financialYearRange.Value.StartDate.ToString("dd MMM yyyy") - @_financialYearRange.Value.EndDate.ToString("dd MMM yyyy")</p>
+        }
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(_statusMessage))
+    {
+        <div class="status @(_statusIsError ? "error" : "success")">@_statusMessage</div>
+    }
+
+    @if (_financialYearRange is null)
+    {
+        <div class="status">Loading mechanic rankings...</div>
+    }
+    else
+    {
+        <div class="top-mechanic-layout">
+            <SfDashboardLayout Columns="12"
+                               AllowDragging="false"
+                               AllowResizing="false"
+                               AllowFloating="false"
+                               CellAspectRatio="4"
+                               CellSpacing="@_cellSpacing">
+                <DashboardLayoutPanels>
+                <DashboardLayoutPanel Id="top-mechanic-monthly" Row="0" Column="0" SizeX="8" SizeY="@_pairPanelSizeY">
+                    <HeaderTemplate>
+                        <h4>Monthly Top 3 Mechanics</h4>
+                    </HeaderTemplate>
+                    <ContentTemplate>
+                        <div class="panel-content monthly-panel-content">
+                            <div class="monthly-stack">
+                                @foreach (var month in _monthlyRows)
+                                {
+                                    <article class="rank-card">
+                                        <div class="rank-card-head">
+                                            <strong>@month.Label</strong>
+                                            <span>@month.StartDate.ToString("dd MMM") - @month.EndDate.ToString("dd MMM")</span>
+                                        </div>
+                                        @if (month.Rows.Count == 0)
+                                        {
+                                            <div class="muted">No revenue recorded for this month.</div>
+                                        }
+                                        else
+                                        {
+                                            <div class="table-wrap">
+                                                <table>
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Rank</th>
+                                                            <th>Name</th>
+                                                            <th>Store</th>
+                                                            <th>Revenue</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var row in month.Rows)
+                                                        {
+                                                            <tr>
+                                                                <td>@row.Rank</td>
+                                                                <td>@row.Name</td>
+                                                                <td>@row.Store</td>
+                                                                <td>GBP @row.Revenue.ToString("0.00")</td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        }
+                                    </article>
+                                }
+                            </div>
+                        </div>
+                    </ContentTemplate>
+                </DashboardLayoutPanel>
+
+                <DashboardLayoutPanel Id="top-mechanic-annual" Row="0" Column="8" SizeX="4" SizeY="@_pairPanelSizeY">
+                    <HeaderTemplate>
+                        <h4>Financial Year Total</h4>
+                    </HeaderTemplate>
+                    <ContentTemplate>
+                        @if (_yearRows.Count == 0)
+                        {
+                            <div class="panel-content annual-panel-content">
+                                <div class="muted">No mechanic revenue found in this financial year.</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="panel-content annual-panel-content">
+                                <div class="table-wrap">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Rank</th>
+                                                <th>Name</th>
+                                                <th>Store</th>
+                                                <th>Revenue</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var row in _yearRows)
+                                            {
+                                                <tr>
+                                                    <td>@row.Rank</td>
+                                                    <td>@row.Name</td>
+                                                    <td>@row.Store</td>
+                                                    <td>GBP @row.Revenue.ToString("0.00")</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        }
+                    </ContentTemplate>
+                </DashboardLayoutPanel>
+                </DashboardLayoutPanels>
+            </SfDashboardLayout>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly double[] _cellSpacing = new[] { 12d, 12d };
+
+    private UserAccessScope _userAccess = UserAccessScope.AllowAll();
+    private FinancialYearRange? _financialYearRange;
+    private List<MonthlyMechanicLeaderboard> _monthlyRows = new();
+    private List<MechanicRevenueRow> _yearRows = new();
+    private int _pairPanelSizeY = 8;
+    private string _statusMessage = "";
+    private bool _statusIsError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Data.EnsureInitializedAsync();
+            _userAccess = await UserAccess.GetCurrentAsync();
+            _financialYearRange = await FinancialYears.GetCurrentRangeAsync(DateTime.Today);
+            LoadRows();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize top mechanic dashboard.");
+            _statusMessage = "Could not load mechanic dashboard.";
+            _statusIsError = true;
+        }
+    }
+
+    private void LoadRows()
+    {
+        if (_financialYearRange is null)
+            return;
+
+        var stores = Data.Stores.Where(s => _userAccess.CanAccessStore(s.Id)).ToList();
+        var mechanics = Data.Mechanics.Where(m => _userAccess.CanAccessMechanic(m)).ToList();
+        var filteredBookings = Analytics.FilterBookings(
+            Data.Bookings,
+            _userAccess,
+            _financialYearRange.Value.StartDate,
+            _financialYearRange.Value.EndDate);
+
+        _monthlyRows = Analytics.BuildMonthlyMechanicLeaderboards(
+            filteredBookings,
+            stores,
+            mechanics,
+            _financialYearRange.Value.StartDate,
+            _financialYearRange.Value.EndDate,
+            3);
+
+        _yearRows = Analytics.BuildMechanicLeaderboard(filteredBookings, stores, mechanics);
+        _pairPanelSizeY = CalculatePairPanelHeight();
+    }
+
+    private int CalculatePairPanelHeight()
+    {
+        var monthlyUnits = 0;
+        foreach (var month in _monthlyRows)
+        {
+            monthlyUnits += month.Rows.Count == 0 ? 2 : 3 + month.Rows.Count;
+        }
+
+        if (monthlyUnits == 0)
+            monthlyUnits = 4;
+
+        var annualUnits = _yearRows.Count == 0 ? 4 : 3 + _yearRows.Count;
+        return Math.Clamp(Math.Max(monthlyUnits, annualUnits), 4, 80);
+    }
+}

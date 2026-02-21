@@ -1,0 +1,21 @@
+<div class="section-title">CONFIRM</div>
+<div class="step-section">
+    <div class="summary-block">
+        <div><b>Date:</b> @SummarySelectedDate</div>
+        <div><b>Jobs:</b> @SummaryJobs</div>
+        <div><b>Source quote:</b> @(string.IsNullOrWhiteSpace(SourceQuoteId) ? "-" : SourceQuoteId)</div>
+        <div><b>Notes:</b> @SummaryNotes</div>
+        <div><b>Minutes:</b> @CalculatedMinutes</div>
+        <div class="summary-spacer"></div>
+        <div><b>Price inc VAT:</b> £@CalculatedPrice.ToString("0.00")</div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string SummarySelectedDate { get; set; } = "-";
+    [Parameter] public string SummaryJobs { get; set; } = "-";
+    [Parameter] public string SummaryNotes { get; set; } = "-";
+    [Parameter] public string SourceQuoteId { get; set; } = "";
+    [Parameter] public int CalculatedMinutes { get; set; }
+    [Parameter] public decimal CalculatedPrice { get; set; }
+}

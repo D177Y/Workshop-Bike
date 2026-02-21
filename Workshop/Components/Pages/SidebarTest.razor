@@ -1,0 +1,106 @@
+@page "/sidebar-test"
+@rendermode InteractiveServer
+@using Syncfusion.Blazor.Navigations
+@using Syncfusion.Blazor.Inputs
+@using Workshop.Services
+@inject WorkshopData Data
+
+<div id="control-section">
+    <div id="wrapper">
+        <SfSidebar CssClass="sidebar-treeview"
+                   Width="290px"
+                   Type="SidebarType.Push"
+                   CloseOnDocumentClick="false"
+                   Target=".main-content"
+                   MediaQuery="(min-width:600px)"
+                   @bind-IsOpen="SidebarToggle">
+            <ChildContent>
+                <div class="main-menu">
+                <div class="table-content">
+                </div>
+                    <div>
+                        <SfTreeView CssClass="main-treeview" ExpandOn="@Expand" TValue="TreeData">
+                        <TreeViewFieldsSettings Id="NodeId"
+                                                Text="NodeText"
+                                                IconCss="IconCss"
+                                                NavigateUrl="NavigateUrl"
+                                                DataSource="_treeData"
+                                                HasChildren="HasChild"
+                                                ParentID="Pid">
+                        </TreeViewFieldsSettings>
+                        </SfTreeView>
+                    </div>
+                </div>
+            </ChildContent>
+        </SfSidebar>
+
+        <div>
+            <SfToolbar>
+                <ToolbarEvents Clicked="@Toggle"></ToolbarEvents>
+            <ToolbarItems>
+                <ToolbarItem PrefixIcon="e-icons e-menu" TooltipText="Menu"></ToolbarItem>
+                    <ToolbarItem>
+                        <Template>
+                            <div class="e-folder">
+                            <div class="e-folder-name">Workshop</div>
+                            </div>
+                        </Template>
+                    </ToolbarItem>
+                </ToolbarItems>
+            </SfToolbar>
+        </div>
+
+        <div class="main-content" id="main-text"></div>
+    </div>
+</div>
+
+@code {
+    public ExpandAction Expand = ExpandAction.Click;
+    public bool SidebarToggle = true;
+
+    public void Toggle(ClickEventArgs args)
+    {
+        if (args.Item?.TooltipText == "Menu")
+        {
+            SidebarToggle = !SidebarToggle;
+        }
+    }
+
+    public class TreeData
+    {
+        public string? NodeId { get; set; }
+        public string? NodeText { get; set; }
+        public string? IconCss { get; set; }
+        public string? NavigateUrl { get; set; }
+        public bool HasChild { get; set; }
+        public string? Pid { get; set; }
+    }
+
+    private readonly List<TreeData> _treeData = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Data.EnsureInitializedAsync();
+
+        _treeData.Add(new TreeData { NodeId = "booking", NodeText = "Booking", HasChild = true, IconCss = "icon-docs icon" });
+        _treeData.Add(new TreeData { NodeId = "booking-create", NodeText = "Create booking", NavigateUrl = "/create-booking", Pid = "booking" });
+
+        _treeData.Add(new TreeData { NodeId = "schedules", NodeText = "Store Schedules", HasChild = true, IconCss = "icon-th icon" });
+        foreach (var store in Data.Stores.OrderBy(s => s.Name))
+        {
+            _treeData.Add(new TreeData
+            {
+                NodeId = $"store-{store.Id}",
+                NodeText = $"{store.Name} schedule",
+                NavigateUrl = $"/store/{store.Id}",
+                Pid = "schedules"
+            });
+        }
+
+        _treeData.Add(new TreeData { NodeId = "management", NodeText = "Management", HasChild = true, IconCss = "icon-code icon" });
+        _treeData.Add(new TreeData { NodeId = "management-stores", NodeText = "Manage Stores", NavigateUrl = "/manage-stores", Pid = "management" });
+        _treeData.Add(new TreeData { NodeId = "management-mechanics", NodeText = "Manage Mechanics", NavigateUrl = "/manage-mechanics", Pid = "management" });
+        _treeData.Add(new TreeData { NodeId = "management-jobs", NodeText = "Manage Services", NavigateUrl = "/manage-jobs", Pid = "management" });
+        _treeData.Add(new TreeData { NodeId = "management-addons", NodeText = "Manage Add-ons", NavigateUrl = "/manage-addons", Pid = "management" });
+    }
+}

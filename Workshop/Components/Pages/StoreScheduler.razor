@@ -1,19 +1,729 @@
 ﻿@rendermode InteractiveServer
 @page "/store/{StoreId:int}"
+@attribute [Authorize]
 @using Syncfusion.Blazor.Schedule
 @using Syncfusion.Blazor.Popups
+@using Microsoft.JSInterop
 @using Workshop.Models
 @using Workshop.Services
 @inject WorkshopData Data
 @inject SchedulingService Scheduler
+@inject JobCatalogService Catalog
+@inject IJSRuntime JS
+@inject ILogger<StoreScheduler> Logger
+@inject IEmailSender EmailSender
+@inject UserAccessService UserAccess
 
-<h3 style="margin: 0 0 10px 0;">@StoreName</h3>
+<style>
+.e-schedule .e-appointment {
+    position: relative;
+    overflow: hidden;
+}
 
-<SfSchedule @ref="ScheduleRef"
+.e-schedule .e-appointment.timeoff-block {
+    background: repeating-linear-gradient(
+        135deg,
+        rgba(71, 85, 105, 0.95) 0px,
+        rgba(71, 85, 105, 0.95) 8px,
+        rgba(241, 245, 249, 0.35) 8px,
+        rgba(241, 245, 249, 0.35) 14px
+    ) !important;
+    border-color: #334155 !important;
+    color: #fff !important;
+}
+
+.e-schedule .e-appointment.timeoff-block::after {
+    display: none;
+}
+
+.e-schedule .e-appointment.timeoff-reason-holiday {
+    background: repeating-linear-gradient(
+        135deg,
+        rgba(37, 99, 235, 0.95) 0px,
+        rgba(37, 99, 235, 0.95) 8px,
+        rgba(146, 177, 245, 0.95) 8px,
+        rgba(146, 177, 245, 0.95) 14px
+    ) !important;
+    border-color: #1d4ed8 !important;
+}
+
+.e-schedule .e-appointment.timeoff-reason-illness {
+    background: repeating-linear-gradient(
+        135deg,
+        rgba(185, 28, 28, 0.95) 0px,
+        rgba(185, 28, 28, 0.95) 8px,
+        rgba(220, 141, 141, 0.95) 8px,
+        rgba(220, 141, 141, 0.95) 14px
+    ) !important;
+    border-color: #991b1b !important;
+}
+
+.e-schedule .e-appointment.timeoff-reason-training {
+    background: repeating-linear-gradient(
+        135deg,
+        rgba(124, 58, 237, 0.95) 0px,
+        rgba(124, 58, 237, 0.95) 8px,
+        rgba(190, 156, 246, 0.95) 8px,
+        rgba(190, 156, 246, 0.95) 14px
+    ) !important;
+    border-color: #6d28d9 !important;
+}
+
+.e-schedule .e-appointment.timeoff-reason-shop-floor {
+    background: repeating-linear-gradient(
+        135deg,
+        rgba(217, 119, 6, 0.95) 0px,
+        rgba(217, 119, 6, 0.95) 8px,
+        rgba(236, 187, 131, 0.95) 8px,
+        rgba(236, 187, 131, 0.95) 14px
+    ) !important;
+    border-color: #b45309 !important;
+}
+
+.e-schedule .e-appointment.timeoff-reason-other {
+    background: repeating-linear-gradient(
+        135deg,
+        rgba(15, 118, 110, 0.95) 0px,
+        rgba(15, 118, 110, 0.95) 8px,
+        rgba(135, 186, 183, 0.95) 8px,
+        rgba(135, 186, 183, 0.95) 14px
+    ) !important;
+    border-color: #0f766e !important;
+}
+
+.schedule-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 0 10px 0;
+    gap: 16px;
+}
+
+.schedule-title {
+    margin: 0;
+}
+
+.schedule-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+    margin: 0;
+}
+
+.mechanic-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    font-size: 12px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.mechanic-toggle input {
+    margin: 0;
+}
+
+    .e-schedule .e-appointment::after {
+        content: "";
+        position: absolute;
+        right: 4px;
+        top: 4px;
+        width: 20px;
+        height: 20px;
+        border-radius: 999px;
+        background: transparent;
+        border: 2px solid rgba(255,255,255,0.9);
+        box-sizing: border-box;
+    }
+
+    @foreach (var color in GetAllColors())
+    {
+        <text>
+        .e-schedule .e-appointment.job-color-@StoreSchedulerColorService.SanitizeColor(color) {
+            background: @color !important;
+            border-color: @color !important;
+            color: #fff !important;
+        }
+        .e-schedule .e-appointment.status-color-@StoreSchedulerColorService.SanitizeColor(color)::after {
+            background: @color !important;
+        }
+        </text>
+    }
+
+    .status-row {
+        display: grid;
+        grid-template-columns: 20px 220px 1fr;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 0;
+        cursor: grab;
+        user-select: none;
+    }
+
+    .status-row.dragging {
+        opacity: 0.6;
+    }
+
+    .status-row-over {
+        background: rgba(59, 130, 246, 0.08);
+        border-radius: 4px;
+    }
+
+    .drag-handle {
+        cursor: grab;
+        color: #6b7280;
+        user-select: none;
+        font-size: 18px;
+        line-height: 1;
+    }
+
+    .status-name {
+        width: 100%;
+        padding: 4px;
+        box-sizing: border-box;
+    }
+
+    .status-color {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .status-hex {
+        width: 90px;
+        padding: 4px;
+        box-sizing: border-box;
+    }
+
+    .job-card-shell {
+        max-height: 78vh;
+        overflow-y: auto;
+        padding-right: 4px;
+    }
+
+    .job-card-grid {
+        display: grid;
+        gap: 14px;
+    }
+
+    .job-card-top {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(180px, 1fr));
+        gap: 10px;
+        align-items: end;
+    }
+
+    .job-card-top label {
+        display: grid;
+        gap: 4px;
+        font-size: 12px;
+        color: #4b5563;
+    }
+
+    .job-card-top input,
+    .job-card-top select,
+    .job-card-parts input,
+    .job-card-parts select,
+    .job-card-notes textarea,
+    .job-card-comms textarea {
+        width: 100%;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 6px 8px;
+        box-sizing: border-box;
+        font-size: 13px;
+    }
+
+    .job-card-progress-summary {
+        display: grid;
+        gap: 6px;
+        padding: 0;
+        border: none;
+        border-radius: 0;
+        background: transparent;
+        align-self: stretch;
+    }
+
+    .job-card-progress-label {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12px;
+        color: #1f2937;
+        font-weight: 600;
+    }
+
+    .job-card-progress-track {
+        width: 100%;
+        height: 10px;
+        border-radius: 999px;
+        background: #e5e7eb;
+        overflow: hidden;
+    }
+
+    .job-card-progress-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #2563eb, #0ea5e9);
+        transition: width 160ms ease;
+    }
+
+    .job-card-progress-meta {
+        font-size: 12px;
+        color: #4b5563;
+    }
+
+    .job-card-section {
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+        background: #fafafa;
+    }
+
+    .job-card-section h5 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+    }
+
+    .job-card-section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .job-card-section-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .job-card-pickers {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+    .job-picker {
+        border: 1px solid #d0d7de;
+        border-radius: 8px;
+        padding: 10px;
+        background: #fff;
+        display: grid;
+        gap: 8px;
+        align-content: start;
+    }
+
+    .job-picker-head {
+        font-size: 12px;
+        font-weight: 700;
+        color: #334155;
+    }
+
+    .job-filter {
+        width: 100%;
+        padding: 6px 8px;
+        border: 1px solid #c7c7c7;
+        border-radius: 4px;
+        box-sizing: border-box;
+    }
+
+    .job-group {
+        border-top: 1px solid #eee;
+        padding-top: 6px;
+        margin-top: 2px;
+    }
+
+    .job-group-header {
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: none;
+        padding: 4px 0;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .group-collapsed .job-group-header {
+        opacity: 0.8;
+    }
+
+    .job-item {
+        display: grid;
+        grid-template-columns: 18px 1fr auto;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        font-size: 13px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .job-item input[type="checkbox"] {
+        margin: 0;
+    }
+
+    .job-meta {
+        color: #64748b;
+        white-space: nowrap;
+        font-size: 12px;
+    }
+
+    .job-card-services {
+        display: grid;
+        gap: 8px;
+    }
+
+    .job-card-services-list {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+    }
+
+    .job-card-services-header,
+    .job-card-service-row {
+        display: grid;
+        grid-template-columns: 48px 260px minmax(220px, 1fr) 92px 120px auto;
+        gap: 10px;
+        align-items: center;
+        padding: 8px 10px;
+        font-size: 13px;
+    }
+
+    .job-card-services-header {
+        background: #f8fafc;
+        font-size: 11px;
+        font-weight: 700;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .job-card-service-row {
+        border-top: 1px solid #f1f5f9;
+    }
+
+    .job-card-services-header .col-service,
+    .job-card-service-row .col-service {
+        padding-left: 4px;
+    }
+
+    .job-card-service-row input[type="text"],
+    .job-card-service-row input[type="number"] {
+        width: 100%;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 5px 7px;
+        box-sizing: border-box;
+        font-size: 13px;
+    }
+
+    .job-card-service-name {
+        font-weight: 600;
+        color: #0f172a;
+        line-height: 1.25;
+    }
+
+    .job-card-service-name.clickable {
+        cursor: pointer;
+    }
+
+    .job-card-service-name-wrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .job-card-expand-btn {
+        border: none;
+        background: transparent;
+        color: #334155;
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        padding: 0;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .job-card-expand-btn:hover {
+        background: #e2e8f0;
+    }
+
+    .job-card-checklist-row {
+        background: #fcfdff;
+    }
+
+    .job-card-checklist-row .col-service {
+        padding-left: 24px;
+    }
+
+    .job-card-checklist-row .job-card-service-name {
+        font-weight: 500;
+        color: #334155;
+    }
+
+    .job-card-service-value {
+        color: #0f172a;
+    }
+
+    .job-card-services-total,
+    .job-card-services-original {
+        display: grid;
+        grid-template-columns: 48px 260px minmax(220px, 1fr) 92px 120px auto;
+        gap: 10px;
+        align-items: center;
+        padding: 8px 10px;
+        font-size: 13px;
+    }
+
+    .job-card-services-total {
+        border-top: 1px solid #e5e7eb;
+        font-weight: 700;
+        background: #f8fafc;
+    }
+
+    .job-card-services-original {
+        border-top: 1px dashed #dbe5f5;
+        color: #334155;
+        background: #fcfdff;
+        font-size: 12px;
+    }
+
+    .job-card-amend-panel {
+        display: grid;
+        gap: 10px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 10px;
+        background: #fff;
+    }
+
+    .job-card-service-row .service-tag {
+        font-size: 12px;
+        color: #334155;
+        overflow-wrap: anywhere;
+    }
+
+    .job-card-add-manual {
+        display: grid;
+        grid-template-columns: 1fr 110px 120px auto;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .job-card-manual-wrap {
+        display: grid;
+        gap: 6px;
+    }
+
+    .job-card-manual-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: #334155;
+    }
+
+    .job-card-manual-header {
+        display: grid;
+        grid-template-columns: 1fr 110px 120px auto;
+        gap: 8px;
+        align-items: center;
+        font-size: 11px;
+        font-weight: 700;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .job-card-manual-list {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+    }
+
+    .job-card-manual-list .job-card-manual-header {
+        background: #f8fafc;
+        padding: 8px 10px;
+        border-bottom: 1px solid #eef2f7;
+        gap: 10px;
+    }
+
+    .job-card-manual-list .job-card-add-manual {
+        padding: 8px 10px;
+        gap: 10px;
+    }
+
+    .job-card-parts {
+        display: grid;
+        gap: 8px;
+    }
+
+    .job-card-add {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .job-card-part-row {
+        display: grid;
+        grid-template-columns: 1fr 110px 74px 96px 72px;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .job-card-lookup-results {
+        display: grid;
+        gap: 6px;
+        max-height: 120px;
+        overflow: auto;
+    }
+
+    .job-card-lookup-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        background: #fff;
+        font-size: 12px;
+    }
+
+    .job-card-notes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+
+    .job-card-notes label,
+    .job-card-comms label {
+        font-size: 12px;
+        color: #4b5563;
+        display: grid;
+        gap: 4px;
+    }
+
+    .job-card-comms {
+        display: grid;
+        gap: 8px;
+    }
+
+    .job-card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .job-card-message {
+        color: #065f46;
+        font-size: 12px;
+    }
+
+    .job-card-warning {
+        color: #92400e;
+        font-size: 12px;
+    }
+
+    .job-card-overrun-message {
+        white-space: pre-line;
+        font-size: 13px;
+        color: #1f2937;
+    }
+
+    .job-card-log {
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        background: #fff;
+        max-height: 110px;
+        overflow: auto;
+        padding: 6px;
+        display: grid;
+        gap: 6px;
+        font-size: 12px;
+    }
+
+    @@media (max-width: 1100px) {
+        .job-card-top {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .job-card-pickers {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @@media (max-width: 900px) {
+        .job-card-services-header,
+        .job-card-service-row,
+        .job-card-services-total,
+        .job-card-services-original {
+            grid-template-columns: 36px 1fr minmax(90px, 0.7fr) 80px 96px auto;
+        }
+
+        .job-card-add-manual {
+            grid-template-columns: 1fr;
+        }
+
+        .job-card-manual-header {
+            grid-template-columns: 1fr;
+        }
+
+        .job-card-part-row {
+            grid-template-columns: 1fr 90px 70px 90px 58px;
+        }
+
+        .job-card-notes {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+@if (StoreMissing)
+{
+    <div class="alert alert-warning" style="margin: 16px 0;">
+        @StoreMissingMessage
+    </div>
+}
+else
+{
+    <div class="schedule-header">
+        <h3 class="schedule-title">@StoreName</h3>
+        <div class="schedule-controls">
+            @foreach (var mech in Mechanics.OrderBy(m => m.Name))
+            {
+                var isChecked = VisibleMechanicIds.Contains(mech.Id);
+                <label class="mechanic-toggle">
+                    <input type="checkbox" checked="@isChecked" @onchange="(e) => ToggleMechanic(mech.Id, e)" />
+                    <span>@mech.Name</span>
+                </label>
+            }
+        </div>
+    </div>
+
+    <SfSchedule @ref="ScheduleRef"
             TValue="AppointmentVM"
             Height="800px"
-            Width="100%"
-            StartHour="@StartHourText"
+                Width="100%"
+                StartHour="@StartHourText"
             EndHour="@EndHourText"
             AllowDragAndDrop="true"
             AllowResizing="true"
@@ -25,12 +735,12 @@
 
     <ScheduleResources>
         <ScheduleResource TValue="int" TItem="Mechanic"
-                          DataSource="@Mechanics"
-                          Field="MechanicId"
-                          Title="Mechanic"
-                          Name="Mechanics"
-                          TextField="Name"
-                          IdField="Id">
+                           DataSource="@FilteredMechanics"
+                           Field="MechanicId"
+                           Title="Mechanic"
+                           Name="Mechanics"
+                           TextField="Name"
+                           IdField="Id">
         </ScheduleResource>
     </ScheduleResources>
 
@@ -40,8 +750,137 @@
         <ScheduleView Option="View.Month"></ScheduleView>
     </ScheduleViews>
 
-    <ScheduleEventSettings DataSource="@Appointments"></ScheduleEventSettings>
-</SfSchedule>
+    <ScheduleEventSettings DataSource="@FilteredAppointments">
+        <ScheduleField CssClass="CategoryColor"></ScheduleField>
+    </ScheduleEventSettings>
+
+    <ScheduleQuickInfoTemplates TemplateType="TemplateType.Event">
+        <ContentTemplate Context="context">
+            @if (context is AppointmentVM appt)
+            {
+                if (appt.IsTimeOff)
+                {
+                    <div style="min-width: 280px;">
+                        <div style="font-size: 12px; margin-bottom: 8px;"><b>Blocked time</b></div>
+                        <div style="font-size: 12px; margin-bottom: 4px;"><b>Mechanic:</b> @Mechanics.FirstOrDefault(m => m.Id == appt.MechanicId)?.Name</div>
+                        <div style="font-size: 12px; margin-bottom: 4px;"><b>Reason:</b> @appt.TimeOffReason</div>
+                        <div style="font-size: 12px; margin-bottom: 6px;"><b>Notes:</b> @appt.Notes</div>
+                        <div style="font-size: 12px;">
+                            <b>Date:</b> @($"{appt.StartTime:dd/MM/yyyy} {appt.StartTime:H:mm} - {appt.EndTime:H:mm}")
+                        </div>
+                    </div>
+                }
+                else
+                {
+                <div style="min-width: 280px;">
+                    <div style="font-size: 12px; margin-bottom: 4px;"><b>Customer Name:</b> @appt.CustomerName</div>
+                    <div style="font-size: 12px; margin-bottom: 4px;"><b>Phone Number:</b> @appt.CustomerPhone</div>
+                    <div style="font-size: 12px; margin-bottom: 8px;"><b>Bike Details:</b> @appt.BikeDetails</div>
+                    <div style="font-size: 12px; margin-bottom: 6px;"><b>Service:</b> @appt.Subject</div>
+                    @if (appt.ServiceLines.Count > 0)
+                    {
+                        <div style="font-size: 12px; margin-bottom: 6px; display: grid; gap: 2px;">
+                            @foreach (var line in appt.ServiceLines)
+                            {
+                                <div>@line</div>
+                            }
+                        </div>
+                    }
+                    <div style="font-size: 12px; margin-bottom: 4px;"><b>Notes:</b> @appt.Notes</div>
+                    <div style="font-size: 12px; margin-bottom: 10px;">
+                        <b>Date:</b> @($"{appt.StartTime:dd/MM/yyyy} {appt.StartTime:H:mm} - {appt.EndTime:H:mm}")
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 12px; color:#666;">Status</span>
+                        <select value="@appt.StatusName" @onchange="e => ChangeStatus(appt.Id, e)">
+                            @foreach (var status in Data.Statuses)
+                            {
+                                <option value="@status.Name">@status.Name</option>
+                            }
+                        </select>
+                        <button class="e-btn e-flat" type="button" @onclick="OpenStatusEditor">Add/Edit</button>
+                    </div>
+                </div>
+                }
+            }
+        </ContentTemplate>
+        <FooterTemplate Context="context">
+            @if (context is AppointmentVM appt)
+            {
+                @if (appt.IsTimeOff)
+                {
+                    <div style="display:flex; justify-content:flex-end; gap:12px; align-items:center;">
+                        <span style="font-size:12px; color:#475569;">Manage in Book Holiday</span>
+                    </div>
+                }
+                else
+                {
+                    <div style="display:flex; justify-content:flex-end; gap:12px; align-items:center;">
+                        <button class="e-btn e-flat" type="button" @onclick="() => OpenJobCard(appt.Id)">@GetJobCardActionLabel(appt.Id)</button>
+                        <button class="e-btn e-primary" type="button" @onclick="() => OpenEdit(appt)">Edit</button>
+                        <button class="e-btn e-flat" style="color:#dc2626;" type="button" @onclick="() => OpenCancelDialog(appt.Id)">Cancel</button>
+                    </div>
+                }
+            }
+        </FooterTemplate>
+    </ScheduleQuickInfoTemplates>
+        </SfSchedule>
+    }
+
+<SfDialog Width="520px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          @bind-Visible="IsStatusDialogVisible"
+          Header="Manage Statuses">
+    <DialogTemplates>
+        <Content>
+            <div style="display: grid; gap: 10px;">
+                @if (!string.IsNullOrWhiteSpace(StatusEditorMessage))
+                {
+                    <div style="color:#dc3545;">@StatusEditorMessage</div>
+                }
+
+                <div style="font-weight: 600;">Existing statuses</div>
+                <div id="status-editor-list" @ref="StatusListRef">
+                @for (var i = 0; i < StatusEditorItems.Count; i++)
+                {
+                    var itemIndex = i;
+                    var item = StatusEditorItems[i];
+                    <div class="status-row"
+                         data-index="@i"
+                         draggable="true">
+                        <span class="drag-handle" aria-label="Drag to reorder">≡</span>
+                        <input type="text" @bind="item.Name" class="status-name" />
+                        <div class="status-color">
+                            <input type="color" @bind="item.ColorHex" />
+                            <input type="text" @bind="item.ColorHex" class="status-hex" placeholder="#RRGGBB" />
+                            <button class="e-btn e-flat"
+                                    style="color:#dc3545;"
+                                    type="button"
+                                    @onclick="() => RemoveStatusEditorItem(itemIndex)">Delete</button>
+                        </div>
+                    </div>
+                }
+                </div>
+
+                <div style="margin-top: 6px; font-weight: 600;">Add new status</div>
+                <div class="status-row">
+                    <span class="drag-handle" style="visibility:hidden;">≡</span>
+                    <input type="text" @bind="NewStatusName" class="status-name" placeholder="Status name" />
+                    <div class="status-color">
+                        <input type="color" @bind="NewStatusColor" />
+                        <input type="text" @bind="NewStatusColor" class="status-hex" placeholder="#RRGGBB" />
+                        <button class="e-btn e-flat" type="button" @onclick="AddStatus">Add</button>
+                    </div>
+                </div>
+            </div>
+        </Content>
+    </DialogTemplates>
+    <DialogButtons>
+        <DialogButton Content="Cancel" IsPrimary="false" OnClick="CloseStatusEditor" />
+    </DialogButtons>
+</SfDialog>
 
 <SfDialog Width="440px"
           IsModal="true"
@@ -56,20 +895,425 @@
     </DialogButtons>
 </SfDialog>
 
+<SfDialog Width="500px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          Visible="@IsJobCardOverrunDialogVisible"
+          Header="Schedule overrun warning"
+          OnClose="CloseJobCardOverrunDialog">
+    <DialogTemplates>
+        <Content>
+            <div class="job-card-overrun-message">@JobCardOverrunMessage</div>
+        </Content>
+    </DialogTemplates>
+    <DialogButtons>
+        <DialogButton Content="Cancel" IsPrimary="false" OnClick="CloseJobCardOverrunDialog" />
+        <DialogButton Content="Save anyway" IsPrimary="true" OnClick="SaveJobCardAllowOverrun" />
+    </DialogButtons>
+</SfDialog>
+
+<SfDialog Width="420px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          Visible="@IsCancelDialogVisible"
+          Header="Cancel booking"
+          OnClose="CloseCancelDialog">
+    <DialogTemplates>
+        <Content>
+            Are you sure you want to cancel this booking?
+        </Content>
+    </DialogTemplates>
+    <DialogButtons>
+        <DialogButton Content="No" IsPrimary="false" OnClick="CloseCancelDialog" />
+        <DialogButton Content="Yes, cancel" IsPrimary="true" OnClick="ConfirmCancelBooking" />
+    </DialogButtons>
+</SfDialog>
+
+<SfDialog Width="1160px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          Visible="@IsJobCardDialogVisible"
+          Header="@JobCardDialogTitle"
+          OnClose="CloseJobCard">
+    <DialogTemplates>
+        <Content>
+            @if (JobCardEditor is null || !JobCardBookingId.HasValue)
+            {
+                <div>Job card unavailable.</div>
+            }
+            else
+            {
+                <div class="job-card-shell">
+                    <div class="job-card-grid">
+                        <div class="job-card-top">
+                            <label>
+                                Status
+                                <select @bind="JobCardEditor.StatusName">
+                                    @foreach (var status in Data.Statuses)
+                                    {
+                                        <option value="@status.Name">@status.Name</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>
+                                Assigned mechanic
+                                <select @bind="JobCardEditor.AssignedMechanicId">
+                                    @foreach (var mech in Mechanics.OrderBy(m => m.Name))
+                                    {
+                                        <option value="@mech.Id">@mech.Name</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>
+                                Started
+                                <input value="@FormatLocalDateTime(JobCardEditor.StartedAtUtc)" readonly />
+                            </label>
+                        </div>
+
+                        <div class="job-card-section">
+                            <div class="job-card-section-head">
+                                <h5>Services</h5>
+                                <div class="job-card-section-actions">
+                                    @if (IsJobCardAmendMode)
+                                    {
+                                        <button class="e-btn e-flat" type="button" @onclick="ResetJobCardServicesToOriginal">Reset to booked in</button>
+                                    }
+                                    <button class="e-btn e-primary" type="button" @onclick="ToggleJobCardAmendMode">
+                                        @(IsJobCardAmendMode ? "Finish Amend" : "Amend")
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="job-card-progress-summary">
+                                <div class="job-card-progress-label">
+                                    <span>Progress</span>
+                                    <span>@GetJobCardProgress(JobCardEditor)</span>
+                                </div>
+                                <div class="job-card-progress-track">
+                                    <div class="job-card-progress-fill" style="@GetJobCardProgressFillStyle(JobCardEditor)"></div>
+                                </div>
+                                <div class="job-card-progress-meta">@GetJobCardProgressMinutesLabel(JobCardEditor)</div>
+                            </div>
+
+                            <div class="job-card-services-list">
+                                <div class="job-card-services-header">
+                                    <span>Done</span>
+                                    <span class="col-service">Service</span>
+                                    <span>Description</span>
+                                    <span>Mins</span>
+                                    <span>Price</span>
+                                    <span>@(IsJobCardAmendMode ? "Action" : "")</span>
+                                </div>
+
+                                @foreach (var service in GetJobCardTopLevelServices(JobCardEditor))
+                                {
+                                    var hasChecklist = IsJobCardServicePackageWithChecklist(service);
+                                    var isExpanded = hasChecklist && IsPackageChecklistExpanded(service.Id);
+                                    <div class="job-card-service-row">
+                                        <input type="checkbox"
+                                               checked="@service.IsCompleted"
+                                               title="Completed"
+                                               @onchange="e => ToggleJobCardServiceCompleted(service, e)" />
+                                        <div class="col-service">
+                                            @if (IsJobCardAmendMode)
+                                            {
+                                                <input type="text" @bind="service.Name" />
+                                            }
+                                            else
+                                            {
+                                                <div class="job-card-service-name-wrap">
+                                                    @if (hasChecklist)
+                                                    {
+                                                        <button type="button"
+                                                                class="job-card-expand-btn"
+                                                                title="Toggle checklist"
+                                                                @onclick="() => TogglePackageChecklist(service.Id)">
+                                                            @(isExpanded ? "▾" : "▸")
+                                                        </button>
+                                                    }
+                                                    <span class="job-card-service-name @(hasChecklist ? "clickable" : "")"
+                                                          @onclick="() => { if (hasChecklist) TogglePackageChecklist(service.Id); }">@service.Name</span>
+                                                </div>
+                                            }
+                                        </div>
+                                        <span class="service-tag">@GetJobCardServiceDescription(service)</span>
+                                        @if (IsJobCardAmendMode)
+                                        {
+                                            <input type="number" min="0" @bind="service.EstimatedMinutes" />
+                                        }
+                                        else
+                                        {
+                                            <span class="job-card-service-value">@Math.Max(0, service.EstimatedMinutes)</span>
+                                        }
+                                        @if (IsJobCardAmendMode)
+                                        {
+                                            <input type="number" step="0.01" min="0" @bind="service.EstimatedPriceIncVat" />
+                                        }
+                                        else
+                                        {
+                                            <span class="job-card-service-value">@Math.Max(0m, service.EstimatedPriceIncVat).ToString("C")</span>
+                                        }
+                                        @if (IsJobCardAmendMode)
+                                        {
+                                            <button class="e-btn e-flat" type="button" @onclick="() => RemoveService(service.Id)">Remove</button>
+                                        }
+                                        else
+                                        {
+                                            <span></span>
+                                        }
+                                    </div>
+
+                                    @if (hasChecklist && isExpanded)
+                                    {
+                                        @foreach (var checklistItem in GetJobCardPackageChecklistServices(service.Id))
+                                        {
+                                            <div class="job-card-service-row job-card-checklist-row">
+                                                <input type="checkbox"
+                                                       checked="@checklistItem.IsCompleted"
+                                                       title="Checklist item completed"
+                                                       @onchange="e => ToggleJobCardServiceCompleted(checklistItem, e)" />
+                                                <div class="col-service">
+                                                    <span class="job-card-service-name">@checklistItem.Name</span>
+                                                </div>
+                                                <span class="service-tag">@GetJobCardServiceDescription(checklistItem)</span>
+                                                <span class="job-card-service-value">-</span>
+                                                <span class="job-card-service-value">-</span>
+                                                <span></span>
+                                            </div>
+                                        }
+                                    }
+                                }
+
+                                <div class="job-card-services-total">
+                                    <span></span>
+                                    <span>Totals</span>
+                                    <span></span>
+                                    <span>@GetJobCardEstimatedMinutes(JobCardEditor)</span>
+                                    <span>@GetJobCardServicesTotal(JobCardEditor).ToString("C")</span>
+                                    <span></span>
+                                </div>
+                                @if (HasJobCardTotalChanges(JobCardEditor))
+                                {
+                                    <div class="job-card-services-original">
+                                        <span></span>
+                                        <span>Booked in: @FormatJobCardTotals(JobCardOriginalMinutes, JobCardOriginalTotalPrice)</span>
+                                        <span></span>
+                                        <span></span>
+                                        <span>@GetJobCardTotalsDeltaText(JobCardEditor)</span>
+                                        <span></span>
+                                    </div>
+                                }
+                            </div>
+
+                            @if (IsJobCardAmendMode)
+                            {
+                                <div class="job-card-amend-panel">
+                                    <div class="job-card-pickers">
+                                        <div class="job-picker">
+                                            <div class="job-picker-head">Select service or package</div>
+                                            <input class="job-filter" placeholder="Filter jobs..." @bind="JobCardServiceFilter" />
+                                            @foreach (var group in JobCardServiceGroups)
+                                            {
+                                                <div class="job-group @(IsJobCardGroupOpen(group.Key) ? "" : "group-collapsed")">
+                                                    <button type="button" class="job-group-header" @onclick="() => ToggleJobCardGroup(group.Key)">
+                                                        <span>@group.Key</span>
+                                                        <span>@(IsJobCardGroupOpen(group.Key) ? "▾" : "▸")</span>
+                                                    </button>
+                                                    @if (IsJobCardGroupOpen(group.Key))
+                                                    {
+                                                        @foreach (var job in group.Value)
+                                                        {
+                                                            <label class="job-item">
+                                                                <input type="checkbox"
+                                                                       checked="@IsJobCardPrimaryServiceSelected(job.Id)"
+                                                                       @onchange="e => ToggleJobCardService(job, e)" />
+                                                                <span>@job.Name</span>
+                                                                <span class="job-meta">@job.DefaultMinutes mins · £@job.BasePriceIncVat.ToString("0.00")</span>
+                                                            </label>
+                                                        }
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+
+                                        @if (CanSelectJobCardPackageServices)
+                                        {
+                                            <div class="job-picker">
+                                                <div class="job-picker-head">Select additional services</div>
+                                                <input class="job-filter" placeholder="Filter services..." @bind="JobCardAdditionalServiceFilter" />
+                                                @foreach (var group in JobCardAdditionalServiceGroups)
+                                                {
+                                                    <div class="job-group @(IsJobCardAdditionalGroupOpen(group.Key) ? "" : "group-collapsed")">
+                                                        <button type="button" class="job-group-header" @onclick="() => ToggleJobCardAdditionalGroup(group.Key)">
+                                                            <span>@group.Key</span>
+                                                            <span>@(IsJobCardAdditionalGroupOpen(group.Key) ? "▾" : "▸")</span>
+                                                        </button>
+                                                        @if (IsJobCardAdditionalGroupOpen(group.Key))
+                                                        {
+                                                            @foreach (var service in group.Value)
+                                                            {
+                                                                <label class="job-item">
+                                                                    <input type="checkbox"
+                                                                           checked="@IsJobCardAdditionalServiceSelected(service.Id)"
+                                                                           @onchange="e => ToggleJobCardAdditionalService(service.Id, e)" />
+                                                                    <span>@service.Name</span>
+                                                                    <span class="job-meta">@GetJobCardPackageServiceMeta(service.Id)</span>
+                                                                </label>
+                                                            }
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <div class="job-card-manual-wrap">
+                                        <div class="job-card-manual-title">Manually add work</div>
+                                        <div class="job-card-manual-list">
+                                            <div class="job-card-manual-header">
+                                                <span>Description</span>
+                                                <span>Mins</span>
+                                                <span>Price</span>
+                                                <span>Action</span>
+                                            </div>
+                                            <div class="job-card-add-manual">
+                                                <input type="text" @bind="CustomServiceName" placeholder="Additional work found..." />
+                                                <input type="number" min="0" @bind="CustomServiceMinutes" placeholder="Mins" />
+                                                <input type="number" min="0" step="0.01" @bind="CustomServicePrice" placeholder="Price" />
+                                                <button class="e-btn e-flat" type="button" @onclick="AddCustomService">Add manual</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="job-card-section">
+                            <h5>Parts</h5>
+                            <div class="job-card-warning">
+                                EPOS integration is needed for live stock and pricing. Current lookup uses placeholder parts.
+                            </div>
+
+                            <div class="job-card-parts">
+                                <div class="job-card-add">
+                                    <input type="text" @bind="PartSearch" placeholder="Search parts by name or SKU..." />
+                                    <button class="e-btn e-flat" type="button" @onclick="AddBlankPart">Add blank part</button>
+                                </div>
+
+                                @if (FilteredPartCatalog.Count > 0)
+                                {
+                                    <div class="job-card-lookup-results">
+                                        @foreach (var part in FilteredPartCatalog)
+                                        {
+                                            <div class="job-card-lookup-item">
+                                                <span>@part.Name (@part.Sku) - £@part.UnitPriceIncVat.ToString("0.00")</span>
+                                                <button class="e-btn e-flat" type="button" @onclick="() => AddPartFromLookup(part)">Add</button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+
+                                @for (var i = 0; i < JobCardEditor.Parts.Count; i++)
+                                {
+                                    var part = JobCardEditor.Parts[i];
+                                    <div class="job-card-part-row">
+                                        <input type="text" @bind="part.Name" placeholder="Part name" />
+                                        <input type="text" @bind="part.Sku" placeholder="SKU" />
+                                        <input type="number" min="0" @bind="part.Quantity" />
+                                        <input type="number" min="0" step="0.01" @bind="part.UnitPriceIncVat" />
+                                        <button class="e-btn e-flat" type="button" @onclick="() => RemovePart(part.Id)">Remove</button>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="job-card-section job-card-notes">
+                            <label>
+                                Service notes
+                                <textarea rows="4" @bind="JobCardEditor.ServiceNotes"></textarea>
+                            </label>
+                            <label>
+                                Customer notes
+                                <textarea rows="4" @bind="JobCardEditor.CustomerNotes"></textarea>
+                            </label>
+                        </div>
+
+                        <div class="job-card-section job-card-comms">
+                            <h5>Customer communication</h5>
+                            <label>
+                                Draft message
+                                <textarea rows="3" @bind="JobCardEditor.CommunicationDraft" placeholder="Share updates or approvals..."></textarea>
+                            </label>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <button class="e-btn e-flat" type="button" @onclick="SendCustomerSms">Send SMS</button>
+                                <button class="e-btn e-flat" type="button" @onclick="SendCustomerEmail">Send Email</button>
+                                <span style="font-size:12px; color:#4b5563;">
+                                    Last SMS: @(JobCardEditor.LastSmsSentUtc.HasValue ? FormatLocalDateTime(JobCardEditor.LastSmsSentUtc.Value) : "Never")
+                                </span>
+                                <span style="font-size:12px; color:#4b5563;">
+                                    Last Email: @(JobCardEditor.LastEmailSentUtc.HasValue ? FormatLocalDateTime(JobCardEditor.LastEmailSentUtc.Value) : "Never")
+                                </span>
+                            </div>
+                            @if (JobCardEditor.MessageLog.Count > 0)
+                            {
+                                <div class="job-card-log">
+                                    @foreach (var entry in JobCardEditor.MessageLog.OrderByDescending(m => m.SentAtUtc).Take(10))
+                                    {
+                                        <div>@entry.Channel to @entry.Recipient at @FormatLocalDateTime(entry.SentAtUtc) - @entry.Summary</div>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <div class="job-card-actions">
+                            <span class="job-card-message">@JobCardMessage</span>
+                            <span style="font-size:12px; color:#4b5563;">
+                                Services: @GetJobCardEstimatedMinutes(JobCardEditor) mins · Parts: @GetJobCardPartsTotal(JobCardEditor).ToString("C") · Total: @GetJobCardEstimatedTotal(JobCardEditor).ToString("C")
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            }
+        </Content>
+    </DialogTemplates>
+    <DialogButtons>
+        <DialogButton Content="Close" IsPrimary="false" OnClick="CloseJobCard" />
+        <DialogButton Content="Save Job Card" IsPrimary="true" OnClick="SaveJobCard" />
+    </DialogButtons>
+</SfDialog>
+
 @code {
     [Parameter] public int StoreId { get; set; }
 
     private SfSchedule<AppointmentVM>? ScheduleRef;
 
-    private DateTime SelectedDate { get; set; } = DateTime.Today;
+    private DateTime _selectedDate = DateTime.Today;
+    private DateTime SelectedDate
+    {
+        get => _selectedDate;
+        set
+        {
+            if (_selectedDate == value) return;
+            _selectedDate = value;
+            UpdateHoursForSelectedDate();
+        }
+    }
 
     private string[] GroupResources { get; set; } = new[] { "Mechanics" };
 
     private List<Mechanic> Mechanics { get; set; } = new();
+    private HashSet<int> VisibleMechanicIds { get; set; } = new();
+    private List<Mechanic> FilteredMechanics { get; set; } = new();
 
     private List<AppointmentVM> Appointments { get; set; } = new();
+    private List<AppointmentVM> FilteredAppointments { get; set; } = new();
+    private bool IsCancelDialogVisible;
+    private int? CancelBookingId;
 
     private string StoreName { get; set; } = "";
+    private bool StoreMissing { get; set; }
+    private string StoreMissingMessage { get; set; } = "Store not found.";
+    private UserAccessScope _userAccess = UserAccessScope.AllowAll();
     private string StartHourText { get; set; } = "09:00";
     private string EndHourText { get; set; } = "17:30";
 
@@ -81,163 +1325,1373 @@
     private AppointmentVM? PendingAppointment;
     private ActionType? PendingActionType;
 
-    protected override void OnParametersSet()
+#if false
+    private bool IsJobCardDialogVisible;
+    private int? JobCardBookingId;
+    private BookingJobCard? JobCardEditor;
+    private string JobCardMessage = "";
+    private bool IsJobCardAmendMode;
+    private bool IsJobCardOverrunDialogVisible;
+    private string JobCardOverrunMessage = "";
+
+    private string JobCardServiceFilter = "";
+    private readonly HashSet<string> JobCardExpandedGroups = new(StringComparer.OrdinalIgnoreCase);
+    private string JobCardAdditionalServiceFilter = "";
+    private readonly HashSet<string> JobCardExpandedAdditionalGroups = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> ExpandedPackageChecklistRows = new(StringComparer.OrdinalIgnoreCase);
+
+    private int JobCardOriginalMinutes;
+    private decimal JobCardOriginalTotalPrice;
+    private string JobCardOriginalServiceSnapshot = "";
+    private string JobCardOriginalServiceSummary = "";
+    private List<JobCardServiceItem> JobCardOriginalServices = new();
+
+    private string CustomServiceName = "";
+    private int CustomServiceMinutes = 30;
+    private decimal CustomServicePrice;
+
+    private string PartSearch = "";
+    private List<PartLookupItem> FilteredPartCatalog => SearchParts(PartSearch);
+
+    private static readonly List<PartLookupItem> LocalPartCatalog = new()
     {
-        var store = Data.Stores.First(s => s.Id == StoreId);
+        new PartLookupItem("P-CHAIN-11", "11 speed chain", 28.50m),
+        new PartLookupItem("P-PAD-DISC", "Disc brake pad set", 14.95m),
+        new PartLookupItem("P-TYRE-700", "700c all weather tyre", 32.00m),
+        new PartLookupItem("P-TUBE-700", "700c inner tube", 6.50m),
+        new PartLookupItem("P-CABLE-GEAR", "Gear cable kit", 11.20m),
+        new PartLookupItem("P-CABLE-BRAKE", "Brake cable kit", 10.80m),
+        new PartLookupItem("P-BB-SEALED", "Sealed bottom bracket", 24.00m),
+        new PartLookupItem("P-CASS-11", "11 speed cassette", 56.00m)
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Data.EnsureInitializedAsync();
+        await Catalog.EnsureInitializedAsync();
+        _userAccess = await UserAccess.GetCurrentAsync();
+
+        var store = Data.Stores.FirstOrDefault(s => s.Id == StoreId);
+        if (store is null)
+        {
+            SetStoreUnavailable("Store not found.");
+            return;
+        }
+
+        if (!_userAccess.CanAccessStore(StoreId))
+        {
+            SetStoreUnavailable("You do not have access to this store schedule.");
+            return;
+        }
+
+        StoreMissing = false;
+        StoreMissingMessage = "";
         StoreName = store.Name;
 
-        StartHourText = store.OpenFrom.ToString(@"hh\:mm");
-        EndHourText = store.OpenTo.ToString(@"hh\:mm");
+        UpdateHoursForSelectedDate();
 
-
-        Mechanics = Data.Mechanics.Where(m => m.StoreId == StoreId).ToList();
+        Mechanics = Data.Mechanics
+            .Where(m => m.StoreId == StoreId && _userAccess.CanAccessMechanic(m))
+            .ToList();
+        VisibleMechanicIds = Mechanics.Select(m => m.Id).ToHashSet();
         ReloadAppointmentsFromBookings();
     }
 
-    private void ReloadAppointmentsFromBookings()
+    private void SetStoreUnavailable(string message)
     {
-        Appointments = Data.Bookings
-            .Where(b => b.StoreId == StoreId)
-            .Select(b => new AppointmentVM
+        StoreMissing = true;
+        StoreMissingMessage = message;
+        StoreName = "";
+        Mechanics = new List<Mechanic>();
+        VisibleMechanicIds.Clear();
+        Appointments = new List<AppointmentVM>();
+        FilteredMechanics = new List<Mechanic>();
+        FilteredAppointments = new List<AppointmentVM>();
+    }
+
+    private string JobCardDialogTitle
+    {
+        get
+        {
+            if (!JobCardBookingId.HasValue)
+                return "Job Card";
+
+            var booking = Data.Bookings.FirstOrDefault(b => b.Id == JobCardBookingId.Value);
+            if (booking is null)
+                return $"Job Card #{JobCardBookingId.Value}";
+
+            var customer = BuildCustomerName(booking);
+            return $"Job Card #{booking.Id} - {customer}";
+        }
+    }
+
+    private string GetJobCardActionLabel(int bookingId)
+    {
+        var booking = Data.Bookings.FirstOrDefault(b => b.Id == bookingId);
+        if (booking?.JobCard is null)
+            return "Start Job";
+        return "Open Job Card";
+    }
+
+    private async Task OpenJobCard(int bookingId)
+    {
+        var booking = Data.Bookings.FirstOrDefault(b => b.Id == bookingId && b.StoreId == StoreId);
+        if (booking is null)
+            return;
+
+        var created = false;
+        if (booking.JobCard is null)
+        {
+            booking.JobCard = BuildInitialJobCard(booking);
+            created = true;
+
+            if (Data.Statuses.Any(s => s.Name.Equals("In Progress", StringComparison.OrdinalIgnoreCase)))
             {
-                Id = b.Id,
-                Subject = $"{b.Title}  (£{b.TotalPriceIncVat:0.00})",
-                StartTime = b.Start,
-                EndTime = b.End,
-                MechanicId = b.MechanicId
-            })
+                booking.StatusName = "In Progress";
+                booking.JobCard.StatusName = "In Progress";
+            }
+
+            await Data.UpdateBookingAsync(booking);
+            ReloadAppointmentsFromBookings();
+            _ = ScheduleRef?.RefreshEventsAsync();
+        }
+
+        JobCardBookingId = bookingId;
+        JobCardEditor = CloneJobCard(booking.JobCard ?? BuildInitialJobCard(booking));
+        if (JobCardEditor.AssignedMechanicId == 0)
+            JobCardEditor.AssignedMechanicId = booking.MechanicId;
+
+        NormalizeJobCardServiceRules();
+
+        JobCardOriginalMinutes = GetJobCardEstimatedMinutes(JobCardEditor);
+        if (JobCardOriginalMinutes <= 0)
+            JobCardOriginalMinutes = GetBookingDurationMinutes(booking);
+
+        JobCardOriginalTotalPrice = GetJobCardServicesTotal(JobCardEditor);
+        if (JobCardOriginalTotalPrice <= 0)
+            JobCardOriginalTotalPrice = Math.Max(0, booking.TotalPriceIncVat);
+        JobCardOriginalServiceSnapshot = BuildServiceAmendmentSnapshot(JobCardEditor.Services);
+        JobCardOriginalServiceSummary = DescribeServicesForNote(JobCardEditor.Services);
+        JobCardOriginalServices = CloneServiceItems(JobCardEditor.Services);
+
+        JobCardMessage = created ? "Job card created. Track progress as work is completed." : "";
+        IsJobCardAmendMode = false;
+        JobCardServiceFilter = "";
+        JobCardAdditionalServiceFilter = "";
+        JobCardExpandedGroups.Clear();
+        JobCardExpandedAdditionalGroups.Clear();
+        ExpandedPackageChecklistRows.Clear();
+        IsJobCardOverrunDialogVisible = false;
+        JobCardOverrunMessage = "";
+        CustomServiceName = "";
+        CustomServiceMinutes = 30;
+        CustomServicePrice = 0;
+        PartSearch = "";
+
+        IsJobCardDialogVisible = true;
+
+        if (ScheduleRef is not null)
+            await ScheduleRef.CloseQuickInfoPopupAsync();
+    }
+
+    private void CloseJobCard()
+    {
+        IsJobCardDialogVisible = false;
+        JobCardBookingId = null;
+        JobCardEditor = null;
+        JobCardMessage = "";
+        IsJobCardAmendMode = false;
+        IsJobCardOverrunDialogVisible = false;
+        JobCardOverrunMessage = "";
+        JobCardServiceFilter = "";
+        JobCardAdditionalServiceFilter = "";
+        JobCardExpandedGroups.Clear();
+        JobCardExpandedAdditionalGroups.Clear();
+        ExpandedPackageChecklistRows.Clear();
+        JobCardOriginalMinutes = 0;
+        JobCardOriginalTotalPrice = 0m;
+        JobCardOriginalServiceSnapshot = "";
+        JobCardOriginalServiceSummary = "";
+        JobCardOriginalServices = new List<JobCardServiceItem>();
+        CustomServiceName = "";
+        PartSearch = "";
+    }
+
+    private BookingJobCard BuildInitialJobCard(Booking booking)
+    {
+        var card = new BookingJobCard
+        {
+            StartedAtUtc = DateTime.UtcNow,
+            LastUpdatedUtc = DateTime.UtcNow,
+            AssignedMechanicId = booking.MechanicId,
+            StatusName = string.IsNullOrWhiteSpace(booking.StatusName) ? "Scheduled" : booking.StatusName.Trim(),
+            CustomerNotes = (booking.Notes ?? "").Trim(),
+            CommunicationDraft = $"Update on your booking ({booking.Title})."
+        };
+
+        var selectedJobIds = ResolveBookingJobIds(booking);
+
+        var servicePackageId = ResolveServicePackageId(booking);
+
+        foreach (var jobId in selectedJobIds.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var job = Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(jobId, StringComparison.OrdinalIgnoreCase));
+            if (job is null)
+                continue;
+
+            var packageContext = Catalog.IsServicePackage(job.Id) ? null : servicePackageId;
+            var (mins, price, _) = Catalog.PriceAndTime(job.Id, packageContext);
+            var serviceItem = new JobCardServiceItem
+            {
+                JobId = job.Id,
+                Name = job.Name,
+                Description = (job.Description ?? "").Trim(),
+                EstimatedMinutes = mins,
+                EstimatedPriceIncVat = price
+            };
+            card.Services.Add(serviceItem);
+            if (Catalog.IsServicePackage(job.Id))
+                AppendPackageChecklistItems(card, serviceItem);
+        }
+
+        if (card.Services.Count == 0)
+        {
+            card.Services.Add(new JobCardServiceItem
+            {
+                Name = string.IsNullOrWhiteSpace(booking.Title) ? "Workshop service" : booking.Title.Trim(),
+                EstimatedMinutes = Math.Max(0, booking.TotalMinutes),
+                EstimatedPriceIncVat = Math.Max(0, booking.TotalPriceIncVat)
+            });
+        }
+
+        return card;
+    }
+
+    private static BookingJobCard CloneJobCard(BookingJobCard source)
+    {
+        return new BookingJobCard
+        {
+            StartedAtUtc = source.StartedAtUtc,
+            LastUpdatedUtc = source.LastUpdatedUtc,
+            AssignedMechanicId = source.AssignedMechanicId,
+            StatusName = source.StatusName,
+            ServiceNotes = source.ServiceNotes,
+            CustomerNotes = source.CustomerNotes,
+            CommunicationDraft = source.CommunicationDraft,
+            LastSmsSentUtc = source.LastSmsSentUtc,
+            LastEmailSentUtc = source.LastEmailSentUtc,
+            Services = source.Services.Select(s => new JobCardServiceItem
+            {
+                Id = s.Id,
+                JobId = s.JobId,
+                Name = s.Name,
+                Description = s.Description,
+                EstimatedMinutes = s.EstimatedMinutes,
+                EstimatedPriceIncVat = s.EstimatedPriceIncVat,
+                IsCompleted = s.IsCompleted,
+                IsPackageChecklistItem = s.IsPackageChecklistItem,
+                ParentPackageServiceItemId = s.ParentPackageServiceItemId,
+                ChecklistTemplateItemId = s.ChecklistTemplateItemId,
+                ChecklistSourceJobId = s.ChecklistSourceJobId,
+                ChecklistSortOrder = s.ChecklistSortOrder
+            }).ToList(),
+            Parts = source.Parts.Select(p => new JobCardPartItem
+            {
+                Id = p.Id,
+                Sku = p.Sku,
+                Name = p.Name,
+                UnitPriceIncVat = p.UnitPriceIncVat,
+                Quantity = p.Quantity,
+                IsFitted = p.IsFitted
+            }).ToList(),
+            MessageLog = source.MessageLog.Select(m => new JobCardMessageLogItem
+            {
+                SentAtUtc = m.SentAtUtc,
+                Channel = m.Channel,
+                Recipient = m.Recipient,
+                Summary = m.Summary
+            }).ToList()
+        };
+    }
+
+    private static List<JobCardServiceItem> CloneServiceItems(IEnumerable<JobCardServiceItem> services)
+        => services.Select(s => new JobCardServiceItem
+        {
+            Id = s.Id,
+            JobId = s.JobId,
+            Name = s.Name,
+            Description = s.Description,
+            EstimatedMinutes = s.EstimatedMinutes,
+            EstimatedPriceIncVat = s.EstimatedPriceIncVat,
+            IsCompleted = s.IsCompleted,
+            IsPackageChecklistItem = s.IsPackageChecklistItem,
+            ParentPackageServiceItemId = s.ParentPackageServiceItemId,
+            ChecklistTemplateItemId = s.ChecklistTemplateItemId,
+            ChecklistSourceJobId = s.ChecklistSourceJobId,
+            ChecklistSortOrder = s.ChecklistSortOrder
+        }).ToList();
+
+    private string? SelectedJobCardPackageId =>
+        JobCardEditor?.Services
+            .Select(s => (s.JobId ?? "").Trim())
+            .FirstOrDefault(jobId => !string.IsNullOrWhiteSpace(jobId) && Catalog.IsServicePackage(jobId));
+
+    private bool CanSelectJobCardPackageServices => !string.IsNullOrWhiteSpace(SelectedJobCardPackageId);
+
+    private static bool IsPackageChecklistRow(JobCardServiceItem service)
+    {
+        if (service.IsPackageChecklistItem)
+            return true;
+
+        return !string.IsNullOrWhiteSpace((service.ParentPackageServiceItemId ?? "").Trim());
+    }
+
+    private bool IsServicePackageRow(JobCardServiceItem service)
+    {
+        if (IsPackageChecklistRow(service))
+            return false;
+
+        var jobId = (service.JobId ?? "").Trim();
+        return !string.IsNullOrWhiteSpace(jobId) && Catalog.IsServicePackage(jobId);
+    }
+
+    private IReadOnlyList<JobCardServiceItem> GetJobCardTopLevelServices(BookingJobCard card)
+        => card.Services
+            .Where(s => !IsPackageChecklistRow(s))
+            .ToList();
+
+    private IReadOnlyList<JobCardServiceItem> GetJobCardPackageChecklistServices(string parentServiceItemId)
+    {
+        if (JobCardEditor is null || string.IsNullOrWhiteSpace(parentServiceItemId))
+            return new List<JobCardServiceItem>();
+
+        return JobCardEditor.Services
+            .Where(s => IsPackageChecklistRow(s)
+                        && (s.ParentPackageServiceItemId ?? "").Trim().Equals(parentServiceItemId, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(s => s.ChecklistSortOrder)
+            .ThenBy(s => (s.Name ?? "").Trim(), StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    private async Task OnActionBegin(ActionEventArgs<AppointmentVM> args)
+    private bool IsJobCardServicePackageWithChecklist(JobCardServiceItem service)
+        => IsServicePackageRow(service) && GetJobCardPackageChecklistServices(service.Id).Count > 0;
+
+    private bool IsPackageChecklistExpanded(string parentServiceItemId)
+        => !string.IsNullOrWhiteSpace(parentServiceItemId)
+           && ExpandedPackageChecklistRows.Contains(parentServiceItemId);
+
+    private void TogglePackageChecklist(string parentServiceItemId)
     {
-        if (BypassLimitOnce)
-        {
-            BypassLimitOnce = false;
-            return;
-        }
-
-        // This matches the args shape you have (ActionType + AddedRecords/ChangedRecords)
-        if (args.ActionType != ActionType.EventCreate &&
-            args.ActionType != ActionType.EventChange)
+        if (string.IsNullOrWhiteSpace(parentServiceItemId))
             return;
 
-        AppointmentVM? appt = null;
-
-        if (args.ActionType == ActionType.EventCreate)
-            appt = args.AddedRecords?.FirstOrDefault();
-        else if (args.ActionType == ActionType.EventChange)
-            appt = args.ChangedRecords?.FirstOrDefault();
-
-        if (appt is null) return;
-
-        // Enforce daily cap
-        var bookingIdToIgnore = args.ActionType == ActionType.EventChange ? appt.Id : (int?)null;
-        var exceed = Scheduler.WouldExceedDailyLimit(StoreId, appt.MechanicId, appt.StartTime, appt.EndTime, bookingIdToIgnore);
-
-        if (!exceed)
-        {
-            // Persist changes to the in memory booking store
-            PersistSchedulerChange(appt, args.ActionType);
-            return;
-        }
-
-        args.Cancel = true;
-
-        var mech = Mechanics.First(m => m.Id == appt.MechanicId);
-        OverbookMessage =
-            $"{mech.Name} has a daily cap of {mech.MaxBookableHoursPerDay:0.#}h.\n\n" +
-            "This change would exceed that.\n\n" +
-            "Allow once?";
-
-        PendingAppointment = Clone(appt);
-        PendingActionType = args.ActionType;
-        IsOverbookDialogVisible = true;
-
-        await InvokeAsync(StateHasChanged);
+        if (!ExpandedPackageChecklistRows.Add(parentServiceItemId))
+            ExpandedPackageChecklistRows.Remove(parentServiceItemId);
     }
 
-    private void PersistSchedulerChange(AppointmentVM appt, ActionType actionType)
+    private void ToggleJobCardServiceCompleted(JobCardServiceItem service, ChangeEventArgs e)
     {
-        if (actionType == ActionType.EventCreate)
-        {
-            // Scheduler create from UI: create a booking with unknown job. We keep it simple here.
-            var id = Data.NextBookingId();
-            var title = appt.Subject?.Trim();
-            if (string.IsNullOrWhiteSpace(title)) title = "Manual booking";
+        if (JobCardEditor is null)
+            return;
 
-            Data.Bookings.Add(new Booking
+        var isCompleted = e?.Value is bool checkedValue && checkedValue;
+        service.IsCompleted = isCompleted;
+        if (!IsServicePackageRow(service))
+            return;
+
+        foreach (var checklistItem in GetJobCardPackageChecklistServices(service.Id))
+            checklistItem.IsCompleted = isCompleted;
+    }
+
+    private IReadOnlyDictionary<string, List<JobDefinition>> JobCardServiceGroups
+    {
+        get
+        {
+            var filtered = Catalog.Jobs
+                .Where(j => string.IsNullOrWhiteSpace(JobCardServiceFilter) || j.Name.Contains(JobCardServiceFilter, StringComparison.OrdinalIgnoreCase))
+                .GroupBy(j => j.Category)
+                .ToDictionary(g => g.Key, g => g.OrderBy(j => j.Name).ToList(), StringComparer.OrdinalIgnoreCase);
+
+            var ordered = new List<KeyValuePair<string, List<JobDefinition>>>();
+            if (filtered.TryGetValue("Service Packages", out var packages))
             {
-                Id = id,
-                StoreId = StoreId,
-                MechanicId = appt.MechanicId,
-                Title = title,
-                Start = appt.StartTime,
-                End = appt.EndTime,
-                JobId = "MANUAL",
-                AddOnIds = Array.Empty<string>(),
-                TotalMinutes = (int)(appt.EndTime - appt.StartTime).TotalMinutes,
-                TotalPriceIncVat = 0
+                ordered.Add(new KeyValuePair<string, List<JobDefinition>>("Service Packages", packages));
+                filtered.Remove("Service Packages");
+            }
+
+            foreach (var group in filtered.OrderBy(g => g.Key))
+                ordered.Add(group);
+
+            return ordered.ToDictionary(k => k.Key, v => v.Value, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private IReadOnlyDictionary<string, List<JobDefinition>> JobCardAdditionalServiceGroups
+    {
+        get
+        {
+            if (!CanSelectJobCardPackageServices)
+                return new Dictionary<string, List<JobDefinition>>(StringComparer.OrdinalIgnoreCase);
+
+            var packageId = SelectedJobCardPackageId;
+            return Catalog.Jobs
+                .Where(j => !Catalog.IsServicePackage(j.Id))
+                .Where(j => Catalog.IsServiceAvailableAsAdditionalService(j.Id, packageId))
+                .Where(j => string.IsNullOrWhiteSpace(JobCardAdditionalServiceFilter) || j.Name.Contains(JobCardAdditionalServiceFilter, StringComparison.OrdinalIgnoreCase))
+                .GroupBy(j => j.Category)
+                .OrderBy(g => g.Key)
+                .ToDictionary(g => g.Key, g => g.OrderBy(j => j.Name).ToList(), StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool IsJobCardGroupOpen(string key)
+    {
+        if (!string.IsNullOrWhiteSpace(JobCardServiceFilter))
+            return true;
+
+        if (JobCardExpandedGroups.Count == 0)
+            return key.Equals("Service Packages", StringComparison.OrdinalIgnoreCase);
+
+        return JobCardExpandedGroups.Contains(key);
+    }
+
+    private void ToggleJobCardGroup(string key)
+    {
+        if (JobCardExpandedGroups.Count == 0)
+            JobCardExpandedGroups.Add("Service Packages");
+
+        if (JobCardExpandedGroups.Contains(key))
+            JobCardExpandedGroups.Remove(key);
+        else
+            JobCardExpandedGroups.Add(key);
+    }
+
+    private bool IsJobCardAdditionalGroupOpen(string key)
+    {
+        if (!string.IsNullOrWhiteSpace(JobCardAdditionalServiceFilter))
+            return true;
+
+        if (JobCardExpandedAdditionalGroups.Count == 0)
+        {
+            var first = JobCardAdditionalServiceGroups.Keys.FirstOrDefault();
+            return first != null && first.Equals(key, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return JobCardExpandedAdditionalGroups.Contains(key);
+    }
+
+    private void ToggleJobCardAdditionalGroup(string key)
+    {
+        if (JobCardExpandedAdditionalGroups.Count == 0)
+        {
+            var first = JobCardAdditionalServiceGroups.Keys.FirstOrDefault();
+            if (first is not null)
+                JobCardExpandedAdditionalGroups.Add(first);
+        }
+
+        if (JobCardExpandedAdditionalGroups.Contains(key))
+            JobCardExpandedAdditionalGroups.Remove(key);
+        else
+            JobCardExpandedAdditionalGroups.Add(key);
+    }
+
+    private void ToggleJobCardAmendMode()
+    {
+        IsJobCardAmendMode = !IsJobCardAmendMode;
+        if (!IsJobCardAmendMode)
+        {
+            JobCardServiceFilter = "";
+            JobCardAdditionalServiceFilter = "";
+        }
+    }
+
+    private void ResetJobCardServicesToOriginal()
+    {
+        if (JobCardEditor is null || JobCardOriginalServices.Count == 0)
+            return;
+
+        JobCardEditor.Services = CloneServiceItems(JobCardOriginalServices);
+        NormalizeJobCardServiceRules();
+        JobCardMessage = "Services reset to booked-in values.";
+    }
+
+    private bool IsJobCardPrimaryServiceSelected(string jobId)
+    {
+        if (JobCardEditor is null || string.IsNullOrWhiteSpace(jobId))
+            return false;
+
+        var exists = JobCardEditor.Services.Any(s => s.JobId.Equals(jobId, StringComparison.OrdinalIgnoreCase));
+        if (Catalog.IsServicePackage(jobId))
+            return exists;
+
+        return !CanSelectJobCardPackageServices && exists;
+    }
+
+    private bool IsJobCardAdditionalServiceSelected(string serviceId)
+    {
+        if (JobCardEditor is null || string.IsNullOrWhiteSpace(serviceId) || !CanSelectJobCardPackageServices)
+            return false;
+
+        return JobCardEditor.Services.Any(s => s.JobId.Equals(serviceId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string GetJobCardPackageServiceMeta(string serviceId)
+    {
+        if (!CanSelectJobCardPackageServices || string.IsNullOrWhiteSpace(SelectedJobCardPackageId))
+            return "";
+
+        var (mins, price, _) = Catalog.PriceAndTime(serviceId, SelectedJobCardPackageId);
+        return $"{mins} mins · £{price:0.00}";
+    }
+
+    private string ResolveChecklistItemName(ServicePackageChecklistItemDefinition definition)
+    {
+        var linkedServiceJobId = (definition.LinkedServiceJobId ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(linkedServiceJobId))
+        {
+            var linkedService = Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(linkedServiceJobId, StringComparison.OrdinalIgnoreCase));
+            if (linkedService is not null)
+                return (linkedService.Name ?? "").Trim();
+        }
+
+        return (definition.Name ?? "").Trim();
+    }
+
+    private string ResolveChecklistItemDescription(ServicePackageChecklistItemDefinition definition)
+    {
+        var linkedServiceJobId = (definition.LinkedServiceJobId ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(linkedServiceJobId))
+        {
+            var linkedService = Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(linkedServiceJobId, StringComparison.OrdinalIgnoreCase));
+            if (linkedService is not null)
+                return (linkedService.Description ?? "").Trim();
+        }
+
+        return (definition.Description ?? "").Trim();
+    }
+
+    private void AppendPackageChecklistItems(BookingJobCard card, JobCardServiceItem packageRow, bool onlyIfMissing = true)
+    {
+        if (!IsServicePackageRow(packageRow))
+            return;
+
+        var parentId = (packageRow.Id ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(parentId))
+            return;
+
+        if (onlyIfMissing && card.Services.Any(s =>
+            IsPackageChecklistRow(s)
+            && (s.ParentPackageServiceItemId ?? "").Trim().Equals(parentId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        var packageJobId = (packageRow.JobId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(packageJobId))
+            return;
+
+        var packageJob = Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(packageJobId, StringComparison.OrdinalIgnoreCase));
+        if (packageJob is null || packageJob.PackageChecklistItems.Count == 0)
+            return;
+
+        var ordered = packageJob.PackageChecklistItems
+            .OrderBy(i => i.SortOrder)
+            .ThenBy(i => (i.Name ?? "").Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var insertIndex = card.Services.FindIndex(s => s.Id.Equals(parentId, StringComparison.OrdinalIgnoreCase));
+        if (insertIndex < 0)
+            insertIndex = card.Services.Count - 1;
+
+        var rowIndex = 0;
+        foreach (var definition in ordered)
+        {
+            var name = ResolveChecklistItemName(definition);
+            var description = ResolveChecklistItemDescription(definition);
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            var checklistItem = new JobCardServiceItem
+            {
+                Name = name,
+                Description = description,
+                IsCompleted = packageRow.IsCompleted,
+                IsPackageChecklistItem = true,
+                ParentPackageServiceItemId = parentId,
+                ChecklistTemplateItemId = (definition.Id ?? "").Trim(),
+                ChecklistSourceJobId = (definition.LinkedServiceJobId ?? "").Trim(),
+                ChecklistSortOrder = rowIndex,
+                EstimatedMinutes = 0,
+                EstimatedPriceIncVat = 0m
+            };
+
+            insertIndex++;
+            if (insertIndex >= card.Services.Count)
+                card.Services.Add(checklistItem);
+            else
+                card.Services.Insert(insertIndex, checklistItem);
+
+            rowIndex++;
+        }
+    }
+
+    private void ToggleJobCardService(JobDefinition job, ChangeEventArgs e)
+    {
+        if (JobCardEditor is null)
+            return;
+
+        var isChecked = e?.Value is bool b && b;
+        var isPackage = Catalog.IsServicePackage(job.Id);
+        var hasPackage = CanSelectJobCardPackageServices;
+
+        if (isPackage)
+        {
+            if (isChecked)
+            {
+                RemoveAllCatalogServicesFromJobCard();
+                AddCatalogServiceToJobCard(job.Id, null);
+            }
+            else
+            {
+                RemoveAllCatalogServicesFromJobCard();
+            }
+        }
+        else
+        {
+            if (hasPackage)
+                RemoveAllCatalogServicesFromJobCard();
+
+            if (isChecked)
+                AddCatalogServiceToJobCard(job.Id, null);
+            else
+                RemoveCatalogServiceFromJobCard(job.Id);
+        }
+
+        NormalizeJobCardServiceRules();
+    }
+
+    private void ToggleJobCardAdditionalService(string serviceId, ChangeEventArgs e)
+    {
+        if (JobCardEditor is null || string.IsNullOrWhiteSpace(serviceId) || string.IsNullOrWhiteSpace(SelectedJobCardPackageId))
+            return;
+
+        if (!Catalog.IsServiceAvailableAsAdditionalService(serviceId, SelectedJobCardPackageId))
+        {
+            RemoveCatalogServiceFromJobCard(serviceId);
+            return;
+        }
+
+        var isChecked = e?.Value is bool b && b;
+        if (isChecked)
+            AddCatalogServiceToJobCard(serviceId, SelectedJobCardPackageId);
+        else
+            RemoveCatalogServiceFromJobCard(serviceId);
+
+        NormalizeJobCardServiceRules();
+    }
+
+    private void AddCatalogServiceToJobCard(string jobId, string? packageContext)
+    {
+        if (JobCardEditor is null || string.IsNullOrWhiteSpace(jobId))
+            return;
+
+        if (JobCardEditor.Services.Any(s => !IsPackageChecklistRow(s) && s.JobId.Equals(jobId, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        var job = Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(jobId, StringComparison.OrdinalIgnoreCase));
+        if (job is null)
+            return;
+
+        var resolvedContext = Catalog.IsServicePackage(job.Id) ? null : packageContext;
+        var (mins, price, _) = Catalog.PriceAndTime(job.Id, resolvedContext);
+        var serviceRow = new JobCardServiceItem
+        {
+            JobId = job.Id,
+            Name = job.Name,
+            Description = (job.Description ?? "").Trim(),
+            EstimatedMinutes = mins,
+            EstimatedPriceIncVat = price
+        };
+        JobCardEditor.Services.Add(serviceRow);
+
+        if (Catalog.IsServicePackage(job.Id))
+            AppendPackageChecklistItems(JobCardEditor, serviceRow);
+    }
+
+    private void RemoveCatalogServiceFromJobCard(string jobId)
+    {
+        if (JobCardEditor is null || string.IsNullOrWhiteSpace(jobId))
+            return;
+
+        var removedPackageParentIds = JobCardEditor.Services
+            .Where(s => !IsPackageChecklistRow(s)
+                        && s.JobId.Equals(jobId, StringComparison.OrdinalIgnoreCase)
+                        && Catalog.IsServicePackage(s.JobId))
+            .Select(s => s.Id)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        JobCardEditor.Services.RemoveAll(s => !IsPackageChecklistRow(s) && s.JobId.Equals(jobId, StringComparison.OrdinalIgnoreCase));
+        if (removedPackageParentIds.Count == 0)
+            return;
+
+        JobCardEditor.Services.RemoveAll(s =>
+            IsPackageChecklistRow(s)
+            && removedPackageParentIds.Contains((s.ParentPackageServiceItemId ?? "").Trim()));
+        ExpandedPackageChecklistRows.RemoveWhere(id => removedPackageParentIds.Contains(id));
+    }
+
+    private void RemoveAllCatalogServicesFromJobCard()
+    {
+        if (JobCardEditor is null)
+            return;
+
+        JobCardEditor.Services.RemoveAll(s =>
+            IsPackageChecklistRow(s)
+            || !string.IsNullOrWhiteSpace((s.JobId ?? "").Trim()));
+        ExpandedPackageChecklistRows.Clear();
+    }
+
+    private void NormalizeJobCardServiceRules()
+    {
+        if (JobCardEditor is null)
+            return;
+
+        var validCatalogIds = Catalog.Jobs
+            .Select(j => j.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var service in JobCardEditor.Services)
+        {
+            var id = (service.JobId ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(id) || validCatalogIds.Contains(id))
+                continue;
+
+            service.JobId = "";
+        }
+
+        JobCardEditor.Services.RemoveAll(s =>
+            IsPackageChecklistRow(s)
+            && string.IsNullOrWhiteSpace((s.ParentPackageServiceItemId ?? "").Trim()));
+
+        var packageRows = JobCardEditor.Services
+            .Where(IsServicePackageRow)
+            .ToList();
+        if (packageRows.Count > 1)
+        {
+            var keepId = packageRows[0].Id;
+            var removedIds = packageRows
+                .Skip(1)
+                .Select(s => (s.Id ?? "").Trim())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            JobCardEditor.Services.RemoveAll(s =>
+                (IsServicePackageRow(s) && !s.Id.Equals(keepId, StringComparison.OrdinalIgnoreCase))
+                || (IsPackageChecklistRow(s) && removedIds.Contains((s.ParentPackageServiceItemId ?? "").Trim())));
+
+            packageRows = JobCardEditor.Services
+                .Where(IsServicePackageRow)
+                .ToList();
+        }
+
+        var packageRow = packageRows.FirstOrDefault();
+        if (packageRow is null)
+        {
+            JobCardEditor.Services.RemoveAll(IsPackageChecklistRow);
+            ExpandedPackageChecklistRows.Clear();
+            return;
+        }
+
+        var packageId = (packageRow.JobId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(packageId))
+            return;
+
+        JobCardEditor.Services.RemoveAll(s =>
+        {
+            var serviceJobId = (s.JobId ?? "").Trim();
+            return !IsPackageChecklistRow(s)
+                   && !string.IsNullOrWhiteSpace(serviceJobId)
+                   && !Catalog.IsServicePackage(serviceJobId)
+                   && !Catalog.IsServiceAvailableAsAdditionalService(serviceJobId, packageId);
+        });
+
+        var packageParentId = (packageRow.Id ?? "").Trim();
+        JobCardEditor.Services.RemoveAll(s =>
+            IsPackageChecklistRow(s)
+            && !(s.ParentPackageServiceItemId ?? "").Trim().Equals(packageParentId, StringComparison.OrdinalIgnoreCase));
+
+        AppendPackageChecklistItems(JobCardEditor, packageRow, onlyIfMissing: true);
+
+        ExpandedPackageChecklistRows.RemoveWhere(id =>
+            !JobCardEditor.Services.Any(s => IsServicePackageRow(s) && s.Id.Equals(id, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private void AddCustomService()
+    {
+        if (JobCardEditor is null)
+            return;
+
+        var name = (CustomServiceName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+
+        JobCardEditor.Services.Add(new JobCardServiceItem
+        {
+            Name = name,
+            EstimatedMinutes = Math.Max(0, CustomServiceMinutes),
+            EstimatedPriceIncVat = Math.Max(0, CustomServicePrice)
+        });
+
+        CustomServiceName = "";
+        CustomServiceMinutes = 30;
+        CustomServicePrice = 0;
+    }
+
+    private void RemoveService(string serviceId)
+    {
+        if (JobCardEditor is null || string.IsNullOrWhiteSpace(serviceId))
+            return;
+
+        JobCardEditor.Services.RemoveAll(s => s.Id == serviceId);
+        NormalizeJobCardServiceRules();
+    }
+
+    private List<PartLookupItem> SearchParts(string term)
+    {
+        var normalized = (term ?? "").Trim();
+        if (normalized.Length < 2)
+            return new List<PartLookupItem>();
+
+        return LocalPartCatalog
+            .Where(p =>
+                p.Name.Contains(normalized, StringComparison.OrdinalIgnoreCase) ||
+                p.Sku.Contains(normalized, StringComparison.OrdinalIgnoreCase))
+            .Take(8)
+            .ToList();
+    }
+
+    private void AddBlankPart()
+    {
+        if (JobCardEditor is null)
+            return;
+
+        JobCardEditor.Parts.Add(new JobCardPartItem
+        {
+            Name = "New part",
+            Quantity = 1
+        });
+    }
+
+    private void AddPartFromLookup(PartLookupItem item)
+    {
+        if (JobCardEditor is null)
+            return;
+
+        JobCardEditor.Parts.Add(new JobCardPartItem
+        {
+            Sku = item.Sku,
+            Name = item.Name,
+            UnitPriceIncVat = item.UnitPriceIncVat,
+            Quantity = 1
+        });
+
+        PartSearch = "";
+    }
+
+    private void RemovePart(string partId)
+    {
+        if (JobCardEditor is null || string.IsNullOrWhiteSpace(partId))
+            return;
+
+        JobCardEditor.Parts.RemoveAll(p => p.Id == partId);
+    }
+
+    private string GetJobCardServiceDescription(JobCardServiceItem service)
+    {
+        var stored = (service.Description ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(stored))
+            return stored;
+
+        var jobId = (service.JobId ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(jobId))
+        {
+            var linked = Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(jobId, StringComparison.OrdinalIgnoreCase));
+            if (linked is not null)
+            {
+                var linkedDescription = (linked.Description ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(linkedDescription))
+                    return linkedDescription;
+            }
+        }
+
+        var checklistSourceJobId = (service.ChecklistSourceJobId ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(checklistSourceJobId))
+        {
+            var linkedChecklistService = Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(checklistSourceJobId, StringComparison.OrdinalIgnoreCase));
+            if (linkedChecklistService is not null)
+            {
+                var linkedDescription = (linkedChecklistService.Description ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(linkedDescription))
+                    return linkedDescription;
+            }
+        }
+
+        return "-";
+    }
+
+    private IEnumerable<JobCardServiceItem> GetProgressTrackedServices(BookingJobCard card)
+        => card.Services.Where(s => !IsPackageChecklistRow(s));
+
+    private int GetJobCardEstimatedMinutes(BookingJobCard card)
+        => GetProgressTrackedServices(card).Sum(s => Math.Max(0, s.EstimatedMinutes));
+
+    private int GetJobCardCompletedMinutes(BookingJobCard card)
+        => GetProgressTrackedServices(card).Where(s => s.IsCompleted).Sum(s => Math.Max(0, s.EstimatedMinutes));
+
+    private decimal GetJobCardProgressPercent(BookingJobCard card)
+    {
+        var total = GetJobCardEstimatedMinutes(card);
+        if (total <= 0)
+            return 0m;
+
+        var done = GetJobCardCompletedMinutes(card);
+        return Math.Min(100m, Math.Round((decimal)done * 100m / total, 1, MidpointRounding.AwayFromZero));
+    }
+
+    private string GetJobCardProgress(BookingJobCard card)
+    {
+        var total = GetJobCardEstimatedMinutes(card);
+        var done = GetJobCardCompletedMinutes(card);
+        return $"{done}/{total} mins";
+    }
+
+    private string GetJobCardProgressFillStyle(BookingJobCard card)
+        => $"width:{GetJobCardProgressPercent(card):0.#}%";
+
+    private string GetJobCardProgressMinutesLabel(BookingJobCard card)
+    {
+        var tracked = GetProgressTrackedServices(card).ToList();
+        var doneItems = tracked.Count(s => s.IsCompleted);
+        var totalItems = tracked.Count;
+        return $"{doneItems}/{totalItems} tasks complete · {GetJobCardProgressPercent(card):0.#}%";
+    }
+
+    private decimal GetJobCardServicesTotal(BookingJobCard card)
+        => GetProgressTrackedServices(card).Sum(s => Math.Max(0, s.EstimatedPriceIncVat));
+
+    private decimal GetJobCardPartsTotal(BookingJobCard card)
+        => card.Parts.Sum(p => Math.Max(0, p.Quantity) * Math.Max(0, p.UnitPriceIncVat));
+
+    private decimal GetJobCardEstimatedTotal(BookingJobCard card)
+        => GetJobCardServicesTotal(card) + GetJobCardPartsTotal(card);
+
+    private static string FormatJobCardTotals(int minutes, decimal price)
+        => $"{minutes} mins · {price:C}";
+
+    private bool HasJobCardTotalChanges(BookingJobCard card)
+        => GetJobCardEstimatedMinutes(card) != JobCardOriginalMinutes
+        || Math.Abs(GetJobCardServicesTotal(card) - JobCardOriginalTotalPrice) >= 0.01m;
+
+    private string GetJobCardTotalsDeltaText(BookingJobCard card)
+    {
+        var minuteDelta = GetJobCardEstimatedMinutes(card) - JobCardOriginalMinutes;
+        var priceDelta = GetJobCardServicesTotal(card) - JobCardOriginalTotalPrice;
+
+        var minutePrefix = minuteDelta > 0 ? "+" : "";
+        var pricePrefix = priceDelta > 0 ? "+" : "";
+        return $"{minutePrefix}{minuteDelta} mins · {pricePrefix}{priceDelta:C}";
+    }
+
+    private string GetJobCardScheduleWindowText(BookingJobCard card)
+    {
+        if (!JobCardBookingId.HasValue)
+            return "-";
+
+        var booking = Data.Bookings.FirstOrDefault(b => b.Id == JobCardBookingId.Value && b.StoreId == StoreId);
+        if (booking is null)
+            return "-";
+
+        var projectedEnd = GetProjectedBookingEnd(booking, card);
+        return $"{FormatLocalDateTime(booking.Start)} - {FormatLocalDateTime(projectedEnd)}";
+    }
+
+    private static string BuildServiceAmendmentSnapshot(IEnumerable<JobCardServiceItem> services)
+    {
+        return string.Join("||",
+            services
+                .Where(s => !IsPackageChecklistRow(s))
+                .Select(s =>
+            {
+                var jobId = (s.JobId ?? "").Trim();
+                var name = (s.Name ?? "").Trim();
+                var minutes = Math.Max(0, s.EstimatedMinutes);
+                var price = Math.Round(Math.Max(0, s.EstimatedPriceIncVat), 2, MidpointRounding.AwayFromZero);
+                return $"{jobId}|{name}|{minutes}|{price:0.00}";
+            }));
+    }
+
+    private static string DescribeServicesForNote(IEnumerable<JobCardServiceItem> services)
+    {
+        var descriptions = services
+            .Where(s => !IsPackageChecklistRow(s))
+            .Where(s => !string.IsNullOrWhiteSpace(s.Name))
+            .Select(s => $"{s.Name.Trim()} ({Math.Max(0, s.EstimatedMinutes)} mins, {Math.Max(0m, s.EstimatedPriceIncVat):C})")
+            .ToList();
+
+        return descriptions.Count == 0 ? "No services" : string.Join("; ", descriptions);
+    }
+
+    private static string BuildServiceAmendmentNote(string originalSummary, string updatedSummary)
+    {
+        var stamp = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+        return $"[{stamp}] Work amended. Booked in: {originalSummary}. Updated: {updatedSummary}.";
+    }
+
+    private static void AppendServiceAmendmentNote(BookingJobCard card, string originalSummary, string updatedSummary)
+    {
+        var note = BuildServiceAmendmentNote(originalSummary, updatedSummary);
+        card.ServiceNotes = string.IsNullOrWhiteSpace(card.ServiceNotes)
+            ? note
+            : $"{card.ServiceNotes}{Environment.NewLine}{note}";
+    }
+
+    private int GetProjectedBookingMinutes(Booking booking, BookingJobCard card)
+    {
+        var editedMinutes = GetJobCardEstimatedMinutes(card);
+        if (editedMinutes > 0)
+            return editedMinutes;
+
+        var scheduledMinutes = GetBookingDurationMinutes(booking);
+        if (scheduledMinutes > 0)
+            return scheduledMinutes;
+
+        return Math.Max(0, booking.TotalMinutes);
+    }
+
+    private DateTime GetProjectedBookingEnd(Booking booking, BookingJobCard card)
+        => booking.Start.AddMinutes(GetProjectedBookingMinutes(booking, card));
+
+    private static int GetBookingDurationMinutes(Booking booking)
+    {
+        var duration = booking.End - booking.Start;
+        if (duration.TotalMinutes <= 0)
+            return 0;
+
+        return (int)Math.Round(duration.TotalMinutes, MidpointRounding.AwayFromZero);
+    }
+
+    private List<string> BuildJobCardOverrunWarnings(Booking booking, BookingJobCard card, DateTime projectedEnd)
+    {
+        var warnings = new List<string>();
+        if (projectedEnd <= booking.End)
+            return warnings;
+
+        var store = Data.Stores.FirstOrDefault(s => s.Id == booking.StoreId);
+        if (store is null || !store.TryGetHours(booking.Start, out _, out var storeCloseTime))
+        {
+            warnings.Add("The booking now extends into a period where the store is closed.");
+        }
+        else
+        {
+            var storeClose = booking.Start.Date.Add(storeCloseTime);
+            if (projectedEnd > storeClose)
+                warnings.Add($"Store closing is {storeClose:HH:mm}, and this runs over by {FormatDuration(projectedEnd - storeClose)}.");
+        }
+
+        var assignedMechanicId = card.AssignedMechanicId != 0 ? card.AssignedMechanicId : booking.MechanicId;
+        if (assignedMechanicId != 0
+            && Mechanics.Any(m => m.Id == assignedMechanicId)
+            && Scheduler.WouldExceedDailyLimit(StoreId, assignedMechanicId, booking.Start, projectedEnd, booking.Id))
+        {
+            var mechanicName = Mechanics.FirstOrDefault(m => m.Id == assignedMechanicId)?.Name ?? "Selected mechanic";
+            warnings.Add($"{mechanicName} would exceed max bookable hours for the day.");
+        }
+
+        return warnings;
+    }
+
+    private static string BuildJobCardOverrunMessage(IEnumerable<string> warnings)
+    {
+        var warningLines = warnings.Select(w => $"- {w}");
+        return "This update extends the booking beyond normal limits.\n\n"
+               + string.Join("\n", warningLines)
+               + "\n\nDo you want to save anyway?";
+    }
+
+    private static string FormatDuration(TimeSpan overrun)
+    {
+        var totalMinutes = (int)Math.Ceiling(Math.Max(0, overrun.TotalMinutes));
+        var hours = totalMinutes / 60;
+        var minutes = totalMinutes % 60;
+        if (hours > 0 && minutes > 0)
+            return $"{hours}h {minutes}m";
+        if (hours > 0)
+            return $"{hours}h";
+        return $"{minutes}m";
+    }
+
+    private static string FormatLocalDateTime(DateTime value)
+    {
+        var dateTime = value.Kind switch
+        {
+            DateTimeKind.Utc => value.ToLocalTime(),
+            DateTimeKind.Local => value,
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc).ToLocalTime()
+        };
+
+        return dateTime.ToString("dd/MM/yyyy HH:mm");
+    }
+
+    private static string SummarizeMessage(string message)
+    {
+        var cleaned = (message ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
+        if (cleaned.Length <= 80)
+            return cleaned;
+        return $"{cleaned[..77]}...";
+    }
+
+    private void NormalizeJobCardEditor()
+    {
+        if (JobCardEditor is null)
+            return;
+
+        JobCardEditor.StatusName = (JobCardEditor.StatusName ?? "").Trim();
+        JobCardEditor.ServiceNotes = (JobCardEditor.ServiceNotes ?? "").Trim();
+        JobCardEditor.CustomerNotes = (JobCardEditor.CustomerNotes ?? "").Trim();
+        JobCardEditor.CommunicationDraft = (JobCardEditor.CommunicationDraft ?? "").Trim();
+
+        foreach (var service in JobCardEditor.Services)
+        {
+            service.Name = (service.Name ?? "").Trim();
+            service.Description = (service.Description ?? "").Trim();
+            service.JobId = (service.JobId ?? "").Trim();
+            service.ParentPackageServiceItemId = (service.ParentPackageServiceItemId ?? "").Trim();
+            service.ChecklistTemplateItemId = (service.ChecklistTemplateItemId ?? "").Trim();
+            service.ChecklistSourceJobId = (service.ChecklistSourceJobId ?? "").Trim();
+            service.ChecklistSortOrder = Math.Max(0, service.ChecklistSortOrder);
+
+            if (IsPackageChecklistRow(service))
+            {
+                service.IsPackageChecklistItem = true;
+                service.JobId = "";
+                service.EstimatedMinutes = 0;
+                service.EstimatedPriceIncVat = 0m;
+            }
+            else
+            {
+                service.EstimatedMinutes = Math.Max(0, service.EstimatedMinutes);
+                service.EstimatedPriceIncVat = Math.Max(0, service.EstimatedPriceIncVat);
+            }
+        }
+
+        foreach (var part in JobCardEditor.Parts)
+        {
+            part.Name = (part.Name ?? "").Trim();
+            part.Sku = (part.Sku ?? "").Trim();
+            part.Quantity = Math.Max(0, part.Quantity);
+            part.UnitPriceIncVat = Math.Max(0, part.UnitPriceIncVat);
+        }
+
+        JobCardEditor.Services = JobCardEditor.Services
+            .Where(s => !string.IsNullOrWhiteSpace(s.Name))
+            .ToList();
+
+        JobCardEditor.Parts = JobCardEditor.Parts
+            .Where(p => !string.IsNullOrWhiteSpace(p.Name) || !string.IsNullOrWhiteSpace(p.Sku))
+            .ToList();
+
+        NormalizeJobCardServiceRules();
+
+        if (JobCardEditor.AssignedMechanicId == 0 && Mechanics.Count > 0)
+            JobCardEditor.AssignedMechanicId = Mechanics[0].Id;
+
+        if (string.IsNullOrWhiteSpace(JobCardEditor.StatusName))
+            JobCardEditor.StatusName = "Scheduled";
+    }
+
+    private Task SaveJobCard()
+        => PersistJobCardAsync(showSuccessMessage: true);
+
+    private async Task PersistJobCardAsync(bool showSuccessMessage, bool skipOverrunWarnings = false)
+    {
+        if (!JobCardBookingId.HasValue || JobCardEditor is null)
+            return;
+
+        var booking = Data.Bookings.FirstOrDefault(b => b.Id == JobCardBookingId.Value && b.StoreId == StoreId);
+        if (booking is null)
+        {
+            JobCardMessage = "Booking not found.";
+            return;
+        }
+
+        NormalizeJobCardEditor();
+        JobCardEditor.LastUpdatedUtc = DateTime.UtcNow;
+        var currentServiceSnapshot = BuildServiceAmendmentSnapshot(JobCardEditor.Services);
+        var currentServiceSummary = DescribeServicesForNote(JobCardEditor.Services);
+        var hasServiceAmendment = !string.Equals(currentServiceSnapshot, JobCardOriginalServiceSnapshot, StringComparison.Ordinal);
+        var projectedMinutes = GetProjectedBookingMinutes(booking, JobCardEditor);
+        var projectedEnd = GetProjectedBookingEnd(booking, JobCardEditor);
+
+        if (!skipOverrunWarnings)
+        {
+            var warnings = BuildJobCardOverrunWarnings(booking, JobCardEditor, projectedEnd);
+            if (warnings.Count > 0)
+            {
+                JobCardOverrunMessage = BuildJobCardOverrunMessage(warnings);
+                IsJobCardOverrunDialogVisible = true;
+                return;
+            }
+        }
+
+        if (JobCardEditor.AssignedMechanicId != 0 &&
+            JobCardEditor.AssignedMechanicId != booking.MechanicId &&
+            Scheduler.WouldExceedDailyLimit(StoreId, JobCardEditor.AssignedMechanicId, booking.Start, projectedEnd, booking.Id))
+        {
+            var mechanic = Mechanics.FirstOrDefault(m => m.Id == JobCardEditor.AssignedMechanicId);
+            var name = mechanic?.Name ?? "That mechanic";
+            JobCardMessage = $"{name} cannot take this transfer without exceeding daily limit.";
+            return;
+        }
+
+        if (hasServiceAmendment)
+            AppendServiceAmendmentNote(JobCardEditor, JobCardOriginalServiceSummary, currentServiceSummary);
+
+        booking.JobCard = CloneJobCard(JobCardEditor);
+        booking.StatusName = JobCardEditor.StatusName;
+        if (JobCardEditor.AssignedMechanicId != 0)
+            booking.MechanicId = JobCardEditor.AssignedMechanicId;
+        booking.End = projectedEnd;
+
+        var listedServices = JobCardEditor.Services
+            .Where(s => !IsPackageChecklistRow(s))
+            .Where(s => !string.IsNullOrWhiteSpace(s.Name))
+            .ToList();
+
+        if (listedServices.Count == 1)
+            booking.Title = listedServices[0].Name.Trim();
+        else if (listedServices.Count > 1)
+            booking.Title = "Custom package";
+
+        var validCatalogIds = JobCardEditor.Services
+            .Where(s => !IsPackageChecklistRow(s))
+            .Select(s => (s.JobId ?? "").Trim())
+            .Where(id => !string.IsNullOrWhiteSpace(id) && Catalog.Jobs.Any(j => j.Id.Equals(id, StringComparison.OrdinalIgnoreCase)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (validCatalogIds.Length > 0)
+        {
+            booking.JobIds = validCatalogIds;
+            booking.JobId = validCatalogIds[0];
+        }
+        else
+        {
+            booking.JobIds = Array.Empty<string>();
+            booking.JobId = "MANUAL";
+        }
+
+        booking.TotalMinutes = projectedMinutes;
+
+        booking.TotalPriceIncVat = GetJobCardEstimatedTotal(JobCardEditor);
+
+        await Data.UpdateBookingAsync(booking);
+        ReloadAppointmentsFromBookings();
+        _ = ScheduleRef?.RefreshEventsAsync();
+
+        IsJobCardOverrunDialogVisible = false;
+        JobCardOverrunMessage = "";
+        JobCardOriginalServiceSnapshot = BuildServiceAmendmentSnapshot(JobCardEditor.Services);
+        JobCardOriginalServiceSummary = DescribeServicesForNote(JobCardEditor.Services);
+        JobCardOriginalServices = CloneServiceItems(JobCardEditor.Services);
+        JobCardOriginalMinutes = GetJobCardEstimatedMinutes(JobCardEditor);
+        JobCardOriginalTotalPrice = GetJobCardServicesTotal(JobCardEditor);
+
+        if (showSuccessMessage)
+            JobCardMessage = "Job card saved.";
+    }
+
+    private async Task SendCustomerSms()
+    {
+        if (!JobCardBookingId.HasValue || JobCardEditor is null)
+            return;
+
+        var booking = Data.Bookings.FirstOrDefault(b => b.Id == JobCardBookingId.Value && b.StoreId == StoreId);
+        if (booking is null)
+            return;
+
+        var recipient = (booking.CustomerPhone ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(recipient))
+        {
+            JobCardMessage = "No customer phone number is available for this booking.";
+            return;
+        }
+
+        var message = string.IsNullOrWhiteSpace(JobCardEditor.CommunicationDraft)
+            ? $"Update on your booking #{booking.Id}: your bike is being worked on."
+            : JobCardEditor.CommunicationDraft.Trim();
+
+        JobCardEditor.LastSmsSentUtc = DateTime.UtcNow;
+        JobCardEditor.MessageLog.Add(new JobCardMessageLogItem
+        {
+            SentAtUtc = DateTime.UtcNow,
+            Channel = "SMS (simulation)",
+            Recipient = recipient,
+            Summary = SummarizeMessage(message)
+        });
+
+        await PersistJobCardAsync(showSuccessMessage: false, skipOverrunWarnings: true);
+        JobCardMessage = "SMS logged. Live SMS delivery requires an SMS/EPOS provider integration.";
+    }
+
+    private async Task SendCustomerEmail()
+    {
+        if (!JobCardBookingId.HasValue || JobCardEditor is null)
+            return;
+
+        var booking = Data.Bookings.FirstOrDefault(b => b.Id == JobCardBookingId.Value && b.StoreId == StoreId);
+        if (booking is null)
+            return;
+
+        var recipient = (booking.CustomerEmail ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(recipient))
+        {
+            JobCardMessage = "No customer email address is available for this booking.";
+            return;
+        }
+
+        var message = string.IsNullOrWhiteSpace(JobCardEditor.CommunicationDraft)
+            ? $"Update on your booking #{booking.Id}: your bike is being worked on."
+            : JobCardEditor.CommunicationDraft.Trim();
+
+        try
+        {
+            var htmlBody = $"<p>{System.Net.WebUtility.HtmlEncode(message).Replace("\n", "<br />")}</p>";
+            await EmailSender.SendAsync(
+                recipient,
+                $"Workshop update for booking #{booking.Id}",
+                htmlBody,
+                message);
+
+            JobCardEditor.LastEmailSentUtc = DateTime.UtcNow;
+            JobCardEditor.MessageLog.Add(new JobCardMessageLogItem
+            {
+                SentAtUtc = DateTime.UtcNow,
+                Channel = "Email",
+                Recipient = recipient,
+                Summary = SummarizeMessage(message)
             });
 
-            ReloadAppointmentsFromBookings();
+            await PersistJobCardAsync(showSuccessMessage: false, skipOverrunWarnings: true);
+            JobCardMessage = $"Email sent to {recipient}.";
         }
-        else if (actionType == ActionType.EventChange)
+        catch (Exception ex)
         {
-            var b = Data.Bookings.First(x => x.StoreId == StoreId && x.Id == appt.Id);
-            b.MechanicId = appt.MechanicId;
-            b.Start = appt.StartTime;
-            b.End = appt.EndTime;
-            b.TotalMinutes = (int)(b.End - b.Start).TotalMinutes;
-
-            ReloadAppointmentsFromBookings();
+            Logger.LogWarning(ex, "Failed to send job card email for booking {BookingId}", booking.Id);
+            JobCardMessage = "Email send failed. Check Postmark configuration and try again.";
         }
     }
 
-    private Task OnOverbookCancel()
-    {
-        IsOverbookDialogVisible = false;
-        PendingAppointment = null;
-        PendingActionType = null;
-        return InvokeAsync(StateHasChanged);
-    }
-
-    private async Task OnOverbookAllowOnce()
-    {
-        IsOverbookDialogVisible = false;
-
-        if (PendingAppointment is null || PendingActionType is null || ScheduleRef is null)
-            return;
-
-        BypassLimitOnce = true;
-
-        // Apply change to the underlying booking store
-        PersistSchedulerChange(PendingAppointment, PendingActionType.Value);
-
-        // Refresh Scheduler data
-        await ScheduleRef.RefreshEventsAsync();
-
-        PendingAppointment = null;
-        PendingActionType = null;
-
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private static AppointmentVM Clone(AppointmentVM a) => new()
-    {
-        Id = a.Id,
-        Subject = a.Subject,
-        StartTime = a.StartTime,
-        EndTime = a.EndTime,
-        MechanicId = a.MechanicId
-    };
-
-    public sealed class AppointmentVM
-    {
-        public int Id { get; set; }
-        public string Subject { get; set; } = "";
-        public DateTime StartTime { get; set; }
-        public DateTime EndTime { get; set; }
-        public int MechanicId { get; set; }
-    }
+#endif
+    private sealed record PartLookupItem(string Sku, string Name, decimal UnitPriceIncVat);
 }

@@ -1,0 +1,15 @@
+@inject NavigationManager Nav
+
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var returnUrl = string.IsNullOrWhiteSpace(uri.PathAndQuery) ? "/app" : uri.PathAndQuery;
+        var target = $"/login?ReturnUrl={Uri.EscapeDataString(returnUrl)}";
+
+        Nav.NavigateTo(target, replace: true);
+    }
+}

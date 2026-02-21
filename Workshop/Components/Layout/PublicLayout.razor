@@ -1,0 +1,48 @@
+@inherits LayoutComponentBase
+
+<div class="public-shell">
+    <header class="public-nav">
+        <a class="brand" href="/">VeloLabs</a>
+        <nav class="public-links">
+            <a href="/pricing">Pricing</a>
+            <a href="/#features">Features</a>
+            <a href="/#how">How it works</a>
+            <a href="/#security">Security</a>
+        </nav>
+        <div class="public-actions">
+            <a class="btn ghost" href="/login">Log in</a>
+            <a class="btn solid" href="/signup">Get started</a>
+        </div>
+    </header>
+
+    <main class="public-main">
+        @Body
+    </main>
+
+    <footer class="public-footer">
+        <div class="footer-grid">
+            <div>
+                <div class="footer-brand">VeloLabs</div>
+                <div class="footer-text">Workshop scheduling built for bike retailers.</div>
+            </div>
+            <div>
+                <div class="footer-title">Product</div>
+                <a href="/pricing">Pricing</a>
+                <a href="/#features">Features</a>
+                <a href="/#how">How it works</a>
+            </div>
+            <div>
+                <div class="footer-title">Company</div>
+                <a href="/#testimonials">Customers</a>
+                <a href="/#faq">FAQ</a>
+                <a href="/signup">Start trial</a>
+            </div>
+            <div>
+                <div class="footer-title">Account</div>
+                <a href="/login">Log in</a>
+                <a href="/signup">Create account</a>
+            </div>
+        </div>
+        <div class="footer-bottom">© 2026 VeloLabs. All rights reserved.</div>
+    </footer>
+</div>

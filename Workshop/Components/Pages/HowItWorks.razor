@@ -1,0 +1,62 @@
+@page "/how-it-works"
+@layout MarketingLayout
+@attribute [AllowAnonymous]
+
+<Section>
+    <div class="mk-center-head mk-reveal">
+        <h1 class="mk-page-title">How VeloLabs works</h1>
+        <p class="mk-page-sub">From store setup to completed jobs, here's the operational flow.</p>
+    </div>
+</Section>
+
+<Section Soft="true">
+    <ol class="mk-steps">
+        @foreach (var step in Steps)
+        {
+            <li class="mk-reveal">
+                <span class="mk-icon-chip"><IconGlyph Name="@step.Icon" /></span>
+                <div>
+                    <small>Step @step.Number</small>
+                    <h3>@step.Title</h3>
+                    <p>@step.Description</p>
+                </div>
+            </li>
+        }
+    </ol>
+</Section>
+
+<Section>
+    <div class="mk-center-head">
+        <h2>Built for every role in the workshop</h2>
+    </div>
+    <div class="mk-role-grid">
+        <article class="mk-card mk-role mk-reveal"><span class="mk-icon-chip"><IconGlyph Name="clipboard" /></span><h3>Service Desk</h3><ul><li>Quick intake and quoting</li><li>Customer comms handled automatically</li><li>Clear booking overview</li></ul></article>
+        <article class="mk-card mk-role mk-reveal mk-reveal-delay-1"><span class="mk-icon-chip"><IconGlyph Name="wrench" /></span><h3>Mechanics</h3><ul><li>See today's job cards at a glance</li><li>Status updates in one click</li><li>No interruptions from scheduling</li></ul></article>
+        <article class="mk-card mk-role mk-reveal mk-reveal-delay-2"><span class="mk-icon-chip"><IconGlyph Name="bar" /></span><h3>Workshop Managers</h3><ul><li>Real-time capacity across stores</li><li>Performance visibility</li><li>Control without micromanaging</li></ul></article>
+    </div>
+</Section>
+
+<Section Soft="true">
+    <div class="mk-final-cta">
+        <h2>Ready to streamline your workshop?</h2>
+        <p>Start your free trial. See results in your first week.</p>
+        <div class="mk-links-row mk-links-center">
+            <a class="mk-btn mk-btn-primary" href="/signup">Start free trial</a>
+            <a class="mk-btn mk-btn-secondary" href="/features">Explore features</a>
+        </div>
+    </div>
+</Section>
+
+@code {
+    private static readonly IReadOnlyList<HowStep> Steps =
+    [
+        new(1, "store", "Set up your stores", "Add one or more workshop locations. Assign team access per store."),
+        new(2, "users", "Add your mechanics", "Create mechanic profiles with working hours and skill areas. Capacity is calculated automatically."),
+        new(3, "package", "Define services & packages", "Set up individual services and bundled packages with pricing and estimated durations."),
+        new(4, "clipboard", "Take intake & build quotes", "Receive workshop requests, assess the bike, and send a clear quote to the customer."),
+        new(5, "wrench", "Book & execute jobs", "Convert quotes to bookings. Track progress on job cards with real-time status updates."),
+        new(6, "plug", "Integrate & sync", "Connect Timetastic for mechanic time-off. Keep your schedule accurate without manual updates.")
+    ];
+
+    private sealed record HowStep(int Number, string Icon, string Title, string Description);
+}

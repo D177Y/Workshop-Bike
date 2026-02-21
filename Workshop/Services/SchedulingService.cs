@@ -5,15 +5,17 @@ namespace Workshop.Services;
 public sealed class SchedulingService
 {
     private readonly WorkshopData _data;
+    private readonly JobCatalogService _catalog;
 
-    public SchedulingService(WorkshopData data)
+    public SchedulingService(WorkshopData data, JobCatalogService catalog)
     {
         _data = data;
+        _catalog = catalog;
     }
 
     public sealed record SlotResult(bool Found, int MechanicId, DateTime Start, DateTime End, string Reason);
 
-    public SlotResult FindFirstSlot(int storeId, int minutes, DateTime earliest, int? mechanicId = null)
+    public SlotResult FindFirstSlot(int storeId, int minutes, DateTime earliest, int? mechanicId = null, IReadOnlyCollection<string>? jobIds = null)
     {
         var store = _data.Stores.First(s => s.Id == storeId);
 
@@ -34,11 +36,11 @@ public sealed class SchedulingService
             var day = cursor.Date.AddDays(dayOffset);
 
             // Skip closed days
-            if (!store.IsOpenOnDay(day))
+            if (!store.TryGetHours(day, out var storeOpenFrom, out var storeOpenTo))
                 continue;
 
-            var dayStart = day.Add(store.OpenFrom);
-            var dayEnd = day.Add(store.OpenTo);
+            var dayStart = day.Add(storeOpenFrom);
+            var dayEnd = day.Add(storeOpenTo);
 
             var startFrom = cursor > dayStart ? cursor : dayStart;
             startFrom = RoundUpToFiveMinutes(startFrom);
@@ -50,6 +52,15 @@ public sealed class SchedulingService
 
                 foreach (var mech in mechanics)
                 {
+                    if (!CanMechanicDoJobs(mech, jobIds))
+                        continue;
+
+                    if (!TryGetMechanicWindow(store, mech, day, out var mechStart, out var mechEnd))
+                        continue;
+
+                    if (candidateStart < mechStart || candidateEnd > mechEnd)
+                        continue;
+
                     if (!FitsWithoutOverlap(storeId, mech.Id, candidateStart, candidateEnd))
                         continue;
 
@@ -89,6 +100,13 @@ public sealed class SchedulingService
             if (bookingIdToIgnore.HasValue && b.Id == bookingIdToIgnore.Value) continue;
             if (Overlaps(start, end, b.Start, b.End)) return false;
         }
+
+        foreach (var timeOff in _data.MechanicTimeOffEntries.Where(x => x.StoreId == storeId && x.MechanicId == mechanicId))
+        {
+            if (Overlaps(start, end, timeOff.Start, timeOff.End))
+                return false;
+        }
+
         return true;
     }
 
@@ -105,20 +123,78 @@ public sealed class SchedulingService
         return new DateTime(rounded.Year, rounded.Month, rounded.Day, rounded.Hour, rounded.Minute, 0);
     }
 
-    public bool CanFitOnDay(int storeId, int minutes, DateTime day, int? mechanicId = null)
+    public bool CanFitOnDay(int storeId, int minutes, DateTime day, int? mechanicId = null, IReadOnlyCollection<string>? jobIds = null)
     {
         var store = _data.Stores.First(s => s.Id == storeId);
 
         // If the store is closed on this day, it cannot fit
-        if (!store.IsOpenOnDay(day))
+        if (!store.TryGetHours(day, out var openFrom, out var openTo))
             return false;
 
-        var dayStart = day.Date.Add(store.OpenFrom);
-        var dayEnd = day.Date.Add(store.OpenTo);
+        var dayStart = day.Date.Add(openFrom);
+        var dayEnd = day.Date.Add(openTo);
 
-        var slot = FindFirstSlot(storeId, minutes, dayStart, mechanicId);
+        var slot = FindFirstSlot(storeId, minutes, dayStart, mechanicId, jobIds);
 
         return slot.Found && slot.Start >= dayStart && slot.End <= dayEnd && slot.Start.Date == dayStart.Date;
+    }
+
+    private bool CanMechanicDoJobs(Mechanic mech, IReadOnlyCollection<string>? jobIds)
+    {
+        if (jobIds == null || jobIds.Count == 0)
+            return true;
+
+        foreach (var jobId in jobIds)
+        {
+            var job = _catalog.Jobs.FirstOrDefault(j => j.Id == jobId);
+            if (job == null)
+                return false;
+
+            if (!_catalog.CanMechanicPerformJob(mech, job))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryGetMechanicWindow(Store store, Mechanic mech, DateTime day, out DateTime start, out DateTime end)
+    {
+        if (!store.TryGetHours(day, out var storeOpenFrom, out var storeOpenTo))
+        {
+            start = default;
+            end = default;
+            return false;
+        }
+
+        if (mech.HoursByDay.Count > 0)
+        {
+            if (!mech.HoursByDay.TryGetValue(day.DayOfWeek, out var hours))
+            {
+                start = default;
+                end = default;
+                return false;
+            }
+
+            var mechStart = day.Date.Add(hours.OpenFrom);
+            var mechEnd = day.Date.Add(hours.OpenTo);
+            var storeStart = day.Date.Add(storeOpenFrom);
+            var storeEnd = day.Date.Add(storeOpenTo);
+
+            start = mechStart > storeStart ? mechStart : storeStart;
+            end = mechEnd < storeEnd ? mechEnd : storeEnd;
+            return start < end;
+        }
+
+        if (mech.DaysWorking.Contains(day.DayOfWeek))
+        {
+            start = day.Date.Add(storeOpenFrom);
+            end = day.Date.Add(storeOpenTo);
+            return start < end;
+        }
+
+        start = default;
+        end = default;
+        return false;
     }
 
 }

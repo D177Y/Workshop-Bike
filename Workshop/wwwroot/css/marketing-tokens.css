@@ -1,0 +1,15 @@
+:root {
+    --mk-bg: #ffffff;
+    --mk-bg-soft: #f7f9fc;
+    --mk-bg-softer: #f2f5fa;
+    --mk-text: #0c1d46;
+    --mk-muted: #5f6f8e;
+    --mk-brand: #2563eb;
+    --mk-brand-dark: #1e4fbe;
+    --mk-brand-soft: #e9f1ff;
+    --mk-border: rgba(148, 163, 184, 0.34);
+    --mk-shadow-soft: 0 2px 10px rgba(15, 23, 42, 0.05);
+    --mk-shadow-medium: 0 8px 24px rgba(15, 23, 42, 0.08);
+    --mk-shadow-large: 0 18px 42px rgba(15, 23, 42, 0.12);
+    --mk-radius-lg: 16px;
+}

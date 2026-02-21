@@ -1,0 +1,293 @@
+@using Syncfusion.Blazor.Grids
+@using Workshop.Models
+
+<div class="bike-selection-wrap @ContainerCssClass">
+    <div class="bike-panel-head">
+        @if (!string.IsNullOrWhiteSpace(Title))
+        {
+            <h5>@Title</h5>
+        }
+        <button type="button" class="btn-primary" @onclick="BeginAddBike">@AddButtonText</button>
+    </div>
+
+    <SfGrid @key="GridKey" DataSource="@Bikes" AllowSorting="true" Width="100%">
+        <GridColumns>
+            <GridColumn HeaderText="Select" Width="84" TextAlign="TextAlign.Center">
+                <Template>
+                    @{
+                        var bike = (CustomerBikeRow)context;
+                    }
+                    <input type="checkbox"
+                           checked="@IsBikeSelected(bike)"
+                           @onchange="e => ToggleBikeSelection(bike.RowId, e)" />
+                </Template>
+            </GridColumn>
+            <GridColumn HeaderText="Make" Width="140">
+                <Template>
+                    @{
+                        var bike = (CustomerBikeRow)context;
+                    }
+                    @bike.Make
+                </Template>
+            </GridColumn>
+            <GridColumn HeaderText="Model" Width="170">
+                <Template>
+                    @{
+                        var bike = (CustomerBikeRow)context;
+                    }
+                    @bike.Model
+                </Template>
+            </GridColumn>
+            <GridColumn HeaderText="Size" Width="110">
+                <Template>
+                    @{
+                        var bike = (CustomerBikeRow)context;
+                    }
+                    @(string.IsNullOrWhiteSpace(bike.Size) ? "-" : bike.Size)
+                </Template>
+            </GridColumn>
+            <GridColumn HeaderText="Frame Number" Width="170">
+                <Template>
+                    @{
+                        var bike = (CustomerBikeRow)context;
+                    }
+                    @(string.IsNullOrWhiteSpace(bike.FrameNumber) ? "-" : bike.FrameNumber)
+                </Template>
+            </GridColumn>
+            <GridColumn HeaderText="Stock Number" Width="150">
+                <Template>
+                    @{
+                        var bike = (CustomerBikeRow)context;
+                    }
+                    @(string.IsNullOrWhiteSpace(bike.StockNumber) ? "-" : bike.StockNumber)
+                </Template>
+            </GridColumn>
+            <GridColumn HeaderText="Actions" Width="150" TextAlign="TextAlign.Center">
+                <Template>
+                    @{
+                        var bike = (CustomerBikeRow)context;
+                    }
+                    <div class="bike-row-actions">
+                        <button type="button" class="btn-secondary grid-action-btn" @onclick="() => BeginEditBike(bike.RowId)">Edit</button>
+                        <button type="button" class="btn-secondary grid-action-btn danger" @onclick="async () => await DeleteBikeAsync(bike.RowId)">Delete</button>
+                    </div>
+                </Template>
+            </GridColumn>
+        </GridColumns>
+    </SfGrid>
+
+    @if (Bikes.Count == 0)
+    {
+        <div class="helper-text">@EmptyStateText</div>
+    }
+
+    @if (ShowSelectedBanner && !string.IsNullOrWhiteSpace(SelectedBikeDetails))
+    {
+        <div class="selected-bike-banner">
+            Selected bike: @SelectedBikeDetails
+        </div>
+    }
+
+    @if (_showBikeEditor)
+    {
+        <div class="bike-editor">
+            <h5>@(_editingBikeId is null ? "Add bike" : "Edit bike")</h5>
+
+            @if (!string.IsNullOrWhiteSpace(_bikeEditorError))
+            {
+                <div class="@ErrorCssClass">@_bikeEditorError</div>
+            }
+
+            <div class="bike-editor-grid">
+                <div class="field">
+                    <label>Make *</label>
+                    <input type="text" @bind="BikeEditorMake" />
+                </div>
+                <div class="field">
+                    <label>Model *</label>
+                    <input type="text" @bind="BikeEditorModel" />
+                </div>
+                <div class="field">
+                    <label>Size</label>
+                    <input type="text" @bind="BikeEditorSize" />
+                </div>
+                <div class="field">
+                    <label>Frame Number</label>
+                    <input type="text" @bind="BikeEditorFrameNumber" />
+                </div>
+                <div class="field">
+                    <label>Stock Number</label>
+                    <input type="text" @bind="BikeEditorStockNumber" />
+                </div>
+            </div>
+
+            <div class="bike-editor-actions">
+                <button type="button" class="btn-primary" @onclick="SaveBikeAsync">Save bike</button>
+                <button type="button" class="btn-secondary" @onclick="CancelBikeEdit">Cancel</button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<CustomerBikeRow> Bikes { get; set; } = new();
+    [Parameter] public string? SelectedBikeId { get; set; }
+    [Parameter] public EventCallback<string?> SelectedBikeIdChanged { get; set; }
+    [Parameter] public EventCallback<string> SelectedBikeDetailsChanged { get; set; }
+    [Parameter] public EventCallback OnBikesChanged { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string AddButtonText { get; set; } = "Add new bike";
+    [Parameter] public string EmptyStateText { get; set; } = "No bikes found for this customer yet. Add a bike to continue.";
+    [Parameter] public string ContainerCssClass { get; set; } = "";
+    [Parameter] public string ErrorCssClass { get; set; } = "status error";
+    [Parameter] public bool ShowSelectedBanner { get; set; } = true;
+
+    private bool _showBikeEditor;
+    private string? _editingBikeId;
+    private string BikeEditorMake = "";
+    private string BikeEditorModel = "";
+    private string BikeEditorSize = "";
+    private string BikeEditorFrameNumber = "";
+    private string BikeEditorStockNumber = "";
+    private string _bikeEditorError = "";
+
+    private CustomerBikeRow? SelectedBike =>
+        string.IsNullOrWhiteSpace(SelectedBikeId)
+            ? null
+            : Bikes.FirstOrDefault(b => b.RowId.Equals(SelectedBikeId, StringComparison.OrdinalIgnoreCase));
+
+    private string GridKey =>
+        Bikes.Count == 0
+            ? "empty"
+            : string.Join("|", Bikes.Select(b =>
+                $"{b.RowId}:{b.Make}:{b.Model}:{b.Size}:{b.FrameNumber}:{b.StockNumber}"));
+
+    private string SelectedBikeDetails => BikeDetailsService.BuildBikeDetailsText(SelectedBike);
+
+    protected override void OnParametersSet()
+    {
+        Bikes ??= new();
+    }
+
+    private void BeginAddBike()
+    {
+        _editingBikeId = null;
+        BikeEditorMake = "";
+        BikeEditorModel = "";
+        BikeEditorSize = "";
+        BikeEditorFrameNumber = "";
+        BikeEditorStockNumber = "";
+        _bikeEditorError = "";
+        _showBikeEditor = true;
+    }
+
+    private void BeginEditBike(string bikeId)
+    {
+        var bike = Bikes.FirstOrDefault(b => b.RowId.Equals(bikeId, StringComparison.OrdinalIgnoreCase));
+        if (bike is null)
+            return;
+
+        _editingBikeId = bike.RowId;
+        BikeEditorMake = bike.Make;
+        BikeEditorModel = bike.Model;
+        BikeEditorSize = bike.Size;
+        BikeEditorFrameNumber = bike.FrameNumber;
+        BikeEditorStockNumber = bike.StockNumber;
+        _bikeEditorError = "";
+        _showBikeEditor = true;
+    }
+
+    private void CancelBikeEdit()
+    {
+        _showBikeEditor = false;
+        _editingBikeId = null;
+        _bikeEditorError = "";
+    }
+
+    private async Task SaveBikeAsync()
+    {
+        var make = BikeEditorMake.Trim();
+        var model = BikeEditorModel.Trim();
+        if (string.IsNullOrWhiteSpace(make) || string.IsNullOrWhiteSpace(model))
+        {
+            _bikeEditorError = "Make and model are required.";
+            return;
+        }
+
+        var size = BikeEditorSize.Trim();
+        var frameNumber = BikeEditorFrameNumber.Trim();
+        var stockNumber = BikeEditorStockNumber.Trim();
+
+        if (string.IsNullOrWhiteSpace(_editingBikeId))
+        {
+            var bike = new CustomerBikeRow
+            {
+                RowId = BikeDetailsService.NewBikeRowId(),
+                Make = make,
+                Model = model,
+                Size = size,
+                FrameNumber = frameNumber,
+                StockNumber = stockNumber
+            };
+            Bikes.Add(bike);
+            SelectedBikeId = bike.RowId;
+        }
+        else
+        {
+            var existing = Bikes.FirstOrDefault(b => b.RowId.Equals(_editingBikeId, StringComparison.OrdinalIgnoreCase));
+            if (existing is null)
+            {
+                _bikeEditorError = "Could not update bike. Please try again.";
+                return;
+            }
+
+            existing.Make = make;
+            existing.Model = model;
+            existing.Size = size;
+            existing.FrameNumber = frameNumber;
+            existing.StockNumber = stockNumber;
+            SelectedBikeId = existing.RowId;
+        }
+
+        await NotifyBikeStateChangedAsync(bikesChanged: true);
+        CancelBikeEdit();
+    }
+
+    private async Task DeleteBikeAsync(string bikeId)
+    {
+        var bike = Bikes.FirstOrDefault(b => b.RowId.Equals(bikeId, StringComparison.OrdinalIgnoreCase));
+        if (bike is null)
+            return;
+
+        Bikes.Remove(bike);
+        if (string.Equals(SelectedBikeId, bike.RowId, StringComparison.OrdinalIgnoreCase))
+            SelectedBikeId = Bikes.FirstOrDefault()?.RowId;
+
+        await NotifyBikeStateChangedAsync(bikesChanged: true);
+    }
+
+    private bool IsBikeSelected(CustomerBikeRow bike) =>
+        !string.IsNullOrWhiteSpace(SelectedBikeId) &&
+        bike.RowId.Equals(SelectedBikeId, StringComparison.OrdinalIgnoreCase);
+
+    private async Task ToggleBikeSelection(string bikeId, ChangeEventArgs e)
+    {
+        var isChecked = e?.Value is bool b && b;
+        var updated = BikeSelectionService.ToggleSelection(SelectedBikeId, bikeId, isChecked);
+        if (!string.Equals(updated, SelectedBikeId, StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedBikeId = updated;
+            await NotifyBikeStateChangedAsync(bikesChanged: false);
+        }
+    }
+
+    private async Task NotifyBikeStateChangedAsync(bool bikesChanged)
+    {
+        await SelectedBikeIdChanged.InvokeAsync(SelectedBikeId);
+        if (SelectedBikeDetailsChanged.HasDelegate)
+            await SelectedBikeDetailsChanged.InvokeAsync(SelectedBikeDetails);
+
+        if (bikesChanged)
+            await OnBikesChanged.InvokeAsync();
+    }
+}

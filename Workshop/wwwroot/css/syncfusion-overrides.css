@@ -1,0 +1,116 @@
+.mk-faq-accordion .e-acrdn-item > .e-acrdn-header {
+    min-height: 56px;
+    background: #fff !important;
+    border-color: #d5dce7 !important;
+    box-shadow: none !important;
+}
+
+.mk-faq-wrap .e-accordion.mk-faq-accordion,
+.mk-faq-wrap .e-accordion {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+}
+
+.mk-faq-wrap .e-accordion .e-acrdn-item > .e-acrdn-header {
+    min-height: 56px !important;
+    display: flex !important;
+    align-items: center !important;
+    background: #fff !important;
+    border-color: #d5dce7 !important;
+    box-shadow: none !important;
+}
+
+.mk-faq-accordion .e-acrdn-item > .e-acrdn-header .e-acrdn-header-content {
+    color: #0f172a !important;
+    font-weight: 700 !important;
+    padding-top: 0.95rem !important;
+    padding-bottom: 0.95rem !important;
+    line-height: 1.35 !important;
+}
+
+.mk-faq-wrap .e-accordion .e-acrdn-item > .e-acrdn-header .e-acrdn-header-content {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    color: #0f172a !important;
+    font-weight: 700 !important;
+    padding-top: 0.95rem !important;
+    padding-bottom: 0.95rem !important;
+    line-height: 1.35 !important;
+}
+
+.mk-faq-wrap .e-accordion .e-acrdn-item .e-acrdn-content,
+.mk-faq-wrap .e-accordion .e-acrdn-item .e-acrdn-content * {
+    font-weight: 400 !important;
+}
+
+.mk-faq-wrap .e-accordion .e-acrdn-item > .e-acrdn-header .e-toggle-icon {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    align-self: center !important;
+    margin-left: auto !important;
+    height: 100% !important;
+}
+
+.mk-faq-accordion .e-acrdn-item.e-selected > .e-acrdn-header,
+.mk-faq-accordion .e-acrdn-item.e-select.e-selected > .e-acrdn-header,
+.mk-faq-accordion .e-acrdn-item.e-active > .e-acrdn-header,
+.mk-faq-accordion .e-acrdn-item.e-expand-state > .e-acrdn-header {
+    background: #f8fafd !important;
+    border-color: #d5dce7 !important;
+    box-shadow: none !important;
+}
+
+.mk-faq-wrap .e-accordion .e-acrdn-item.e-selected > .e-acrdn-header,
+.mk-faq-wrap .e-accordion .e-acrdn-item.e-select.e-selected > .e-acrdn-header,
+.mk-faq-wrap .e-accordion .e-acrdn-item.e-active > .e-acrdn-header,
+.mk-faq-wrap .e-accordion .e-acrdn-item.e-expand-state > .e-acrdn-header {
+    background: #f8fafd !important;
+    border-color: #d5dce7 !important;
+    box-shadow: none !important;
+}
+
+.mk-faq-accordion .e-acrdn-item.e-selected > .e-acrdn-header .e-acrdn-header-content,
+.mk-faq-accordion .e-acrdn-item.e-select.e-selected > .e-acrdn-header .e-acrdn-header-content,
+.mk-faq-accordion .e-acrdn-item.e-active > .e-acrdn-header .e-acrdn-header-content {
+    color: #0f172a !important;
+}
+
+.mk-faq-wrap .e-accordion .e-acrdn-item.e-selected > .e-acrdn-header .e-acrdn-header-content,
+.mk-faq-wrap .e-accordion .e-acrdn-item.e-select.e-selected > .e-acrdn-header .e-acrdn-header-content,
+.mk-faq-wrap .e-accordion .e-acrdn-item.e-active > .e-acrdn-header .e-acrdn-header-content {
+    color: #0f172a !important;
+}
+
+.mk-faq-accordion .e-acrdn-item.e-selected,
+.mk-faq-accordion .e-acrdn-item.e-select.e-selected,
+.mk-faq-accordion .e-acrdn-item.e-active {
+    border-color: #d5dce7 !important;
+    box-shadow: none !important;
+}
+
+.mk-faq-wrap .e-accordion .e-acrdn-item.e-selected,
+.mk-faq-wrap .e-accordion .e-acrdn-item.e-select.e-selected,
+.mk-faq-wrap .e-accordion .e-acrdn-item.e-active {
+    border-color: #d5dce7 !important;
+    box-shadow: none !important;
+}
+
+.mk-faq-accordion .e-acrdn-item > .e-acrdn-header:focus,
+.mk-faq-accordion .e-acrdn-item > .e-acrdn-header:focus-visible,
+.mk-faq-accordion .e-acrdn-item.e-selected > .e-acrdn-header:focus,
+.mk-faq-accordion .e-acrdn-item.e-selected > .e-acrdn-header:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: #d5dce7 !important;
+}
+
+.mk-faq-wrap .e-accordion .e-acrdn-item > .e-acrdn-header:focus,
+.mk-faq-wrap .e-accordion .e-acrdn-item > .e-acrdn-header:focus-visible,
+.mk-faq-wrap .e-accordion .e-acrdn-item.e-selected > .e-acrdn-header:focus,
+.mk-faq-wrap .e-accordion .e-acrdn-item.e-selected > .e-acrdn-header:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: #d5dce7 !important;
+}

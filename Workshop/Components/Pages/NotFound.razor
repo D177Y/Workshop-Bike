@@ -1,5 +1,280 @@
-﻿@page "/not-found"
-@layout MainLayout
+@page "/not-found"
+@using System.Diagnostics
+@using System.Net
+@attribute [AllowAnonymous]
+@layout PublicLayout
+@inject NavigationManager Nav
+@inject Workshop.Services.IEmailSender EmailSender
+@inject ILogger<NotFound> Logger
+@inject AuthenticationStateProvider AuthStateProvider
+@inject Workshop.Data.TenantContext TenantContext
 
-<h3>Not Found</h3>
-<p>Sorry, the content you are looking for does not exist.</p>
+<PageTitle>Page not found</PageTitle>
+
+<section class="not-found-shell">
+    <div class="not-found-card">
+        <div class="not-found-art" aria-hidden="true"></div>
+        <div class="not-found-content">
+            <p class="eyebrow">404</p>
+            <h1>PANIC! PANIC!</h1>
+            <p class="sub-head">...wait, no don't panic.</p>
+            <p>
+                This is embarrassing, but I can't find the page you are looking for.
+                I'm sure it will turn up eventually though.
+            </p>
+            <div class="actions">
+                <a class="btn primary" href="/app">Back to home</a>
+                <a class="btn ghost @(_isReportingBug ? "is-disabled" : "")"
+                   href="@ReportBugMailTo"
+                   @onclick="ReportBugWithFallbackAsync"
+                   @onclick:preventDefault="true"
+                   aria-disabled="@_isReportingBug">
+                    @(_isReportingBug ? "Sending..." : "Report bug")
+                </a>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(_status))
+            {
+                <p class="status @(_statusIsError ? "error" : "success")">@_status</p>
+            }
+
+            @if (ShowRequestId)
+            {
+                <p class="request-id">
+                    Request ID: <code>@RequestId</code>
+                </p>
+            }
+        </div>
+    </div>
+</section>
+
+<style>
+    .not-found-shell {
+        min-height: calc(100vh - 120px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: #ffffff;
+    }
+
+    .not-found-card {
+        width: min(1220px, 100%);
+        border-radius: 24px;
+        overflow: visible;
+        display: grid;
+        grid-template-columns: minmax(360px, 560px) minmax(320px, 1fr);
+        gap: 24px;
+        align-items: center;
+        border: 1px solid #ffffff;
+        background: #ffffff;
+        padding: 28px 34px;
+    }
+
+    .not-found-art {
+        min-height: 470px;
+        background: url("/images/not-found-monkey.png");
+        background-repeat: no-repeat;
+        background-position: center bottom;
+        background-size: contain;
+    }
+
+    .not-found-content {
+        max-width: 540px;
+    }
+
+    .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 54px;
+        height: 28px;
+        padding: 0 10px;
+        margin: 0 0 20px;
+        border-radius: 999px;
+        background: #e7f0ff;
+        color: #0d6efd;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 12px;
+    }
+
+    .not-found-content h1 {
+        margin: 0 0 10px;
+        color: #0f172a;
+        font-size: clamp(42px, 8vw, 68px);
+        line-height: 0.92;
+        letter-spacing: 0.01em;
+    }
+
+    .sub-head {
+        margin: 0 0 14px !important;
+        color: #0f172a !important;
+        font-size: clamp(24px, 3.2vw, 40px) !important;
+        line-height: 0.94 !important;
+        font-weight: 700 !important;
+    }
+
+    .not-found-content p {
+        margin: 0;
+        color: #334155;
+        font-size: 17px;
+    }
+
+    .actions {
+        margin-top: 28px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .btn {
+        border-radius: 999px;
+        padding: 10px 16px;
+        font-weight: 600;
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    .btn.primary {
+        background: #0d6efd;
+        color: #fff;
+    }
+
+    .btn.ghost {
+        background: #f1f5f9;
+        color: #0f172a;
+    }
+
+    .btn:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    .btn.is-disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
+    .status {
+        margin-top: 12px !important;
+        font-size: 14px !important;
+        font-weight: 600;
+    }
+
+    .status.success {
+        color: #166534 !important;
+    }
+
+    .status.error {
+        color: #b91c1c !important;
+    }
+
+    .request-id {
+        margin-top: 14px !important;
+        font-size: 13px;
+        color: #64748b !important;
+    }
+
+    @@media (max-width: 980px) {
+        .not-found-card {
+            grid-template-columns: 1fr;
+            padding: 22px;
+        }
+
+        .not-found-art {
+            min-height: 360px;
+        }
+    }
+</style>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+    private bool _isReportingBug;
+    private string _status = "";
+    private bool _statusIsError;
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized()
+        => RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+
+    private string ReportBugMailTo
+    {
+        get
+        {
+            var subject = "VeloLabs not-found report";
+            var body = $"""
+                URL: {Nav.Uri}
+                Request ID: {RequestId ?? "-"}
+                Time (UTC): {DateTimeOffset.UtcNow:O}
+                """;
+
+            return $"mailto:support@velolabs.co.uk?subject={Uri.EscapeDataString(subject)}&body={Uri.EscapeDataString(body)}";
+        }
+    }
+
+    private Task ReportBugWithFallbackAsync()
+        => ReportBugAsync();
+
+    private async Task ReportBugAsync()
+    {
+        if (_isReportingBug)
+            return;
+
+        _isReportingBug = true;
+        _status = "";
+        _statusIsError = false;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            var userName = user.Identity?.Name ?? "anonymous";
+            var userEmail = user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "unknown";
+            var tenantId = TenantContext.TenantId;
+            var now = DateTimeOffset.UtcNow;
+            var currentUri = Nav.Uri;
+
+            var subject = $"VeloLabs not-found report {now:yyyy-MM-dd HH:mm:ss} UTC";
+            var html = $"""
+                <h2>Automatic not-found report</h2>
+                <p><strong>Time (UTC):</strong> {now:O}</p>
+                <p><strong>URL:</strong> {WebUtility.HtmlEncode(currentUri)}</p>
+                <p><strong>User:</strong> {WebUtility.HtmlEncode(userName)}</p>
+                <p><strong>User email:</strong> {WebUtility.HtmlEncode(userEmail)}</p>
+                <p><strong>Tenant ID:</strong> {tenantId}</p>
+                <p><strong>Request ID:</strong> {WebUtility.HtmlEncode(RequestId ?? "-")}</p>
+                """;
+            var text = $"""
+                Automatic not-found report
+                Time (UTC): {now:O}
+                URL: {currentUri}
+                User: {userName}
+                User email: {userEmail}
+                Tenant ID: {tenantId}
+                Request ID: {RequestId ?? "-"}
+                """;
+
+            await EmailSender.SendAsync("support@velolabs.co.uk", subject, html, text);
+            _status = "Bug report sent. Thank you - we will investigate it.";
+            _statusIsError = false;
+        }
+        catch (Exception sendEx)
+        {
+            Logger.LogError(sendEx, "Failed to send automatic bug report from /not-found page.");
+            _status = "We could not send the bug report automatically. Please email support@velolabs.co.uk.";
+            _statusIsError = true;
+        }
+        finally
+        {
+            _isReportingBug = false;
+        }
+    }
+}

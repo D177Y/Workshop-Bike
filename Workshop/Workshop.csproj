@@ -5,11 +5,28 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <UserSecretsId>workshop-bike-local</UserSecretsId>
+    <NoWarn>$(NoWarn);NU1900;NU1605;NU1608</NoWarn>
+    <EnableWasm>false</EnableWasm>
   </PropertyGroup>
 
-  <ItemGroup>
+  <PropertyGroup Condition="'$(EnableWasm)' == 'true'">
+    <DefineConstants>$(DefineConstants);ENABLE_WASM</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(EnableWasm)' == 'true'">
     <ProjectReference Include="..\Workshop.Client\Workshop.Client.csproj" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.2" Condition="'$(EnableWasm)' == 'true'" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="9.0.0" />
+    <PackageReference Include="Stripe.net" Version="43.21.0" />
     <PackageReference Include="Syncfusion.Blazor" Version="32.1.25" />
   </ItemGroup>
 

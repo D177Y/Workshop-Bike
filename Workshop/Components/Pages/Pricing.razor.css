@@ -1,0 +1,150 @@
+﻿.mk-page-title {
+    margin: 0;
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    text-align: center;
+}
+
+.mk-page-sub {
+    margin: 0.9rem auto 0;
+    max-width: 680px;
+    color: var(--mk-muted);
+    font-size: 1rem;
+    line-height: 1.65;
+    text-align: center;
+}
+
+.mk-pricing-toggle-wrap {
+    display: flex;
+    justify-content: center;
+    margin-top: 1.7rem;
+}
+
+.mk-pricing-toggle {
+    display: inline-flex;
+    border: 1px solid var(--mk-border);
+    border-radius: 10px;
+    padding: 0.2rem;
+    background: var(--mk-bg-soft);
+    gap: 0.2rem;
+}
+
+.mk-pricing-toggle button {
+    border: 0;
+    background: transparent;
+    color: var(--mk-muted);
+    border-radius: 8px;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.mk-pricing-toggle button.active {
+    background: #fff;
+    color: var(--mk-text);
+    box-shadow: var(--mk-shadow-soft);
+}
+
+.mk-pricing-toggle span {
+    margin-left: 0.25rem;
+    color: var(--mk-brand);
+    font-size: 0.72rem;
+}
+
+.mk-pricing-grid {
+    margin-top: 2.5rem;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.05rem;
+}
+
+.mk-center-head {
+    text-align: center;
+    max-width: 720px;
+    margin: 0 auto;
+}
+
+.mk-center-head h2 {
+    margin: 0;
+    font-size: clamp(1.35rem, 2.3vw, 1.95rem);
+    letter-spacing: -0.02em;
+}
+
+.mk-compare-wrap {
+    margin-top: 1.8rem;
+    overflow-x: auto;
+}
+
+.mk-compare-table {
+    width: 100%;
+    min-width: 980px;
+    border-collapse: collapse;
+}
+
+.mk-compare-table th,
+.mk-compare-table td {
+    border-bottom: 1px solid var(--mk-border);
+    padding: 0.82rem 0.7rem;
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+.mk-compare-table th:first-child,
+.mk-compare-table td:first-child {
+    text-align: left;
+}
+
+.mk-compare-table thead th {
+    color: var(--mk-muted);
+    font-weight: 700;
+}
+
+.mk-compare-table tbody td {
+    color: #334155;
+}
+
+.mk-compare-tick {
+    color: var(--mk-brand);
+    font-weight: 800;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.mk-compare-dash {
+    color: #94a3b8;
+}
+
+.mk-faq-wrap {
+    max-width: 760px;
+    margin: 2.6rem auto 2rem;
+}
+
+.mk-final-cta {
+    text-align: center;
+    max-width: 620px;
+    margin: 0 auto;
+}
+
+.mk-final-cta h2 {
+    margin: 0;
+    font-size: clamp(1.25rem, 2.2vw, 1.75rem);
+    letter-spacing: -0.02em;
+}
+
+.mk-final-cta p {
+    margin: 0.85rem 0 1.2rem;
+    color: var(--mk-muted);
+}
+
+@media (max-width: 990px) {
+    .mk-pricing-grid {
+        grid-template-columns: 1fr;
+        gap: 1.75rem;
+    }
+}
+
+
+
+
+

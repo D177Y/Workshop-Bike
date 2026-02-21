@@ -1,0 +1,269 @@
+@page "/profile"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@using Workshop.Data
+@using Workshop.Models
+@inject IDbContextFactory<WorkshopDbContext> DbFactory
+@inject TenantContext TenantContext
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthStateProvider
+
+<h2>Business Profile</h2>
+
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="@(IsError ? "error-message" : "success-message")">@Message</div>
+}
+
+<div class="form-card">
+    <EditForm Model="_model" OnValidSubmit="SaveAsync">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="form-row">
+            <label>Business name</label>
+            <InputText class="input" @bind-Value="_model.Name" />
+        </div>
+        <div class="form-row">
+            <label>Contact name</label>
+            <InputText class="input" @bind-Value="_model.ContactName" />
+        </div>
+        <div class="form-row">
+            <label>Email</label>
+            <InputText class="input" type="email" @bind-Value="_model.ContactEmail" />
+        </div>
+        <div class="form-row">
+            <label>Phone</label>
+            <InputText class="input" @bind-Value="_model.ContactPhone" />
+        </div>
+        <div class="form-row">
+            <label>Address line 1</label>
+            <InputText class="input" @bind-Value="_model.AddressLine1" />
+        </div>
+        <div class="form-row">
+            <label>Address line 2</label>
+            <InputText class="input" @bind-Value="_model.AddressLine2" />
+        </div>
+        <div class="form-row">
+            <label>City</label>
+            <InputText class="input" @bind-Value="_model.City" />
+        </div>
+        <div class="form-row">
+            <label>Postcode</label>
+            <InputText class="input" @bind-Value="_model.Postcode" />
+        </div>
+        <div class="form-row">
+            <label>Country</label>
+            <InputText class="input" @bind-Value="_model.Country" />
+        </div>
+        <div class="form-row">
+            <label>Plan</label>
+            <div class="plan-row">
+                <InputText class="input" @bind-Value="_model.Plan" disabled />
+                <button type="button" class="btn btn-upgrade" @onclick="OpenUpgradeDialog">Upgrade</button>
+            </div>
+            <div class="plan-caption">Current mechanic limit: @_currentMechanicLimit (currently @_currentMechanicCount used)</div>
+        </div>
+
+        <div style="margin-top: 12px;">
+            <button class="btn btn-success" type="submit">Save</button>
+        </div>
+    </EditForm>
+</div>
+
+<UpgradePlanDialog @bind-Visible="IsUpgradeDialogVisible"
+                   TenantId="@_tenantId"
+                   CustomerEmail="@_billingEmail"
+                   CurrentPlan="@_currentPlan"
+                   CurrentMechanicLimit="@_currentMechanicLimit"
+                   CurrentMechanicCount="@_currentMechanicCount"
+                   HeaderText="Upgrade plan"
+                   IntroText="Need more mechanics? Choose a higher plan and continue to Stripe checkout." />
+
+<style>
+    .error-message {
+        color: #dc3545;
+        margin-top: 10px;
+        margin-bottom: 14px;
+        padding: 10px;
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 4px;
+    }
+
+    .success-message {
+        color: #155724;
+        margin-top: 10px;
+        margin-bottom: 14px;
+        padding: 10px;
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 4px;
+    }
+
+    .form-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: 16px;
+        max-width: 640px;
+        background: #fff;
+    }
+
+    .form-row {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 10px;
+    }
+
+    .input {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 10px 12px;
+    }
+
+    .plan-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .plan-row .input {
+        flex: 1;
+    }
+
+    .plan-caption {
+        color: #475569;
+        font-size: 12px;
+        margin-top: 4px;
+    }
+
+    .btn {
+        border: none;
+        border-radius: 999px;
+        padding: 10px 14px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+
+    .btn-upgrade {
+        background: #0d6efd;
+        color: #fff;
+        white-space: nowrap;
+    }
+</style>
+
+@code {
+    private readonly ProfileModel _model = new();
+    private string _message = "";
+    private bool _scrollToTopRequested;
+    private string Message
+    {
+        get => _message;
+        set
+        {
+            if (_message == value) return;
+            _message = value;
+            _scrollToTopRequested = !string.IsNullOrWhiteSpace(value);
+        }
+    }
+    private bool IsError;
+    private bool IsUpgradeDialogVisible;
+    private int _tenantId;
+    private PlanTier _currentPlan = PlanTier.Standard;
+    private int _currentMechanicLimit = 6;
+    private int _currentMechanicCount;
+    private string _billingEmail = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == TenantContext.TenantId);
+        if (tenant is null)
+            return;
+
+        _model.FromTenant(tenant);
+        _tenantId = tenant.Id;
+        _currentPlan = tenant.Plan;
+        _currentMechanicLimit = tenant.MaxMechanics > 0 ? tenant.MaxMechanics : 6;
+        _currentMechanicCount = await db.Mechanics.CountAsync(m => m.TenantId == tenant.Id);
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var emailClaim = authState.User.FindFirst(ClaimTypes.Email)?.Value;
+        _billingEmail = !string.IsNullOrWhiteSpace(emailClaim)
+            ? emailClaim.Trim()
+            : (tenant.ContactEmail ?? "").Trim();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_scrollToTopRequested)
+        {
+            _scrollToTopRequested = false;
+            await JS.InvokeVoidAsync("window.scrollTo", 0, 0);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == TenantContext.TenantId);
+        if (tenant is null)
+        {
+            Message = "Tenant not found.";
+            IsError = true;
+            return;
+        }
+
+        _model.ApplyTo(tenant);
+        await db.SaveChangesAsync();
+        _billingEmail = tenant.ContactEmail.Trim();
+        Message = "Profile updated.";
+        IsError = false;
+    }
+
+    private void OpenUpgradeDialog()
+        => IsUpgradeDialogVisible = true;
+
+    private sealed class ProfileModel
+    {
+        [Required] public string Name { get; set; } = "";
+        [Required] public string ContactName { get; set; } = "";
+        [Required, EmailAddress] public string ContactEmail { get; set; } = "";
+        public string ContactPhone { get; set; } = "";
+        public string AddressLine1 { get; set; } = "";
+        public string AddressLine2 { get; set; } = "";
+        public string City { get; set; } = "";
+        public string Postcode { get; set; } = "";
+        public string Country { get; set; } = "United Kingdom";
+        public string Plan { get; set; } = "";
+
+        public void FromTenant(Tenant tenant)
+        {
+            Name = tenant.Name;
+            ContactName = tenant.ContactName;
+            ContactEmail = tenant.ContactEmail;
+            ContactPhone = tenant.ContactPhone;
+            AddressLine1 = tenant.AddressLine1;
+            AddressLine2 = tenant.AddressLine2;
+            City = tenant.City;
+            Postcode = tenant.Postcode;
+            Country = tenant.Country;
+            Plan = tenant.Plan.ToString();
+        }
+
+        public void ApplyTo(Tenant tenant)
+        {
+            tenant.Name = Name.Trim();
+            tenant.ContactName = ContactName.Trim();
+            tenant.ContactEmail = ContactEmail.Trim();
+            tenant.ContactPhone = ContactPhone.Trim();
+            tenant.AddressLine1 = AddressLine1.Trim();
+            tenant.AddressLine2 = AddressLine2.Trim();
+            tenant.City = City.Trim();
+            tenant.Postcode = Postcode.Trim();
+            tenant.Country = Country.Trim();
+        }
+    }
+}

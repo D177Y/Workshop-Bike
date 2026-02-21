@@ -1,0 +1,17 @@
+@namespace Workshop.Components.Marketing
+@using Microsoft.AspNetCore.Components
+
+<article class="mk-testimonial-card mk-reveal">
+    <p class="mk-testimonial-quote">"@Quote"</p>
+    <div class="mk-testimonial-meta">
+        <p class="mk-testimonial-name">@Name</p>
+        <p class="mk-testimonial-role">@Role, @Store</p>
+    </div>
+</article>
+
+@code {
+    [Parameter] public string Quote { get; set; } = string.Empty;
+    [Parameter] public string Name { get; set; } = string.Empty;
+    [Parameter] public string Role { get; set; } = string.Empty;
+    [Parameter] public string Store { get; set; } = string.Empty;
+}

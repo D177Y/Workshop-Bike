@@ -1,0 +1,236 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@page "/email-retries"
+@attribute [Authorize]
+@using Workshop.Models
+@using Workshop.Services
+@inject EmailRetryQueueService RetryQueue
+@inject ILogger<EmailRetries> Logger
+
+<div class="email-retries-page">
+    <header class="page-header">
+        <h3>Email Retry Queue</h3>
+        <p>Monitor failed delivery attempts, requeue dead-letter messages, and clean up old sent records.</p>
+    </header>
+
+    <section class="stats-row">
+        <article class="stat pending">
+            <span>Pending</span>
+            <strong>@_stats.Pending</strong>
+        </article>
+        <article class="stat dead">
+            <span>Dead letter</span>
+            <strong>@_stats.DeadLetter</strong>
+        </article>
+        <article class="stat sent">
+            <span>Sent</span>
+            <strong>@_stats.Sent</strong>
+        </article>
+    </section>
+
+    <section class="controls-card">
+        <div class="controls-grid">
+            <div class="field">
+                <label>Status filter</label>
+                <select @bind="_statusFilter">
+                    <option value="all">All</option>
+                    <option value="Pending">Pending</option>
+                    <option value="DeadLetter">Dead letter</option>
+                    <option value="Sent">Sent</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>Rows</label>
+                <select @bind="_take">
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                    <option value="300">300</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>Sent retention (days)</label>
+                <input type="number" min="1" max="3650" @bind="_purgeDays" />
+            </div>
+        </div>
+
+        <div class="control-actions">
+            <button type="button" class="btn-secondary" @onclick="RefreshAsync" disabled="@_isBusy">@(_isBusy ? "Working..." : "Refresh")</button>
+            <button type="button" class="btn-secondary danger" @onclick="PurgeSentAsync" disabled="@_isBusy">Purge old sent</button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_statusMessage))
+        {
+            <div class="@(_statusIsError ? "status error" : "status success")">@_statusMessage</div>
+        }
+    </section>
+
+    <section class="table-card">
+        @if (_items.Count == 0)
+        {
+            <div class="muted">No queue items for this filter.</div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Account</th>
+                            <th>Recipient</th>
+                            <th>Subject</th>
+                            <th>Source</th>
+                            <th>Attempts</th>
+                            <th>Next Attempt</th>
+                            <th>Last Error</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _items)
+                        {
+                            <tr>
+                                <td>@item.Id</td>
+                                <td><span class="status-pill @StatusClass(item.Status)">@item.Status</span></td>
+                                <td>@item.CreatedUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
+                                <td>@item.AccountNumber</td>
+                                <td>@item.Recipient</td>
+                                <td>@item.Subject</td>
+                                <td>@item.Source</td>
+                                <td>@item.AttemptCount / @item.MaxAttempts</td>
+                                <td>@item.NextAttemptUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
+                                <td>@(string.IsNullOrWhiteSpace(item.LastError) ? "-" : item.LastError)</td>
+                                <td>
+                                    <div class="row-actions">
+                                        <button type="button" class="btn-link" @onclick="() => RequeueAsync(item.Id)" disabled="@_isBusy">Requeue</button>
+                                        <button type="button" class="btn-link danger" @onclick="() => DeadLetterAsync(item.Id)" disabled="@_isBusy">Dead</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private readonly List<EmailRetryQueueItem> _items = new();
+    private EmailRetryQueueStats _stats = new(0, 0, 0);
+    private string _statusFilter = "all";
+    private int _take = 100;
+    private int _purgeDays = 30;
+    private bool _isBusy;
+    private string _statusMessage = "";
+    private bool _statusIsError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _isBusy = true;
+        _statusMessage = "";
+        try
+        {
+            _stats = await RetryQueue.GetStatsAsync();
+            var rows = await RetryQueue.ListAsync(_statusFilter, _take);
+            _items.Clear();
+            _items.AddRange(rows);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load email retry queue page.");
+            _statusMessage = "Could not load email retry queue.";
+            _statusIsError = true;
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task RequeueAsync(int id)
+    {
+        _isBusy = true;
+        try
+        {
+            var ok = await RetryQueue.RequeueNowAsync(id);
+            _statusMessage = ok ? $"Queue item {id} requeued." : $"Queue item {id} not found.";
+            _statusIsError = !ok;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to requeue email retry item {ItemId}.", id);
+            _statusMessage = $"Could not requeue item {id}.";
+            _statusIsError = true;
+        }
+        finally
+        {
+            _isBusy = false;
+            await RefreshAsync();
+        }
+    }
+
+    private async Task DeadLetterAsync(int id)
+    {
+        _isBusy = true;
+        try
+        {
+            var ok = await RetryQueue.MarkDeadLetterAsync(id, "Marked dead-letter from admin page.");
+            _statusMessage = ok ? $"Queue item {id} moved to dead-letter." : $"Queue item {id} not found.";
+            _statusIsError = !ok;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to mark email retry item {ItemId} as dead-letter.", id);
+            _statusMessage = $"Could not update item {id}.";
+            _statusIsError = true;
+        }
+        finally
+        {
+            _isBusy = false;
+            await RefreshAsync();
+        }
+    }
+
+    private async Task PurgeSentAsync()
+    {
+        _isBusy = true;
+        try
+        {
+            var removed = await RetryQueue.PurgeSentOlderThanDaysAsync(_purgeDays);
+            _statusMessage = removed == 0
+                ? "No sent queue items matched the retention period."
+                : $"Purged {removed} sent queue item(s).";
+            _statusIsError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to purge sent queue items.");
+            _statusMessage = "Could not purge sent queue items.";
+            _statusIsError = true;
+        }
+        finally
+        {
+            _isBusy = false;
+            await RefreshAsync();
+        }
+    }
+
+    private static string StatusClass(string status)
+    {
+        if (status.Equals(EmailRetryStatus.Pending, StringComparison.OrdinalIgnoreCase))
+            return "pending";
+        if (status.Equals(EmailRetryStatus.Sent, StringComparison.OrdinalIgnoreCase))
+            return "sent";
+        if (status.Equals(EmailRetryStatus.DeadLetter, StringComparison.OrdinalIgnoreCase))
+            return "dead";
+        return "generic";
+    }
+}

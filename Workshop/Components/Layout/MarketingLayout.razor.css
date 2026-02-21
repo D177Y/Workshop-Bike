@@ -1,0 +1,192 @@
+:global(html) {
+    scroll-behavior: smooth;
+}
+
+.mk-shell {
+    min-height: 100vh;
+    background: var(--mk-bg);
+    color: var(--mk-text);
+}
+
+.mk-nav-wrap {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    border-bottom: 1px solid var(--mk-border);
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(10px);
+}
+
+.mk-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 64px;
+}
+
+.mk-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.28rem;
+    font-weight: 700;
+    color: var(--mk-text);
+    text-decoration: none;
+    letter-spacing: -0.01em;
+    line-height: 1;
+}
+
+.mk-brand-mark-image {
+    width: 32px;
+    height: 32px;
+    display: block;
+}
+
+.mk-brand-text {
+    color: var(--mk-text);
+}
+
+.mk-nav-links {
+    display: flex;
+    align-items: center;
+    gap: 1.6rem;
+}
+
+.mk-nav-links a,
+.mk-nav-signin {
+    color: var(--mk-muted);
+    text-decoration: none;
+    font-size: 0.88rem;
+    font-weight: 500;
+}
+
+.mk-nav-links a:hover,
+.mk-nav-signin:hover {
+    color: var(--mk-text);
+}
+
+.mk-nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+}
+
+.mk-footer {
+    border-top: 1px solid var(--mk-border);
+    background: var(--mk-bg-soft);
+    padding: 3.2rem 0 1.8rem;
+}
+
+.mk-footer-grid {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr 1fr 1fr;
+    gap: 1.1rem;
+}
+
+.mk-footer-copy {
+    margin: 0.8rem 0 0;
+    color: var(--mk-muted);
+    max-width: 250px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.mk-footer-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 1.08rem;
+}
+
+.mk-footer h4 {
+    margin: 0 0 0.8rem;
+    font-size: 0.9rem;
+    color: var(--mk-text);
+}
+
+.mk-footer a,
+.mk-footer span {
+    display: block;
+    margin: 0.38rem 0;
+    font-size: 0.9rem;
+    color: var(--mk-muted);
+    text-decoration: none;
+}
+
+/* Keep footer logo from inheriting generic footer link styles. */
+.mk-footer .mk-brand {
+    display: inline-flex;
+    align-items: center;
+    margin: 0;
+    color: var(--mk-text);
+}
+
+.mk-footer .mk-brand-mark-image {
+    width: 26px;
+    height: 26px;
+    margin: 0;
+}
+
+.mk-footer .mk-brand-text {
+    display: inline;
+    margin: 0;
+    color: var(--mk-text);
+}
+
+.mk-footer a:hover {
+    color: var(--mk-text);
+}
+
+.mk-footer-bottom {
+    border-top: 1px solid var(--mk-border);
+    margin-top: 2rem;
+    padding-top: 1.2rem;
+    text-align: center;
+    color: #6b7280;
+    font-size: 0.78rem;
+}
+
+@media (max-width: 900px) {
+    .mk-nav {
+        min-height: auto;
+        padding: 0.75rem 0;
+        flex-wrap: wrap;
+    }
+
+    .mk-nav-links {
+        order: 3;
+        width: 100%;
+        justify-content: center;
+        gap: 0.8rem;
+        border-top: 0;
+        padding-top: 0.75rem;
+        position: relative;
+    }
+
+    .mk-nav-links::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 50%;
+        width: 100vw;
+        transform: translateX(-50%);
+        border-top: 1px solid var(--mk-border);
+    }
+
+    .mk-footer-grid {
+        grid-template-columns: 1fr 1fr;
+        justify-items: center;
+        text-align: center;
+        row-gap: 1.6rem;
+    }
+
+    .mk-footer .mk-brand {
+        justify-content: center;
+    }
+
+    .mk-footer-copy {
+        margin: 0.8rem auto 0;
+        max-width: 320px;
+    }
+}

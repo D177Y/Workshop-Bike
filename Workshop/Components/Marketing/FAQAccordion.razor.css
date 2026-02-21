@@ -1,0 +1,58 @@
+::deep .mk-faq-accordion {
+    border-radius: 16px;
+    border: 1px solid var(--mk-border);
+    overflow: hidden;
+    background: #fff;
+}
+
+::deep .mk-faq-accordion .e-acrdn-item {
+    border-color: var(--mk-border);
+}
+
+::deep .mk-faq-accordion .e-acrdn-header .e-acrdn-header-content {
+    color: #0f172a;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+::deep .mk-faq-accordion .e-acrdn-header {
+    min-height: 56px;
+}
+
+::deep .mk-faq-accordion .e-acrdn-header .e-acrdn-header-content {
+    padding-top: 0.95rem;
+    padding-bottom: 0.95rem;
+}
+
+::deep .mk-faq-accordion .e-acrdn-content {
+    color: var(--mk-muted);
+    line-height: 1.65;
+}
+
+::deep .mk-faq-accordion .e-acrdn-item.e-selected > .e-acrdn-header,
+::deep .mk-faq-accordion .e-acrdn-item.e-select.e-selected > .e-acrdn-header,
+::deep .mk-faq-accordion .e-acrdn-item.e-active > .e-acrdn-header {
+    background: #f8fafd !important;
+    border-color: var(--mk-border) !important;
+    box-shadow: none !important;
+}
+
+::deep .mk-faq-accordion .e-acrdn-item.e-selected,
+::deep .mk-faq-accordion .e-acrdn-item.e-select.e-selected,
+::deep .mk-faq-accordion .e-acrdn-item.e-active {
+    border-color: var(--mk-border) !important;
+    box-shadow: none !important;
+}
+
+::deep .mk-faq-accordion .e-acrdn-item.e-selected > .e-acrdn-header:focus,
+::deep .mk-faq-accordion .e-acrdn-item.e-selected > .e-acrdn-header:focus-visible,
+::deep .mk-faq-accordion .e-acrdn-header:focus,
+::deep .mk-faq-accordion .e-acrdn-header:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: var(--mk-border) !important;
+}
+
+.mk-faq-answer {
+    margin: 0;
+}
