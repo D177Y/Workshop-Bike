@@ -1,10 +1,14 @@
-
+using System.Text.Json;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Server;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Stripe;
 using Syncfusion.Blazor;
 using Syncfusion.Licensing;
@@ -54,6 +58,8 @@ builder.Services.AddScoped<QuoteWorkflowService>();
 builder.Services.AddScoped<EmailRetryQueueService>();
 builder.Services.AddScoped<JobCatalogService>();
 builder.Services.AddScoped<SuggestedCatalogService>();
+builder.Services.AddScoped<SuperAdminDefaultsService>();
+builder.Services.AddScoped<SuperAdminDashboardService>();
 builder.Services.AddScoped<TenantSetupService>();
 builder.Services.AddScoped<SchedulingService>();
 builder.Services.AddScoped<StoreSchedulerBookingProjectionService>();
@@ -75,6 +81,9 @@ builder.Services.AddIdentityCore<AppUser>(options =>
         options.User.RequireUniqueEmail = true;
         options.Password.RequireDigit = true;
         options.Password.RequiredLength = 8;
+        options.Lockout.AllowedForNewUsers = true;
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
     })
     .AddRoles<AppRole>()
     .AddEntityFrameworkStores<WorkshopDbContext>()
@@ -112,6 +121,30 @@ builder.Services.AddHttpClient<TimetasticSyncService>()
 builder.Services.AddScoped<IEmailSender, PostmarkEmailSender>();
 builder.Services.AddScoped<IdentityBootstrapper>();
 builder.Services.AddScoped<BillingService>();
+builder.Services.AddScoped<StripeSubscriptionSyncService>();
+builder.Services.AddScoped<TrialLifecycleService>();
+builder.Services.AddSingleton<OperationalAlertService>();
+builder.Services.AddHostedService<TrialDataPurgeBackgroundService>();
+builder.Services.AddHostedService<StripeSubscriptionReconciliationBackgroundService>();
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseReadinessHealthCheck>("database");
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("login", context =>
+    {
+        var key = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: key,
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
+});
 
 // Add services to the container.
 var razorComponents = builder.Services.AddRazorComponents()
@@ -157,6 +190,7 @@ else
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -165,7 +199,11 @@ app.UseAntiforgery();
 
 app.MapStaticAssets();
 
-app.MapPost("/stripe/webhook", async (HttpRequest request, IDbContextFactory<WorkshopDbContext> dbFactory, IConfiguration config, ILoggerFactory loggerFactory) =>
+app.MapPost("/stripe/webhook", async (
+    HttpRequest request,
+    IConfiguration config,
+    StripeSubscriptionSyncService subscriptionSync,
+    ILoggerFactory loggerFactory) =>
 {
     var logger = loggerFactory.CreateLogger("StripeWebhook");
     var json = await new StreamReader(request.Body).ReadToEndAsync();
@@ -182,38 +220,18 @@ app.MapPost("/stripe/webhook", async (HttpRequest request, IDbContextFactory<Wor
         return Results.BadRequest();
     }
 
-    if (stripeEvent.Type == Events.CheckoutSessionCompleted)
+    try
     {
-        var session = stripeEvent.Data.Object as Stripe.Checkout.Session;
-        if (session is not null)
-        {
-            var subscriptionId = session.SubscriptionId;
-            var customerId = session.CustomerId;
-            var tenantIdRaw = session.Metadata?["tenant_id"];
-            var planRaw = session.Metadata?["plan"];
-            var mechanicLimitRaw = session.Metadata?["mechanic_limit"];
-
-            if (int.TryParse(tenantIdRaw, out var tenantId))
-            {
-                await using var db = await dbFactory.CreateDbContextAsync();
-                var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId);
-                if (tenant is not null)
-                {
-                    tenant.StripeCustomerId = customerId ?? "";
-                    tenant.StripeSubscriptionId = subscriptionId ?? "";
-                    tenant.IsActive = true;
-                    if (Enum.TryParse<Workshop.Models.PlanTier>(planRaw, true, out var plan))
-                        tenant.Plan = plan;
-                    if (int.TryParse(mechanicLimitRaw, out var limit))
-                        tenant.MaxMechanics = limit;
-                    await db.SaveChangesAsync();
-                }
-            }
-        }
+        await subscriptionSync.HandleWebhookAsync(stripeEvent);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Stripe webhook processing failed for event type {EventType}.", stripeEvent.Type);
+        return Results.StatusCode(StatusCodes.Status500InternalServerError);
     }
 
     return Results.Ok();
-});
+}).AllowAnonymous().DisableAntiforgery();
 
 app.MapPost("/integrations/timetastic/webhook", async (
     HttpRequest request,
@@ -246,8 +264,16 @@ app.MapPost("/integrations/timetastic/webhook", async (
 .AllowAnonymous()
 .DisableAntiforgery();
 
-app.MapPost("/auth/login", async (HttpContext httpContext, SignInManager<AppUser> signInManager) =>
+app.MapPost("/auth/login", async (
+    HttpContext httpContext,
+    SignInManager<AppUser> signInManager,
+    TrialLifecycleService trialLifecycle,
+    IDbContextFactory<WorkshopDbContext> dbFactory,
+    ILoggerFactory loggerFactory) =>
 {
+    var logger = loggerFactory.CreateLogger("AuthLogin");
+    var remoteIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
     string? email = null;
     string? password = null;
     string? returnUrl = null;
@@ -277,35 +303,121 @@ app.MapPost("/auth/login", async (HttpContext httpContext, SignInManager<AppUser
         returnUrl = "/app";
 
     var loginIdentifier = email.Trim();
+    logger.LogInformation("Login attempt for {LoginIdentifier} from {RemoteIp}.", loginIdentifier, remoteIp);
+
     var loginUser = await signInManager.UserManager.FindByNameAsync(loginIdentifier);
     if (loginUser is null)
         loginUser = await signInManager.UserManager.FindByEmailAsync(loginIdentifier);
 
     if (loginUser is null)
+    {
+        logger.LogWarning("Login failed for {LoginIdentifier} from {RemoteIp}: user not found.", loginIdentifier, remoteIp);
         return Results.LocalRedirect($"/login?ReturnUrl={Uri.EscapeDataString(returnUrl)}&error=invalid");
+    }
 
-    var result = await signInManager.PasswordSignInAsync(loginUser.UserName!, password, true, lockoutOnFailure: false);
+    var result = await signInManager.PasswordSignInAsync(loginUser.UserName!, password, true, lockoutOnFailure: true);
     if (result.Succeeded)
     {
+        logger.LogInformation("Login succeeded for user {UserId} from {RemoteIp}.", loginUser.Id, remoteIp);
+
         if (string.Equals(returnUrl, "/app", StringComparison.OrdinalIgnoreCase)
             && await signInManager.UserManager.IsInRoleAsync(loginUser, "SuperAdmin"))
         {
-            return Results.LocalRedirect("/super/settings/default-categories");
+            return Results.LocalRedirect("/super/dashboard");
+        }
+
+        if (loginUser.TenantId > 0)
+        {
+            await using var db = await dbFactory.CreateDbContextAsync();
+            var tenant = await db.Tenants
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Id == loginUser.TenantId);
+            if (tenant is not null
+                && tenant.HasActivatedSubscription
+                && !StripeBillingPolicy.HasBillableAccess(tenant))
+            {
+                logger.LogInformation("Login for tenant {TenantId} redirected to paid-only pricing due to inactive subscription.", tenant.Id);
+                return Results.LocalRedirect("/pricing?paid=1&reason=subscription-inactive");
+            }
+        }
+
+        var trialStatus = await trialLifecycle.GetForTenantAsync(loginUser.TenantId);
+        if (trialStatus.RequiresAppGate
+            && !returnUrl.StartsWith("/trial-access", StringComparison.OrdinalIgnoreCase)
+            && !returnUrl.StartsWith("/billing/start", StringComparison.OrdinalIgnoreCase)
+            && !returnUrl.StartsWith("/logout", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.LocalRedirect("/trial-access");
         }
 
         return Results.LocalRedirect(returnUrl);
     }
+    if (result.IsLockedOut)
+    {
+        logger.LogWarning("Login blocked (locked out) for user {UserId} from {RemoteIp}.", loginUser.Id, remoteIp);
+        return Results.LocalRedirect($"/login?ReturnUrl={Uri.EscapeDataString(returnUrl)}&error=locked");
+    }
     if (result.IsNotAllowed)
+    {
+        logger.LogWarning("Login blocked (not allowed) for user {UserId} from {RemoteIp}.", loginUser.Id, remoteIp);
         return Results.LocalRedirect($"/login?ReturnUrl={Uri.EscapeDataString(returnUrl)}&error=notallowed");
+    }
 
+    logger.LogWarning("Login failed for user {UserId} from {RemoteIp}: invalid credentials.", loginUser.Id, remoteIp);
     return Results.LocalRedirect($"/login?ReturnUrl={Uri.EscapeDataString(returnUrl)}&error=invalid");
-}).DisableAntiforgery();
+}).RequireRateLimiting("login").DisableAntiforgery();
+
+app.MapGet("/billing/start", async (
+    HttpContext httpContext,
+    UserManager<AppUser> userManager,
+    BillingService billingService) =>
+{
+    if (httpContext.User.Identity?.IsAuthenticated != true)
+        return Results.Challenge();
+
+    var userIdRaw = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    if (!int.TryParse(userIdRaw, out var userId))
+        return Results.LocalRedirect("/login");
+
+    var user = await userManager.FindByIdAsync(userId.ToString());
+    if (user is null || string.IsNullOrWhiteSpace(user.Email))
+        return Results.LocalRedirect("/login");
+
+    var planRaw = httpContext.Request.Query["plan"].ToString();
+    var plan = PlanCatalog.TryParseKey(planRaw, out var parsedPlan)
+        ? parsedPlan
+        : Workshop.Models.PlanTier.Standard;
+
+    var annualRaw = httpContext.Request.Query["annual"].ToString();
+    var annualBilling = string.Equals(annualRaw, "1", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(annualRaw, "true", StringComparison.OrdinalIgnoreCase);
+
+    var priceId = billingService.GetPriceId(plan, annualBilling);
+    if (string.IsNullOrWhiteSpace(priceId))
+        return Results.LocalRedirect("/pricing?paid=1&reason=price-missing");
+
+    var baseUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{httpContext.Request.PathBase}/";
+    var session = billingService.CreateCheckoutSession(user.TenantId, user.Email, plan, baseUrl, annualBilling);
+    return Results.Redirect(session.Url);
+}).RequireAuthorization();
 
 app.MapGet("/logout", async (SignInManager<AppUser> signInManager) =>
 {
     await signInManager.SignOutAsync();
     return Results.LocalRedirect("/");
 }).RequireAuthorization();
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false,
+    ResponseWriter = WriteHealthResponse
+});
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = _ => true,
+    ResponseWriter = WriteHealthResponse
+});
 
 var razorApp = app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
@@ -315,5 +427,24 @@ razorApp.AddInteractiveWebAssemblyRenderMode()
 #endif
 
 app.Run();
+
+static Task WriteHealthResponse(HttpContext context, HealthReport report)
+{
+    context.Response.ContentType = "application/json";
+    var payload = JsonSerializer.Serialize(new
+    {
+        status = report.Status.ToString(),
+        totalDurationMs = report.TotalDuration.TotalMilliseconds,
+        entries = report.Entries.ToDictionary(
+            pair => pair.Key,
+            pair => new
+            {
+                status = pair.Value.Status.ToString(),
+                description = pair.Value.Description,
+                durationMs = pair.Value.Duration.TotalMilliseconds
+            })
+    });
+    return context.Response.WriteAsync(payload);
+}
 
 internal sealed record LoginRequest(string Email, string Password, string? ReturnUrl);

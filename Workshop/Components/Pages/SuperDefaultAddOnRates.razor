@@ -1,0 +1,117 @@
+@page "/super/settings/default-add-on-rates"
+@attribute [Authorize(Roles = "SuperAdmin")]
+@using Syncfusion.Blazor.Inputs
+@using Workshop.Services
+@inject SuperAdminDefaultsService DefaultsService
+
+<div class="sd-shell">
+    <header class="sd-header">
+        <h3>Default Add-On Rates</h3>
+        <p>Set package-level add-on time reductions used by one-click tenant setup.</p>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <section class="sd-flash @(IsError ? "error" : "success")">@Message</section>
+    }
+
+    <section class="sd-card">
+        <div class="sd-card-head">
+            <h4>Add-On Time Reductions</h4>
+            <span class="sd-muted">@PackageRows.Count packages</span>
+        </div>
+
+        <div class="sd-note">
+            Set how many minutes to subtract when a service is added inside each package.
+            Add-on prices are configured per service in Default Services.
+        </div>
+
+        @if (PackageRows.Count == 0)
+        {
+            <div class="sd-empty">No default service packages found. Add packages first in Default Service Packages.</div>
+        }
+        else
+        {
+            <div class="package-grid">
+                @foreach (var row in PackageRows)
+                {
+                    var reductionMinutes = ResolveReduction(row.ReductionMinutesInput);
+                    <article class="package-row">
+                        <div class="package-main">
+                            <span class="package-name">@row.PackageName</span>
+                            <span class="package-meta">Subtract @reductionMinutes min from add-on services in this package.</span>
+                        </div>
+
+                        <div class="sd-field package-input">
+                            <label>Time reduction (mins)</label>
+                            <SfNumericTextBox TValue="int?"
+                                              @bind-Value="row.ReductionMinutesInput"
+                                              Min="0"
+                                              Decimals="0"
+                                              Format="n0"
+                                              ShowSpinButton="false"
+                                              FloatLabelType="FloatLabelType.Never" />
+                        </div>
+
+                    </article>
+                }
+            </div>
+        }
+
+        <div class="sd-actions">
+            <button type="button" class="sd-btn sd-btn-primary" @onclick="SaveAsync">
+                Save Default Add-On Rates
+            </button>
+        </div>
+    </section>
+</div>
+
+@code {
+    private List<PackageReductionEditorRow> PackageRows = new();
+    private string Message = "";
+    private bool IsError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var defaults = await DefaultsService.GetDefaultAddOnRatesAsync();
+        ApplyState(defaults);
+    }
+
+    private async Task SaveAsync()
+    {
+        Message = "";
+        IsError = false;
+
+        var reductions = PackageRows.ToDictionary(
+            row => row.GlobalServicePackageTemplateId,
+            row => ResolveReduction(row.ReductionMinutesInput));
+
+        var saved = await DefaultsService.SaveDefaultAddOnRatesAsync(reductions);
+        ApplyState(saved);
+        Message = "Saved default add-on time reductions.";
+    }
+
+    private void ApplyState(SuperAdminDefaultAddOnRates defaults)
+    {
+        PackageRows = defaults.Packages
+            .Select(package => new PackageReductionEditorRow
+            {
+                GlobalServicePackageTemplateId = package.GlobalServicePackageTemplateId,
+                PackageName = string.IsNullOrWhiteSpace(package.PackageName)
+                    ? $"Service package {package.GlobalServicePackageTemplateId}"
+                    : package.PackageName,
+                ReductionMinutesInput = Math.Max(0, package.TimeReductionMinutes)
+            })
+            .ToList();
+    }
+
+    private static int ResolveReduction(int? value)
+        => Math.Max(0, value ?? 0);
+
+    private sealed class PackageReductionEditorRow
+    {
+        public int GlobalServicePackageTemplateId { get; set; }
+        public string PackageName { get; set; } = "";
+        public int? ReductionMinutesInput { get; set; }
+    }
+}

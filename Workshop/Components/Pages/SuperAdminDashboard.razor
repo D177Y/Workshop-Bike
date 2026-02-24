@@ -1,0 +1,202 @@
+@page "/super/dashboard"
+@attribute [Authorize(Roles = "SuperAdmin")]
+@using Syncfusion.Blazor.Charts
+@using Workshop.Services
+@inject SuperAdminDashboardService DashboardService
+@inject ILogger<SuperAdminDashboard> Logger
+
+<div class="sa-dash-shell">
+    <header class="sa-dash-header">
+        <h3>Super Admin Dashboard</h3>
+        <p>Live SaaS health snapshot across tenants, trials, subscriptions, and platform adoption.</p>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <section class="sa-dash-flash @(_isError ? "error" : "success")">@_message</section>
+    }
+
+    @if (_snapshot is null)
+    {
+        <section class="sa-dash-card">
+            <p class="sa-dash-muted">Loading dashboard data...</p>
+        </section>
+    }
+    else
+    {
+        <section class="sa-kpi-grid">
+            <article class="sa-kpi-card">
+                <span>Total tenants</span>
+                <strong>@_snapshot.TotalTenants</strong>
+            </article>
+            <article class="sa-kpi-card">
+                <span>Free trial tenants</span>
+                <strong>@_snapshot.ActiveTrialTenants</strong>
+            </article>
+            <article class="sa-kpi-card">
+                <span>Paid tenants</span>
+                <strong>@_snapshot.PaidTenantCount</strong>
+            </article>
+            <article class="sa-kpi-card">
+                <span>Estimated MRR</span>
+                <strong>GBP @_snapshot.EstimatedMrr.ToString("0.00")</strong>
+            </article>
+        </section>
+
+        <section class="sa-dash-card">
+            <div class="sa-card-head">
+                <h4>Paid Tier Breakdown</h4>
+                <span class="sa-dash-muted">Billable tenants by active plan</span>
+            </div>
+            <div class="sa-tier-grid">
+                @foreach (var tier in _snapshot.PaidTierCounts)
+                {
+                    <article class="sa-tier-card">
+                        <span>@tier.Label</span>
+                        <strong>@tier.TenantCount</strong>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <section class="sa-dash-card">
+            <div class="sa-card-head">
+                <h4>Tenant Growth Over Time</h4>
+                <span class="sa-dash-muted">Last 12 months (monthly)</span>
+            </div>
+            <div class="sa-chart-wrap">
+                <SfChart Width="100%" Height="100%">
+                    <ChartPrimaryXAxis ValueType="Syncfusion.Blazor.Charts.ValueType.DateTime"
+                                       IntervalType="IntervalType.Months"
+                                       LabelFormat="MMM yy" />
+                    <ChartPrimaryYAxis Title="Tenants" Minimum="0"></ChartPrimaryYAxis>
+                    <ChartLegendSettings Visible="true" EnableHighlight="true"></ChartLegendSettings>
+                    <ChartSeriesCollection>
+                        <ChartSeries DataSource="@_snapshot.Trend"
+                                     Name="Total tenants"
+                                     XName="@nameof(SuperAdminTrendPoint.Month)"
+                                     YName="@nameof(SuperAdminTrendPoint.TotalTenants)"
+                                     Type="Syncfusion.Blazor.Charts.ChartSeriesType.Line"
+                                     Width="3" />
+                        <ChartSeries DataSource="@_snapshot.Trend"
+                                     Name="Paid tenants"
+                                     XName="@nameof(SuperAdminTrendPoint.Month)"
+                                     YName="@nameof(SuperAdminTrendPoint.TotalPaidTenants)"
+                                     Type="Syncfusion.Blazor.Charts.ChartSeriesType.Line"
+                                     Width="3" />
+                        <ChartSeries DataSource="@_snapshot.Trend"
+                                     Name="Active trials"
+                                     XName="@nameof(SuperAdminTrendPoint.Month)"
+                                     YName="@nameof(SuperAdminTrendPoint.ActiveTrialTenants)"
+                                     Type="Syncfusion.Blazor.Charts.ChartSeriesType.Line"
+                                     Width="2" />
+                        <ChartSeries DataSource="@_snapshot.Trend"
+                                     Name="New tenants"
+                                     XName="@nameof(SuperAdminTrendPoint.Month)"
+                                     YName="@nameof(SuperAdminTrendPoint.NewTenants)"
+                                     Type="Syncfusion.Blazor.Charts.ChartSeriesType.Column" />
+                    </ChartSeriesCollection>
+                </SfChart>
+            </div>
+        </section>
+
+        <section class="sa-stats-grid">
+            <article class="sa-stat-card">
+                <span>Trial to paid conversion</span>
+                <strong>@_snapshot.TrialToPaidConversionRatePercent.ToString("0.0")%</strong>
+            </article>
+            <article class="sa-stat-card">
+                <span>Upgrade window tenants</span>
+                <strong>@_snapshot.UpgradeWindowTenants</strong>
+            </article>
+            <article class="sa-stat-card">
+                <span>Billing attention needed</span>
+                <strong>@_snapshot.BillingAttentionTenants</strong>
+            </article>
+            <article class="sa-stat-card">
+                <span>Feedback window tenants</span>
+                <strong>@_snapshot.FeedbackWindowTenants</strong>
+            </article>
+            <article class="sa-stat-card">
+                <span>Total users</span>
+                <strong>@_snapshot.TotalUsers</strong>
+            </article>
+            <article class="sa-stat-card">
+                <span>Active users</span>
+                <strong>@_snapshot.ActiveUsers</strong>
+            </article>
+            <article class="sa-stat-card">
+                <span>Avg users per tenant</span>
+                <strong>@_snapshot.AverageUsersPerTenant.ToString("0.00")</strong>
+            </article>
+            <article class="sa-stat-card">
+                <span>Tenants without active users</span>
+                <strong>@_snapshot.TenantsWithoutActiveUsers</strong>
+            </article>
+            <article class="sa-stat-card">
+                <span>New tenants (30 days)</span>
+                <strong>@_snapshot.NewTenantsLast30Days</strong>
+            </article>
+            <article class="sa-stat-card">
+                <span>New paid (30 days)</span>
+                <strong>@_snapshot.NewPaidTenantsLast30Days</strong>
+            </article>
+        </section>
+
+        <section class="sa-dash-card">
+            <div class="sa-card-head">
+                <h4>Recent Tenant Activity</h4>
+                <span class="sa-dash-muted">Latest 10 tenant signups</span>
+            </div>
+            <div class="sa-table-wrap">
+                <table class="sa-table">
+                    <thead>
+                        <tr>
+                            <th>Tenant</th>
+                            <th>Created</th>
+                            <th>Plan</th>
+                            <th>Lifecycle</th>
+                            <th>Billing</th>
+                            <th>Active users</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var tenant in _snapshot.RecentTenants)
+                        {
+                            <tr>
+                                <td>@tenant.Name</td>
+                                <td>@tenant.CreatedAtUtc.ToString("dd MMM yyyy")</td>
+                                <td>@tenant.Plan</td>
+                                <td>@tenant.Lifecycle</td>
+                                <td>@tenant.BillingStatus</td>
+                                <td>@tenant.ActiveUserCount</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private SuperAdminDashboardData? _snapshot;
+    private string _message = "";
+    private bool _isError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _snapshot = await DashboardService.GetSnapshotAsync();
+            _message = $"Data refreshed {_snapshot.GeneratedAtUtc:dd MMM yyyy HH:mm} UTC";
+            _isError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load super admin dashboard.");
+            _message = "Could not load dashboard data.";
+            _isError = true;
+        }
+    }
+}

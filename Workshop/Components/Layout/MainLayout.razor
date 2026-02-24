@@ -3,6 +3,7 @@
 @using System.Net
 @using System.Security.Claims
 @using Syncfusion.Blazor.Navigations
+@using Workshop.Data
 @using Workshop.Services
 @inject IWebHostEnvironment Env
 @inject WorkshopData Data
@@ -12,6 +13,7 @@
 @inject TenantSetupService SetupService
 @inject UserAccessService UserAccess
 @inject IEmailSender EmailSender
+@inject TrialLifecycleService TrialLifecycle
 @inject ILogger<MainLayout> Logger
 @inject IJSRuntime JS
 
@@ -53,6 +55,14 @@
         </aside>
 
         <main class="app-main">
+            @if (_showTrialBanner)
+            {
+                <div class="trial-banner @(_trialExpired ? "trial-banner-expired" : "")">
+                    <span>@_trialBannerMessage</span>
+                    <button type="button" class="trial-banner-upgrade" @onclick="NavigateToUpgrade">UPGRADE NOW</button>
+                </div>
+            }
+
             <ErrorBoundary @ref="_errorBoundary">
                 <ChildContent>
                     @Body
@@ -130,6 +140,9 @@
     private string _bugReportStatus = "";
     private bool _bugReportIsError;
     private bool _isSuperAdmin;
+    private bool _showTrialBanner;
+    private bool _trialExpired;
+    private string _trialBannerMessage = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -167,15 +180,39 @@
         {
             _setupStatus = TenantSetupStatus.Empty;
             _userAccess = UserAccessScope.AllowAll();
+            _showTrialBanner = false;
+            _trialExpired = false;
+            _trialBannerMessage = "";
             BuildNavItems();
             SyncSelectionWithRoute();
             EnsureSuperAdminRoute();
             return;
         }
 
+        var trialStatus = await TrialLifecycle.GetForTenantAsync(TenantContext.TenantId);
+        if (trialStatus.Phase == TrialLifecyclePhase.Paid && !trialStatus.CanUpgrade)
+        {
+            _showTrialBanner = false;
+            _trialExpired = false;
+            _trialBannerMessage = "";
+            Nav.NavigateTo("/pricing?paid=1&reason=subscription-inactive", forceLoad: true);
+            return;
+        }
+
+        if (trialStatus.RequiresAppGate)
+        {
+            _showTrialBanner = false;
+            _trialExpired = false;
+            _trialBannerMessage = "";
+            if (!IsTrialAccessRoute())
+                Nav.NavigateTo("/trial-access", forceLoad: true);
+            return;
+        }
+
         _userAccess = await UserAccess.GetCurrentAsync();
         await Data.EnsureInitializedAsync();
         _setupStatus = await SetupService.GetStatusAsync();
+        await RefreshTrialBannerAsync();
         BuildNavItems();
         SyncSelectionWithRoute();
     }
@@ -191,6 +228,9 @@
             Logger.LogError(ex, "Failed to refresh navigation for URI {Uri}.", Nav.Uri);
             _setupStatus = TenantSetupStatus.Empty;
             _userAccess = UserAccessScope.AllowAll();
+            _showTrialBanner = false;
+            _trialExpired = false;
+            _trialBannerMessage = "";
             BuildNavItems();
             SyncSelectionWithRoute();
         }
@@ -256,6 +296,7 @@
 
         _navItems.Add(new NavItem { NodeId = "management-service-categories", NodeText = "Manage Service Categories", NavigateUrl = "/manage-service-categories", Pid = "management" });
         _navItems.Add(new NavItem { NodeId = "management-jobs", NodeText = "Manage Services", NavigateUrl = "/manage-jobs", Pid = "management" });
+        _navItems.Add(new NavItem { NodeId = "management-service-packages", NodeText = "Manage Service Packages", NavigateUrl = "/manage-service-packages", Pid = "management" });
 
         _navItems.Add(new NavItem { NodeId = "management-users", NodeText = "Manage Users", NavigateUrl = "/manage-users", Pid = "management" });
         _navItems.Add(new NavItem { NodeId = "management-email-retries", NodeText = "Email retries", NavigateUrl = "/email-retries", Pid = "management" });
@@ -271,8 +312,14 @@
 
     private void BuildSuperAdminNavItems()
     {
+        _navItems.Add(new NavItem { NodeId = "super-dashboard", NodeText = "Dashboard", NavigateUrl = "/super/dashboard" });
+        _navItems.Add(new NavItem { NodeId = "super-tenants", NodeText = "Tenants", NavigateUrl = "/super/dashboard/tenants" });
+
         _navItems.Add(new NavItem { NodeId = "super-settings", NodeText = "Settings", HasChild = true });
+        _navItems.Add(new NavItem { NodeId = "super-default-hourly-rates", NodeText = "Default Hourly Rates", NavigateUrl = "/super/settings/default-hourly-rates", Pid = "super-settings" });
+        _navItems.Add(new NavItem { NodeId = "super-default-add-on-rates", NodeText = "Default Add-On Rates", NavigateUrl = "/super/settings/default-add-on-rates", Pid = "super-settings" });
         _navItems.Add(new NavItem { NodeId = "super-default-categories", NodeText = "Default Categories", NavigateUrl = "/super/settings/default-categories", Pid = "super-settings" });
+        _navItems.Add(new NavItem { NodeId = "super-default-service-packages", NodeText = "Default Service Packages", NavigateUrl = "/super/settings/default-service-packages", Pid = "super-settings" });
         _navItems.Add(new NavItem { NodeId = "super-default-services", NodeText = "Default Services", NavigateUrl = "/super/settings/default-services", Pid = "super-settings" });
         _navItems.Add(new NavItem { NodeId = "logout", NodeText = "Log out", NavigateUrl = "/logout" });
     }
@@ -324,10 +371,48 @@
         var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
         var withoutQuery = relativePath.Split('?', '#')[0];
         var currentPath = NormalizePath($"/{withoutQuery}");
-        if (currentPath is "/logout" or "/super/settings/default-categories" or "/super/settings/default-services")
+        if (currentPath is "/logout"
+            or "/super/dashboard"
+            or "/super/dashboard/tenants"
+            or "/super/settings/default-hourly-rates"
+            or "/super/settings/default-add-on-rates"
+            or "/super/settings/default-categories"
+            or "/super/settings/default-service-packages"
+            or "/super/settings/default-services")
             return;
 
-        Nav.NavigateTo("/super/settings/default-categories", forceLoad: true);
+        Nav.NavigateTo("/super/dashboard", forceLoad: true);
+    }
+
+    private async Task RefreshTrialBannerAsync()
+    {
+        _showTrialBanner = false;
+        _trialExpired = false;
+        _trialBannerMessage = "";
+
+        var tenantId = TenantContext.TenantId;
+        if (tenantId <= 0)
+            return;
+
+        var trialStatus = await TrialLifecycle.GetForTenantAsync(tenantId);
+        if (trialStatus.Phase != TrialLifecyclePhase.ActiveTrial)
+            return;
+
+        var daysLeft = trialStatus.DaysUntilTrialEnd;
+        _trialBannerMessage = $"Your free trial ends in {daysLeft} {(daysLeft == 1 ? "day" : "days")}.";
+        _trialExpired = false;
+        _showTrialBanner = true;
+    }
+
+    private void NavigateToUpgrade()
+        => Nav.NavigateTo("/pricing?paid=1", forceLoad: true);
+
+    private bool IsTrialAccessRoute()
+    {
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var withoutQuery = relativePath.Split('?', '#')[0];
+        var currentPath = NormalizePath($"/{withoutQuery}");
+        return string.Equals(currentPath, "/trial-access", StringComparison.OrdinalIgnoreCase);
     }
 
     private Task OnTreeNodeClicked(NodeClickEventArgs args)

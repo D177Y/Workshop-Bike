@@ -485,6 +485,60 @@
     white-space: nowrap;
 }
 
+.quote-manual-section {
+    border: 1px solid #fdba74;
+    border-radius: 10px;
+    background: #fff7ed;
+    padding: 10px;
+    display: grid;
+    gap: 8px;
+}
+
+.quote-manual-section h5 {
+    margin: 0;
+    font-size: 13px;
+    color: #9a3412;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.quote-manual-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: end;
+    border: 1px solid #fed7aa;
+    border-radius: 8px;
+    background: #fff;
+    padding: 8px;
+}
+
+.quote-manual-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.quote-manual-row label {
+    display: grid;
+    gap: 4px;
+    font-size: 12px;
+    color: #7c2d12;
+    font-weight: 700;
+}
+
+.quote-manual-row input {
+    border: 1px solid #fdba74;
+    border-radius: 6px;
+    padding: 6px 8px;
+    min-width: 110px;
+}
+
+.quote-manual-row input.manual-input-error {
+    border-color: #dc2626;
+    box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.3);
+}
+
 .package-tag {
     border-radius: 999px;
     background: #dbeafe;
@@ -785,5 +839,9 @@
     .saved-quote-summary {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .quote-manual-row {
+        grid-template-columns: 1fr;
     }
 }

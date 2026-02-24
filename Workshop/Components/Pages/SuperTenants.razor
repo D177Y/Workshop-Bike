@@ -1,0 +1,117 @@
+@page "/super/dashboard/tenants"
+@attribute [Authorize(Roles = "SuperAdmin")]
+@using Microsoft.EntityFrameworkCore
+@using Syncfusion.Blazor.Grids
+@using Workshop.Data
+@using Workshop.Models
+@using Workshop.Services
+@inject IDbContextFactory<WorkshopDbContext> DbFactory
+
+<div class="sd-shell">
+    <header class="sd-header">
+        <h3>Tenants</h3>
+        <p>View all tenant businesses, current tier, and trial progress.</p>
+    </header>
+
+    <section class="sd-card">
+        <div class="sd-card-head">
+            <h4>Tenant List</h4>
+            <span class="sd-muted">@TenantRows.Count tenants</span>
+        </div>
+
+        @if (TenantRows.Count == 0)
+        {
+            <div class="sd-empty">No tenants found.</div>
+        }
+        else
+        {
+            <div class="tenant-grid-wrap">
+                <SfGrid DataSource="@TenantRows"
+                        AllowSorting="true"
+                        Width="100%"
+                        CssClass="tenant-grid">
+                    <GridColumns>
+                        <GridColumn Field="@nameof(TenantRow.BusinessName)" HeaderText="Business Name" Width="300"></GridColumn>
+                        <GridColumn HeaderText="Tier" Width="300">
+                            <Template>
+                                @{
+                                    var row = (TenantRow)context;
+                                }
+                                <span class="tenant-tier @(row.IsTrial ? "trial" : "")">@row.TierDisplay</span>
+                            </Template>
+                        </GridColumn>
+                        <GridColumn Field="@nameof(TenantRow.DaysSinceStart)"
+                                    HeaderText="Days Since Start"
+                                    Width="170"
+                                    TextAlign="TextAlign.Right"></GridColumn>
+                    </GridColumns>
+                </SfGrid>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<TenantRow> TenantRows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var nowUtc = DateTime.UtcNow;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var tenants = await db.Tenants
+            .AsNoTracking()
+            .OrderBy(t => t.Name)
+            .ToListAsync();
+
+        TenantRows = tenants
+            .Select(tenant => BuildTenantRow(tenant, nowUtc))
+            .ToList();
+    }
+
+    private static TenantRow BuildTenantRow(Tenant tenant, DateTime nowUtc)
+    {
+        var createdAtUtc = DateTime.SpecifyKind(tenant.CreatedAtUtc, DateTimeKind.Utc);
+        var daysSinceStart = Math.Max(0, (int)(nowUtc.Date - createdAtUtc.Date).TotalDays);
+        var lifecycle = TrialLifecycleService.Evaluate(tenant, nowUtc);
+        var daysLeft = lifecycle.DaysUntilTrialEnd;
+        var isTrial = lifecycle.Phase == TrialLifecyclePhase.ActiveTrial;
+
+        var tierDisplay = isTrial
+            ? $"Free Trial ({daysLeft} {(daysLeft == 1 ? "day" : "days")} left)"
+            : FormatPlanTier(tenant.Plan);
+
+        return new TenantRow(
+            BusinessName: NormalizeBusinessName(tenant),
+            TierDisplay: tierDisplay,
+            DaysSinceStart: daysSinceStart,
+            IsTrial: isTrial);
+    }
+
+    private static string NormalizeBusinessName(Tenant tenant)
+    {
+        var value = (tenant.Name ?? "").Trim();
+        return string.IsNullOrWhiteSpace(value) ? $"Tenant {tenant.Id}" : value;
+    }
+
+    private static string FormatPlanTier(PlanTier plan)
+        => plan switch
+        {
+            PlanTier.Starter => "Starter",
+            PlanTier.Standard => "Standard",
+            PlanTier.Premium => "Premium",
+            PlanTier.Enterprise => "Enterprise",
+            _ => "Standard"
+        };
+
+    private sealed record TenantRow(
+        string BusinessName,
+        string TierDisplay,
+        int DaysSinceStart,
+        bool IsTrial);
+}

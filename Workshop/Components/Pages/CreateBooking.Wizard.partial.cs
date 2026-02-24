@@ -17,8 +17,21 @@ public partial class CreateBooking
     private void OnServiceDetailsPackageToggle(CreateBookingServiceDetailsStep.PackageServiceToggleRequest request)
         => TogglePackageService(request.ServiceId, request.Args);
 
+    private void OnManualServiceMinutesChanged(CreateBookingServiceDetailsStep.ManualServiceMinutesUpdateRequest request)
+        => SetManualServiceMinutes(request.JobId, request.Args);
+
+    private void OnManualServicePriceChanged(CreateBookingServiceDetailsStep.ManualServicePriceUpdateRequest request)
+        => SetManualServicePrice(request.JobId, request.Args);
+
     private void NextStep()
     {
+        if (Wizard.ActiveStep == 0 && !ValidateManualServicePricingInputs(out var validationMessage))
+        {
+            Message = validationMessage;
+            ShowValidation = true;
+            return;
+        }
+
         Wizard.MoveNext(CanProceed, lastStep: 3);
     }
 

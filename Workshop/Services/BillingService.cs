@@ -17,9 +17,9 @@ public sealed class BillingService
         _dbFactory = dbFactory;
     }
 
-    public Session CreateCheckoutSession(int tenantId, string email, Workshop.Models.PlanTier plan, string baseUrl)
+    public Session CreateCheckoutSession(int tenantId, string email, Workshop.Models.PlanTier plan, string baseUrl, bool annualBilling = false)
     {
-        var priceId = GetPriceId(plan);
+        var priceId = GetPriceId(plan, annualBilling);
         var mechanicLimit = GetMechanicLimit(plan);
 
         var options = new SessionCreateOptions
@@ -38,7 +38,8 @@ public sealed class BillingService
                 {
                     ["tenant_id"] = tenantId.ToString(),
                     ["plan"] = plan.ToString().ToLowerInvariant(),
-                    ["mechanic_limit"] = mechanicLimit.ToString()
+                    ["mechanic_limit"] = mechanicLimit.ToString(),
+                    ["billing_cycle"] = annualBilling ? "annual" : "monthly"
                 }
             }
         };
@@ -47,25 +48,46 @@ public sealed class BillingService
         return service.Create(options);
     }
 
-    public string GetPriceId(Workshop.Models.PlanTier plan)
+    public string GetPriceId(Workshop.Models.PlanTier plan, bool annualBilling = false)
     {
         var section = _config.GetSection("Stripe:Prices");
+        var starter = annualBilling ? section["StarterAnnual"] ?? section["Starter"] : section["Starter"];
+        var standard = annualBilling ? section["StandardAnnual"] ?? section["Standard"] : section["Standard"];
+        var premium = annualBilling ? section["PremiumAnnual"] ?? section["Premium"] : section["Premium"];
+        var enterprise = annualBilling ? section["EnterpriseAnnual"] ?? section["Enterprise"] : section["Enterprise"];
+
         return plan switch
         {
-            Workshop.Models.PlanTier.Starter => section["Starter"] ?? "",
-            Workshop.Models.PlanTier.Standard => section["Standard"] ?? "",
-            Workshop.Models.PlanTier.Premium => section["Premium"] ?? "",
-            _ => ""
+            Workshop.Models.PlanTier.Starter => starter ?? "",
+            Workshop.Models.PlanTier.Standard => standard ?? "",
+            Workshop.Models.PlanTier.Premium => premium ?? "",
+            Workshop.Models.PlanTier.Enterprise => enterprise ?? "",
+            _ => standard ?? ""
         };
     }
 
-    public int GetMechanicLimit(Workshop.Models.PlanTier plan) => plan switch
+    public Workshop.Models.PlanTier? ResolvePlanFromPriceId(string? priceId)
     {
-        Workshop.Models.PlanTier.Starter => 1,
-        Workshop.Models.PlanTier.Standard => 6,
-        Workshop.Models.PlanTier.Premium => 36,
-        _ => 999
-    };
+        var normalized = (priceId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        foreach (var plan in PlanCatalog.Ordered)
+        {
+            var monthlyPriceId = (GetPriceId(plan.Tier, annualBilling: false) ?? "").Trim();
+            var annualPriceId = (GetPriceId(plan.Tier, annualBilling: true) ?? "").Trim();
+            if (string.Equals(normalized, monthlyPriceId, StringComparison.Ordinal)
+                || string.Equals(normalized, annualPriceId, StringComparison.Ordinal))
+            {
+                return plan.Tier;
+            }
+        }
+
+        return null;
+    }
+
+    public int GetMechanicLimit(Workshop.Models.PlanTier plan)
+        => PlanCatalog.GetMechanicLimit(plan);
 
     public async Task<PlanUpgradeResult> UpgradeSubscriptionAsync(int tenantId, string email, Workshop.Models.PlanTier targetPlan, string baseUrl)
     {

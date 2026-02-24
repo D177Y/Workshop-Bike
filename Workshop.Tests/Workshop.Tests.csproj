@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Workshop\Models\Booking.cs" Link="Source\Booking.cs" />
+    <Compile Include="..\Workshop\Models\Store.cs" Link="Source\Store.cs" />
+    <Compile Include="..\Workshop\Models\Mechanics.cs" Link="Source\Mechanics.cs" />
+    <Compile Include="..\Workshop\Models\BookingJobCard.cs" Link="Source\BookingJobCard.cs" />
+    <Compile Include="..\Workshop\Models\BookingStatus.cs" Link="Source\BookingStatus.cs" />
+    <Compile Include="..\Workshop\Models\MechanicTimeOff.cs" Link="Source\MechanicTimeOff.cs" />
+    <Compile Include="..\Workshop\Models\PlanTier.cs" Link="Source\PlanTier.cs" />
+    <Compile Include="..\Workshop\Models\Tenant.cs" Link="Source\Tenant.cs" />
+    <Compile Include="..\Workshop\Models\CustomerBikeRow.cs" Link="Source\CustomerBikeRow.cs" />
+    <Compile Include="..\Workshop\Models\CustomerProfile.cs" Link="Source\CustomerProfile.cs" />
+    <Compile Include="..\Workshop\Models\JobDefinition.cs" Link="Source\JobDefinition.cs" />
+    <Compile Include="..\Workshop\Models\ServicePricingMode.cs" Link="Source\ServicePricingMode.cs" />
+    <Compile Include="..\Workshop\Models\AddOnDefinition.cs" Link="Source\AddOnDefinition.cs" />
+    <Compile Include="..\Workshop\Models\JobServicePackageOverride.cs" Link="Source\JobServicePackageOverride.cs" />
+    <Compile Include="..\Workshop\Models\ServicePackageChecklistItemDefinition.cs" Link="Source\ServicePackageChecklistItemDefinition.cs" />
+    <Compile Include="..\Workshop\Models\IntegrationSettings.cs" Link="Source\IntegrationSettings.cs" />
+    <Compile Include="..\Workshop\Services\BikeDetailsService.cs" Link="Source\BikeDetailsService.cs" />
+    <Compile Include="..\Workshop\Services\BikeSelectionService.cs" Link="Source\BikeSelectionService.cs" />
+    <Compile Include="..\Workshop\Services\CustomerBikeProfileMapper.cs" Link="Source\CustomerBikeProfileMapper.cs" />
+    <Compile Include="..\Workshop\Services\CustomerProfileCoreService.cs" Link="Source\CustomerProfileCoreService.cs" />
+    <Compile Include="..\Workshop\Services\CustomerProfileCacheMutationService.cs" Link="Source\CustomerProfileCacheMutationService.cs" />
+    <Compile Include="..\Workshop\Services\CustomerBookingProfileService.cs" Link="Source\CustomerBookingProfileService.cs" />
+    <Compile Include="..\Workshop\Services\AssessmentNotesService.cs" Link="Source\AssessmentNotesService.cs" />
+    <Compile Include="..\Workshop\Services\CustomerTimelineService.cs" Link="Source\CustomerTimelineService.cs" />
+    <Compile Include="..\Workshop\Services\CustomerValidationService.cs" Link="Source\CustomerValidationService.cs" />
+    <Compile Include="..\Workshop\Services\QuoteLifecycleService.cs" Link="Source\QuoteLifecycleService.cs" />
+    <Compile Include="..\Workshop\Services\QuoteValidationService.cs" Link="Source\QuoteValidationService.cs" />
+    <Compile Include="..\Workshop\Services\BookingInsertPolicy.cs" Link="Source\BookingInsertPolicy.cs" />
+    <Compile Include="..\Workshop\Services\TimeOffOrderingService.cs" Link="Source\TimeOffOrderingService.cs" />
+    <Compile Include="..\Workshop\Services\TimetasticTimeOffMapper.cs" Link="Source\TimetasticTimeOffMapper.cs" />
+    <Compile Include="..\Workshop\Services\TimetasticTimeOffIdentity.cs" Link="Source\TimetasticTimeOffIdentity.cs" />
+    <Compile Include="..\Workshop\Services\TimetasticWebhookPayloadParser.cs" Link="Source\TimetasticWebhookPayloadParser.cs" />
+    <Compile Include="..\Workshop\Services\TimetasticWebhookTenantResolver.cs" Link="Source\TimetasticWebhookTenantResolver.cs" />
+    <Compile Include="..\Workshop\Services\StoreSchedulerBookingProjectionService.cs" Link="Source\StoreSchedulerBookingProjectionService.cs" />
+    <Compile Include="..\Workshop\Services\StoreSchedulerColorService.cs" Link="Source\StoreSchedulerColorService.cs" />
+    <Compile Include="..\Workshop\Services\CreateBookingStepState.cs" Link="Source\CreateBookingStepState.cs" />
+    <Compile Include="..\Workshop\Services\CreateBookingProgressValidator.cs" Link="Source\CreateBookingProgressValidator.cs" />
+    <Compile Include="..\Workshop\Services\TimetasticEventTypePolicy.cs" Link="Source\TimetasticEventTypePolicy.cs" />
+    <Compile Include="..\Workshop\Services\TimetasticApiConfiguration.cs" Link="Source\TimetasticApiConfiguration.cs" />
+    <Compile Include="..\Workshop\Services\PlanCatalog.cs" Link="Source\PlanCatalog.cs" />
+    <Compile Include="..\Workshop\Services\StripeBillingPolicy.cs" Link="Source\StripeBillingPolicy.cs" />
+    <Compile Include="..\Workshop\Services\WorkshopCacheMutationService.cs" Link="Source\WorkshopCacheMutationService.cs" />
+    <Compile Include="..\Workshop\Services\BookingStatusCacheMutationService.cs" Link="Source\BookingStatusCacheMutationService.cs" />
+  </ItemGroup>
+</Project>

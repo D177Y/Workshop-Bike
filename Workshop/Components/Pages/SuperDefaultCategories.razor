@@ -1,107 +1,239 @@
 @page "/super/settings/default-categories"
 @attribute [Authorize(Roles = "SuperAdmin")]
+@implements IAsyncDisposable
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@using Syncfusion.Blazor.Inputs
 @using Workshop.Models
 @using Workshop.Services
 @inject SuggestedCatalogService SuggestedCatalog
+@inject IJSRuntime JS
 
-<h3>Default Categories</h3>
+<div class="sd-shell">
+    <header class="sd-header">
+        <h3>Default Categories</h3>
+        <p>Manage the global service category structure used during tenant setup.</p>
+    </header>
 
-@if (!string.IsNullOrWhiteSpace(Message))
-{
-    <div class="@(IsError ? "error-message" : "success-message")">@Message</div>
-}
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <section class="sd-flash @(IsError ? "error" : "success")">@Message</section>
+    }
 
-<div class="editor-section">
-    <h4>@(EditingRootId > 0 ? "Edit Category 1" : "Add Category 1")</h4>
-    <div class="row">
-        <input type="text" @bind="RootCategory1" placeholder="Category 1 name" />
-        <input type="text" @bind="RootColorHex" placeholder="#RRGGBB" />
-        <input type="number" @bind="RootSortOrder" min="0" />
-        <button class="btn btn-primary" @onclick="SaveRootAsync">Save</button>
-        @if (EditingRootId > 0)
-        {
-            <button class="btn btn-secondary" @onclick="ResetRootEditor">Cancel</button>
-        }
-    </div>
-</div>
-
-@foreach (var root in Category1Rows)
-{
-    var subRows = SubRows(root.Category1);
-    <section class="category-card">
-        <div class="head-row">
-            <button class="btn btn-secondary" @onclick="() => ToggleExpanded(root.Category1)">
-                @(IsExpanded(root.Category1) ? "Hide" : "Show")
-            </button>
-            <strong>@root.Category1</strong>
-            <span class="muted">@root.ColorHex</span>
-            <span class="muted">Sort: @root.SortOrder</span>
-            <button class="btn btn-secondary" @onclick="() => EditRoot(root)">Edit</button>
-            <button class="btn btn-danger" @onclick="() => DeleteCategoryAsync(root.Id)">Delete</button>
+    <section class="sd-card">
+        <div class="sd-toolbar">
+            <div class="sd-filter">
+                <SfTextBox Placeholder="Category filter"
+                           FloatLabelType="FloatLabelType.Never"
+                           @bind-Value="CategoryFilter" />
+            </div>
+            <span class="sd-count">@FilteredCategory1Rows.Count root categories</span>
         </div>
 
-        @if (IsExpanded(root.Category1))
+        @if (!CanReorderCategories)
         {
-            <div class="sub-list">
-                @foreach (var sub in subRows)
+            <div class="sd-note">Clear the filter and finish inline edits to reorder categories by drag and drop.</div>
+        }
+
+        @if (FilteredCategory1Rows.Count == 0)
+        {
+            <div class="sd-empty">No categories match the current filter.</div>
+        }
+        else
+        {
+            <div class="root-list" @ref="RootListRef">
+                @for (var i = 0; i < FilteredCategory1Rows.Count; i++)
                 {
-                    <div class="sub-row">
-                        <span>@sub.Category2</span>
-                        <span class="muted">Sort: @sub.SortOrder</span>
-                        <button class="btn btn-secondary" @onclick="() => EditSub(sub)">Edit</button>
-                        <button class="btn btn-danger" @onclick="() => DeleteCategoryAsync(sub.Id)">Delete</button>
-                    </div>
+                    var root = FilteredCategory1Rows[i];
+                    var subRows = SubRows(root.Category1);
+
+                    <article class="category-card root-dnd-row"
+                             data-index="@i"
+                             draggable="@(CanReorderCategories ? "true" : "false")">
+                        <div class="category-head">
+                            <span class="drag-handle root-drag-handle" aria-hidden="true">&#9776;</span>
+
+                            <label class="category-dot-picker" title="Edit category color">
+                                <input type="color"
+                                       value="@NormalizeColor(root.ColorHex)"
+                                       @onchange="e => SaveRootColorAsync(root, e.Value?.ToString())" />
+                                <span class="category-dot" style="@($"background:{NormalizeColor(root.ColorHex)};")"></span>
+                            </label>
+
+                            <div class="category-main">
+                                @if (EditingRootId == root.Id)
+                                {
+                                    <input class="inline-input root-name-input"
+                                           @ref="ActiveInputRef"
+                                           @bind="EditingRootNameInput"
+                                           @bind:event="oninput"
+                                           @onblur="CommitRootEditAsync"
+                                           @onkeydown="OnRootEditKeyDown" />
+                                }
+                                else
+                                {
+                                    <span class="category-name">@root.Category1</span>
+                                }
+                                <span class="category-meta">@subRows.Count sub-categories</span>
+                            </div>
+
+                            <div class="row-icons">
+                                <button type="button" class="icon-btn edit-icon-btn" title="Edit category" @onclick="() => BeginRootEdit(root)">
+                                    <i data-lucide="square-pen" class="sd-lucide" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" class="icon-btn danger" title="Delete category" @onclick="() => DeleteRootAsync(root)">
+                                    <i data-lucide="trash-2" class="sd-lucide" aria-hidden="true"></i>
+                                </button>
+                                <button type="button"
+                                        class="icon-btn chevron-btn @(IsExpanded(root.Id) ? "expanded" : "")"
+                                        title="Expand/collapse"
+                                        @onclick="() => ToggleExpanded(root.Id)">
+                                    <svg viewBox="0 0 24 24" class="chevron-svg" aria-hidden="true" focusable="false">
+                                        <path d="m6 9 6 6 6-6"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        @if (IsExpanded(root.Id))
+                        {
+                            <div class="category-body">
+                                <div class="sub-list" @ref="SubListRef">
+                                    @for (var subIndex = 0; subIndex < subRows.Count; subIndex++)
+                                    {
+                                        var sub = subRows[subIndex];
+                                        <div class="sub-row sub-dnd-row"
+                                             data-index="@subIndex"
+                                             draggable="@(CanReorderCategories ? "true" : "false")">
+                                            <span class="drag-handle sub-drag-handle" aria-hidden="true">&#9776;</span>
+
+                                            @if (EditingSubId == sub.Id)
+                                            {
+                                                <input class="inline-input sub-name-input"
+                                                       @ref="ActiveInputRef"
+                                                       @bind="EditingSubNameInput"
+                                                       @bind:event="oninput"
+                                                       @onblur="CommitSubEditAsync"
+                                                       @onkeydown="OnSubEditKeyDown" />
+                                            }
+                                            else
+                                            {
+                                                <span class="sub-name">@sub.Category2</span>
+                                            }
+
+                                            <div class="row-icons">
+                                                <button type="button" class="icon-btn edit-icon-btn" title="Edit sub-category" @onclick="() => BeginSubEdit(sub)">
+                                                    <i data-lucide="square-pen" class="sd-lucide" aria-hidden="true"></i>
+                                                </button>
+                                                <button type="button" class="icon-btn danger" title="Delete sub-category" @onclick="() => DeleteSubAsync(sub.Id)">
+                                                    <i data-lucide="trash-2" class="sd-lucide" aria-hidden="true"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+
+                                    @if (IsDraftSubRow(root.Category1))
+                                    {
+                                        <div class="sub-row draft">
+                                            <span class="drag-spacer"></span>
+                                            <input class="inline-input sub-name-input"
+                                                   @ref="ActiveInputRef"
+                                                   placeholder="New category 2"
+                                                   @bind="NewSubDraftValue"
+                                                   @bind:event="oninput"
+                                                   @onblur="CommitNewSubAsync"
+                                                   @onkeydown="OnNewSubKeyDown" />
+                                            <div class="row-icons">
+                                                <button type="button" class="icon-btn danger" title="Discard new row" @onclick="ClearNewSubDraft">
+                                                    <i data-lucide="trash-2" class="sd-lucide" aria-hidden="true"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+
+                                    <div class="sub-list-footer">
+                                        <button type="button" class="icon-btn plus" title="Add Category 2" @onclick="() => BeginNewSub(root.Category1)">
+                                            <i data-lucide="plus" class="sd-lucide" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </article>
                 }
 
-                <div class="row">
-                    <input type="text" @bind="SubCategory2" placeholder="Category 2 name" />
-                    <input type="number" @bind="SubSortOrder" min="0" />
-                    <button class="btn btn-primary" @onclick="() => SaveSubAsync(root.Category1)">@(EditingSubId > 0 ? "Update" : "Add")</button>
-                    @if (EditingSubId > 0)
-                    {
-                        <button class="btn btn-secondary" @onclick="ResetSubEditor">Cancel</button>
-                    }
+                @if (IsRootDraftActive)
+                {
+                    <article class="category-card root-draft-card">
+                        <div class="category-head">
+                            <span class="drag-spacer" aria-hidden="true">&#9776;</span>
+                            <label class="category-dot-picker" title="Choose color">
+                                <input type="color"
+                                       value="@NormalizeColor(NewRootDraftColor)"
+                                       @onchange="OnRootDraftColorChanged" />
+                                <span class="category-dot" style="@($"background:{NormalizeColor(NewRootDraftColor)};")"></span>
+                            </label>
+                            <div class="category-main">
+                                <input class="inline-input root-name-input"
+                                       @ref="ActiveInputRef"
+                                       placeholder="New category 1"
+                                       @bind="NewRootDraftName"
+                                       @bind:event="oninput"
+                                       @onblur="CommitNewRootDraftAsync"
+                                       @onkeydown="OnNewRootDraftKeyDown" />
+                            </div>
+                            <div class="row-icons">
+                                <button type="button" class="icon-btn danger" title="Discard new row" @onclick="ClearRootDraft">
+                                    <i data-lucide="trash-2" class="sd-lucide" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                }
+
+                <div class="root-list-footer">
+                    <button type="button" class="icon-btn plus" title="Add Category 1" @onclick="BeginNewRoot">
+                        <i data-lucide="plus" class="sd-lucide" aria-hidden="true"></i>
+                    </button>
                 </div>
             </div>
         }
     </section>
-}
-
-<style>
-    .editor-section, .category-card { margin-bottom: 16px; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
-    .row, .head-row, .sub-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-    input { padding: 6px; }
-    .muted { color: #64748b; font-size: 12px; }
-    .sub-list { margin-top: 10px; padding: 10px; border-radius: 6px; background: #f8fafc; }
-    .btn { padding: 6px 10px; border: none; border-radius: 999px; cursor: pointer; }
-    .btn-primary { background: #0d6efd; color: #fff; }
-    .btn-secondary { background: #64748b; color: #fff; }
-    .btn-danger { background: #b91c1c; color: #fff; }
-    .error-message { color: #b91c1c; margin: 10px 0; }
-    .success-message { color: #166534; margin: 10px 0; }
-</style>
+</div>
 
 @code {
+    private const string OutsideClickBindingKey = "super-default-categories";
+
     private List<GlobalServiceCategory> Categories = new();
     private string Message = "";
     private bool IsError;
+    private string CategoryFilter = "";
 
-    private int EditingRootId;
-    private string RootCategory1 = "";
-    private string RootColorHex = "#94a3b8";
-    private int RootSortOrder;
+    private int? EditingRootId;
+    private string EditingRootNameInput = "";
+    private int? EditingSubId;
+    private string EditingSubNameInput = "";
 
-    private int EditingSubId;
-    private string EditingSubCategory1 = "";
-    private string SubCategory2 = "";
-    private int SubSortOrder;
+    private bool IsRootDraftActive;
+    private string NewRootDraftName = "";
+    private string NewRootDraftColor = "#94a3b8";
 
-    private readonly HashSet<string> ExpandedCategory1 = new(StringComparer.OrdinalIgnoreCase);
+    private string NewSubDraftCategory1 = "";
+    private string NewSubDraftValue = "";
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadAsync();
-    }
+    private int? ExpandedRootId;
+    private bool RootExpansionInitialized;
+    private bool ShouldFocusActiveInput;
+    private bool IsInlineActionInFlight;
+    private bool ShouldScrollActiveInputToBottom;
+
+    private ElementReference RootListRef;
+    private ElementReference SubListRef;
+    private ElementReference ActiveInputRef;
+    private DotNetObjectReference<SuperDefaultCategories>? DotNetRef;
+
+    private bool CanReorderCategories =>
+        string.IsNullOrWhiteSpace((CategoryFilter ?? "").Trim());
 
     private List<GlobalServiceCategory> Category1Rows =>
         Categories
@@ -109,6 +241,41 @@
             .OrderBy(c => c.SortOrder)
             .ThenBy(c => c.Category1, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+    private List<GlobalServiceCategory> FilteredCategory1Rows =>
+        Category1Rows
+            .Where(root => MatchesFilter(root.Category1))
+            .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        DotNetRef ??= DotNetObjectReference.Create(this);
+
+        await RefreshIconsAsync();
+        await EnsureOutsideBindingAsync();
+        await EnsureRootDndAsync();
+        await EnsureSubDndAsync();
+        await FocusActiveInputAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("workshopStatusDnd.unbindOutside", OutsideClickBindingKey);
+        }
+        catch
+        {
+            // No-op during shutdown.
+        }
+
+        DotNetRef?.Dispose();
+    }
 
     private List<GlobalServiceCategory> SubRows(string category1) =>
         Categories
@@ -118,117 +285,596 @@
             .ThenBy(c => c.Category2, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-    private bool IsExpanded(string category1) => ExpandedCategory1.Contains(category1);
-
-    private void ToggleExpanded(string category1)
+    private bool MatchesFilter(string category1)
     {
-        if (!ExpandedCategory1.Add(category1))
-            ExpandedCategory1.Remove(category1);
+        var filter = (CategoryFilter ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(filter))
+            return true;
+
+        if (category1.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return SubRows(category1).Any(c => c.Category2.Contains(filter, StringComparison.OrdinalIgnoreCase));
     }
+
+    private bool IsExpanded(int rootId) => ExpandedRootId.HasValue && ExpandedRootId.Value == rootId;
+
+    private void ToggleExpanded(int rootId)
+    {
+        ExpandedRootId = ExpandedRootId == rootId ? null : rootId;
+        ClearSubEditState();
+    }
+
+    private bool IsDraftSubRow(string category1)
+        => NewSubDraftCategory1.Equals(category1, StringComparison.OrdinalIgnoreCase);
 
     private async Task LoadAsync()
     {
         Categories = await SuggestedCatalog.GetGlobalCategoriesAsync();
-    }
+        var currentRoots = Category1Rows;
 
-    private async Task SaveRootAsync()
-    {
-        Message = "";
-        IsError = false;
-
-        if (string.IsNullOrWhiteSpace(RootCategory1))
+        if (!RootExpansionInitialized)
         {
-            Message = "Category 1 name is required.";
-            IsError = true;
+            ExpandedRootId = currentRoots.FirstOrDefault()?.Id;
+            RootExpansionInitialized = true;
             return;
         }
 
-        var model = new GlobalServiceCategory
+        if (ExpandedRootId.HasValue && currentRoots.All(r => r.Id != ExpandedRootId.Value))
+            ExpandedRootId = currentRoots.FirstOrDefault()?.Id;
+    }
+
+    private async Task RefreshIconsAsync()
+    {
+        try
         {
-            Id = EditingRootId,
-            Category1 = RootCategory1.Trim(),
-            Category2 = "",
-            ColorHex = RootColorHex,
-            SortOrder = RootSortOrder
-        };
-
-        await SuggestedCatalog.SaveGlobalCategoryAsync(model);
-        Message = "Saved default category.";
-        await LoadAsync();
-        ResetRootEditor();
-    }
-
-    private void EditRoot(GlobalServiceCategory category)
-    {
-        EditingRootId = category.Id;
-        RootCategory1 = category.Category1;
-        RootColorHex = category.ColorHex;
-        RootSortOrder = category.SortOrder;
-        Message = "";
-        IsError = false;
-    }
-
-    private void ResetRootEditor()
-    {
-        EditingRootId = 0;
-        RootCategory1 = "";
-        RootColorHex = "#94a3b8";
-        RootSortOrder = 0;
-    }
-
-    private void EditSub(GlobalServiceCategory category)
-    {
-        EditingSubId = category.Id;
-        EditingSubCategory1 = category.Category1;
-        SubCategory2 = category.Category2;
-        SubSortOrder = category.SortOrder;
-        ExpandedCategory1.Add(category.Category1);
-        Message = "";
-        IsError = false;
-    }
-
-    private async Task SaveSubAsync(string category1)
-    {
-        Message = "";
-        IsError = false;
-
-        var targetCategory1 = EditingSubId > 0 ? EditingSubCategory1 : category1;
-        if (string.IsNullOrWhiteSpace(targetCategory1) || string.IsNullOrWhiteSpace(SubCategory2))
+            await JS.InvokeVoidAsync("marketingIcons.refresh");
+        }
+        catch
         {
-            Message = "Category 2 name is required.";
-            IsError = true;
+            // No-op if lucide helper is unavailable.
+        }
+    }
+
+    private async Task EnsureOutsideBindingAsync()
+    {
+        if (DotNetRef is null)
             return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("workshopStatusDnd.bindOutside", OutsideClickBindingKey, DotNetRef, "HandleOutsidePointerDown", ".inline-input");
+        }
+        catch
+        {
+            // No-op if outside click binding fails.
+        }
+    }
+
+    private async Task EnsureRootDndAsync()
+    {
+        if (FilteredCategory1Rows.Count == 0 || DotNetRef is null)
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("workshopStatusDnd.init", RootListRef, DotNetRef, "ReorderRoot", ".root-dnd-row", ".root-drag-handle");
+        }
+        catch
+        {
+            // No-op if drag JS init fails.
+        }
+    }
+
+    private async Task EnsureSubDndAsync()
+    {
+        if (!ExpandedRootId.HasValue || DotNetRef is null)
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("workshopStatusDnd.init", SubListRef, DotNetRef, "ReorderSub", ".sub-dnd-row", ".sub-drag-handle");
+        }
+        catch
+        {
+            // No-op if drag JS init fails.
+        }
+    }
+
+    private async Task FocusActiveInputAsync()
+    {
+        if (!ShouldFocusActiveInput)
+            return;
+
+        ShouldFocusActiveInput = false;
+        var scrollToBottom = ShouldScrollActiveInputToBottom;
+        ShouldScrollActiveInputToBottom = false;
+
+        try
+        {
+            await JS.InvokeVoidAsync("workshopStatusDnd.focusElement", ActiveInputRef, scrollToBottom, "end", 56);
+        }
+        catch
+        {
+            // No-op if focus helper fails.
+        }
+    }
+
+    [JSInvokable]
+    public async Task HandleOutsidePointerDown()
+    {
+        if (IsInlineActionInFlight)
+            return;
+
+        var didChange = false;
+
+        if (EditingRootId.HasValue)
+        {
+            await CommitRootEditAsync();
+            didChange = true;
+        }
+        else if (EditingSubId.HasValue)
+        {
+            await CommitSubEditAsync();
+            didChange = true;
+        }
+        else if (!string.IsNullOrWhiteSpace(NewSubDraftCategory1))
+        {
+            await CommitNewSubAsync();
+            didChange = true;
+        }
+        else if (IsRootDraftActive)
+        {
+            await CommitNewRootDraftAsync();
+            didChange = true;
         }
 
-        var root = Category1Rows.FirstOrDefault(c => c.Category1.Equals(targetCategory1, StringComparison.OrdinalIgnoreCase));
-        var model = new GlobalServiceCategory
-        {
-            Id = EditingSubId,
-            Category1 = targetCategory1.Trim(),
-            Category2 = SubCategory2.Trim(),
-            ColorHex = root?.ColorHex ?? "#94a3b8",
-            SortOrder = SubSortOrder
-        };
-
-        await SuggestedCatalog.SaveGlobalCategoryAsync(model);
-        Message = "Saved sub-category.";
-        await LoadAsync();
-        ResetSubEditor();
+        if (didChange)
+            await InvokeAsync(StateHasChanged);
     }
 
-    private void ResetSubEditor()
+    [JSInvokable]
+    public async Task ReorderRoot(int fromIndex, int toIndex)
     {
-        EditingSubId = 0;
-        EditingSubCategory1 = "";
-        SubCategory2 = "";
-        SubSortOrder = 0;
+        if (!CanReorderCategories)
+            return;
+
+        var ordered = Category1Rows.ToList();
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= ordered.Count || toIndex >= ordered.Count || fromIndex == toIndex)
+            return;
+
+        var moved = ordered[fromIndex];
+        ordered.RemoveAt(fromIndex);
+        ordered.Insert(toIndex, moved);
+
+        await PersistRootOrderAsync(ordered);
+        await InvokeAsync(StateHasChanged);
     }
 
-    private async Task DeleteCategoryAsync(int id)
+    [JSInvokable]
+    public async Task ReorderSub(int fromIndex, int toIndex)
+    {
+        if (!CanReorderCategories || !ExpandedRootId.HasValue)
+            return;
+
+        var expandedRoot = Category1Rows.FirstOrDefault(r => r.Id == ExpandedRootId.Value);
+        if (expandedRoot is null)
+            return;
+
+        var ordered = SubRows(expandedRoot.Category1);
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= ordered.Count || toIndex >= ordered.Count || fromIndex == toIndex)
+            return;
+
+        var moved = ordered[fromIndex];
+        ordered.RemoveAt(fromIndex);
+        ordered.Insert(toIndex, moved);
+
+        await PersistSubOrderAsync(ordered);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task PersistRootOrderAsync(List<GlobalServiceCategory> orderedRoots)
+    {
+        for (var i = 0; i < orderedRoots.Count; i++)
+        {
+            var root = orderedRoots[i];
+            if (root.SortOrder == i)
+                continue;
+
+            root.SortOrder = i;
+            await SuggestedCatalog.SaveGlobalCategoryAsync(root);
+        }
+
+        Message = "Saved category order.";
+        IsError = false;
+        await LoadAsync();
+    }
+
+    private async Task PersistSubOrderAsync(List<GlobalServiceCategory> orderedSubs)
+    {
+        for (var i = 0; i < orderedSubs.Count; i++)
+        {
+            var sub = orderedSubs[i];
+            if (sub.SortOrder == i)
+                continue;
+
+            sub.SortOrder = i;
+            await SuggestedCatalog.SaveGlobalCategoryAsync(sub);
+        }
+
+        Message = "Saved sub-category order.";
+        IsError = false;
+        await LoadAsync();
+    }
+
+    private void BeginNewRoot()
+    {
+        CancelRootEdit();
+        ClearSubEditState();
+        IsRootDraftActive = true;
+        NewRootDraftName = "";
+        NewRootDraftColor = "#94a3b8";
+        ShouldFocusActiveInput = true;
+        ShouldScrollActiveInputToBottom = true;
+    }
+
+    private void OnRootDraftColorChanged(ChangeEventArgs args)
+    {
+        NewRootDraftColor = NormalizeColor(args.Value?.ToString());
+    }
+
+    private async Task CommitNewRootDraftAsync()
+    {
+        if (!IsRootDraftActive || IsInlineActionInFlight)
+            return;
+
+        IsInlineActionInFlight = true;
+        try
+        {
+            var name = (NewRootDraftName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                ClearRootDraft();
+                return;
+            }
+
+            if (Category1Rows.Any(c => c.Category1.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            {
+                Message = "Category 1 already exists.";
+                IsError = true;
+                ShouldFocusActiveInput = true;
+                return;
+            }
+
+            var model = new GlobalServiceCategory
+            {
+                Category1 = name,
+                Category2 = "",
+                ColorHex = NormalizeColor(NewRootDraftColor),
+                SortOrder = Category1Rows.Count
+            };
+
+            await SuggestedCatalog.SaveGlobalCategoryAsync(model);
+            ClearRootDraft();
+            Message = "Added category.";
+            IsError = false;
+            await LoadAsync();
+        }
+        finally
+        {
+            IsInlineActionInFlight = false;
+        }
+    }
+
+    private async Task OnNewRootDraftKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            await CommitNewRootDraftAsync();
+        else if (args.Key == "Escape")
+            ClearRootDraft();
+    }
+
+    private void ClearRootDraft()
+    {
+        IsRootDraftActive = false;
+        NewRootDraftName = "";
+        NewRootDraftColor = "#94a3b8";
+    }
+
+    private void BeginRootEdit(GlobalServiceCategory root)
+    {
+        ClearRootDraft();
+        ClearSubEditState();
+        EditingRootId = root.Id;
+        EditingRootNameInput = root.Category1;
+        ShouldFocusActiveInput = true;
+        ShouldScrollActiveInputToBottom = false;
+    }
+
+    private async Task CommitRootEditAsync()
+    {
+        if (!EditingRootId.HasValue || IsInlineActionInFlight)
+            return;
+
+        IsInlineActionInFlight = true;
+        try
+        {
+            var root = Category1Rows.FirstOrDefault(r => r.Id == EditingRootId.Value);
+            if (root is null)
+            {
+                CancelRootEdit();
+                return;
+            }
+
+            var updated = (EditingRootNameInput ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(updated))
+            {
+                CancelRootEdit();
+                return;
+            }
+
+            if (Category1Rows.Any(c => c.Id != root.Id && c.Category1.Equals(updated, StringComparison.OrdinalIgnoreCase)))
+            {
+                Message = "Category 1 already exists.";
+                IsError = true;
+                ShouldFocusActiveInput = true;
+                return;
+            }
+
+            var original = root.Category1;
+            if (original.Equals(updated, StringComparison.OrdinalIgnoreCase))
+            {
+                CancelRootEdit();
+                return;
+            }
+
+            var relatedRows = Categories
+                .Where(c => c.Category1.Equals(original, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var row in relatedRows)
+            {
+                row.Category1 = updated;
+                await SuggestedCatalog.SaveGlobalCategoryAsync(row);
+            }
+
+            CancelRootEdit();
+            Message = "Saved category.";
+            IsError = false;
+            await LoadAsync();
+        }
+        finally
+        {
+            IsInlineActionInFlight = false;
+        }
+    }
+
+    private async Task OnRootEditKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            await CommitRootEditAsync();
+        else if (args.Key == "Escape")
+            CancelRootEdit();
+    }
+
+    private void CancelRootEdit()
+    {
+        EditingRootId = null;
+        EditingRootNameInput = "";
+    }
+
+    private async Task SaveRootColorAsync(GlobalServiceCategory root, string? rawColor)
+    {
+        var color = NormalizeColor(rawColor);
+        var relatedRows = Categories
+            .Where(c => c.Category1.Equals(root.Category1, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var changed = false;
+        foreach (var row in relatedRows)
+        {
+            if (row.ColorHex.Equals(color, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            row.ColorHex = color;
+            await SuggestedCatalog.SaveGlobalCategoryAsync(row);
+            changed = true;
+        }
+
+        if (changed)
+            await LoadAsync();
+    }
+
+    private void BeginSubEdit(GlobalServiceCategory sub)
+    {
+        CancelRootEdit();
+        ClearRootDraft();
+        EditingSubId = sub.Id;
+        EditingSubNameInput = sub.Category2;
+        ClearNewSubDraft();
+        ShouldFocusActiveInput = true;
+        ShouldScrollActiveInputToBottom = false;
+    }
+
+    private async Task CommitSubEditAsync()
+    {
+        if (!EditingSubId.HasValue || IsInlineActionInFlight)
+            return;
+
+        IsInlineActionInFlight = true;
+        try
+        {
+            var sub = Categories.FirstOrDefault(c => c.Id == EditingSubId.Value);
+            if (sub is null)
+            {
+                CancelSubEdit();
+                return;
+            }
+
+            var updated = (EditingSubNameInput ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(updated))
+            {
+                CancelSubEdit();
+                return;
+            }
+
+            if (SubRows(sub.Category1).Any(s => s.Id != sub.Id && s.Category2.Equals(updated, StringComparison.OrdinalIgnoreCase)))
+            {
+                Message = "Category 2 already exists in this group.";
+                IsError = true;
+                ShouldFocusActiveInput = true;
+                return;
+            }
+
+            if (sub.Category2.Equals(updated, StringComparison.OrdinalIgnoreCase))
+            {
+                CancelSubEdit();
+                return;
+            }
+
+            sub.Category2 = updated;
+            await SuggestedCatalog.SaveGlobalCategoryAsync(sub);
+
+            CancelSubEdit();
+            Message = "Saved sub-category.";
+            IsError = false;
+            await LoadAsync();
+        }
+        finally
+        {
+            IsInlineActionInFlight = false;
+        }
+    }
+
+    private async Task OnSubEditKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            await CommitSubEditAsync();
+        else if (args.Key == "Escape")
+            CancelSubEdit();
+    }
+
+    private void CancelSubEdit()
+    {
+        EditingSubId = null;
+        EditingSubNameInput = "";
+    }
+
+    private void BeginNewSub(string category1)
+    {
+        CancelRootEdit();
+        ClearRootDraft();
+        CancelSubEdit();
+        NewSubDraftCategory1 = category1;
+        NewSubDraftValue = "";
+        ShouldFocusActiveInput = true;
+        ShouldScrollActiveInputToBottom = false;
+    }
+
+    private async Task CommitNewSubAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewSubDraftCategory1) || IsInlineActionInFlight)
+            return;
+
+        IsInlineActionInFlight = true;
+        try
+        {
+            var root = Category1Rows.FirstOrDefault(r => r.Category1.Equals(NewSubDraftCategory1, StringComparison.OrdinalIgnoreCase));
+            if (root is null)
+            {
+                ClearNewSubDraft();
+                return;
+            }
+
+            var name = (NewSubDraftValue ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                ClearNewSubDraft();
+                return;
+            }
+
+            if (SubRows(root.Category1).Any(s => s.Category2.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            {
+                Message = "Category 2 already exists in this group.";
+                IsError = true;
+                ShouldFocusActiveInput = true;
+                return;
+            }
+
+            var model = new GlobalServiceCategory
+            {
+                Category1 = root.Category1,
+                Category2 = name,
+                ColorHex = NormalizeColor(root.ColorHex),
+                SortOrder = SubRows(root.Category1).Count
+            };
+
+            await SuggestedCatalog.SaveGlobalCategoryAsync(model);
+            ClearNewSubDraft();
+            Message = "Added sub-category.";
+            IsError = false;
+            await LoadAsync();
+        }
+        finally
+        {
+            IsInlineActionInFlight = false;
+        }
+    }
+
+    private async Task OnNewSubKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            await CommitNewSubAsync();
+        else if (args.Key == "Escape")
+            ClearNewSubDraft();
+    }
+
+    private void ClearNewSubDraft()
+    {
+        NewSubDraftCategory1 = "";
+        NewSubDraftValue = "";
+    }
+
+    private async Task DeleteRootAsync(GlobalServiceCategory root)
+    {
+        var related = Categories
+            .Where(c => c.Category1.Equals(root.Category1, StringComparison.OrdinalIgnoreCase))
+            .Select(c => c.Id)
+            .ToList();
+
+        foreach (var id in related)
+            await SuggestedCatalog.DeleteGlobalCategoryAsync(id);
+
+        CancelRootEdit();
+        ClearSubEditState();
+        Message = "Deleted category and sub-categories.";
+        IsError = false;
+        await LoadAsync();
+    }
+
+    private async Task DeleteSubAsync(int id)
     {
         await SuggestedCatalog.DeleteGlobalCategoryAsync(id);
-        Message = "Deleted category.";
+        CancelSubEdit();
+        ClearNewSubDraft();
+        Message = "Deleted sub-category.";
         IsError = false;
         await LoadAsync();
+    }
+
+    private void ClearSubEditState()
+    {
+        CancelSubEdit();
+        ClearNewSubDraft();
+    }
+
+    private static string NormalizeColor(string? value)
+    {
+        var color = (value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(color))
+            return "#94a3b8";
+        if (!color.StartsWith("#", StringComparison.Ordinal))
+            color = "#" + color;
+        return color;
     }
 }

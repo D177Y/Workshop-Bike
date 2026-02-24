@@ -122,6 +122,7 @@ public partial class StoreScheduler
         JobCardOriginalServices = CloneServiceItems(JobCardEditor.Services);
 
         JobCardMessage = created ? "Job card created. Track progress as work is completed." : "";
+        SetJobCardManualPricingMessageIfRequired();
         IsJobCardAmendMode = false;
         JobCardServiceFilter = "";
         JobCardAdditionalServiceFilter = "";
@@ -354,22 +355,19 @@ public partial class StoreScheduler
     {
         get
         {
-            var filtered = Catalog.Jobs
-                .Where(j => string.IsNullOrWhiteSpace(JobCardServiceFilter) || j.Name.Contains(JobCardServiceFilter, StringComparison.OrdinalIgnoreCase))
-                .GroupBy(j => j.Category)
-                .ToDictionary(g => g.Key, g => g.OrderBy(j => j.Name).ToList(), StringComparer.OrdinalIgnoreCase);
+            var orderedJobs = Catalog
+                .OrderJobsForDisplay(
+                    Catalog.Jobs.Where(j => string.IsNullOrWhiteSpace(JobCardServiceFilter)
+                                            || j.Name.Contains(JobCardServiceFilter, StringComparison.OrdinalIgnoreCase)),
+                    servicePackagesFirst: true)
+                .ToList();
 
-            var ordered = new List<KeyValuePair<string, List<JobDefinition>>>();
-            if (filtered.TryGetValue("Service Packages", out var packages))
-            {
-                ordered.Add(new KeyValuePair<string, List<JobDefinition>>("Service Packages", packages));
-                filtered.Remove("Service Packages");
-            }
-
-            foreach (var group in filtered.OrderBy(g => g.Key))
-                ordered.Add(group);
-
-            return ordered.ToDictionary(k => k.Key, v => v.Value, StringComparer.OrdinalIgnoreCase);
+            return orderedJobs
+                .GroupBy(j => (j.Category ?? "").Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
         }
     }
 
@@ -381,13 +379,21 @@ public partial class StoreScheduler
                 return new Dictionary<string, List<JobDefinition>>(StringComparer.OrdinalIgnoreCase);
 
             var packageId = SelectedJobCardPackageId;
-            return Catalog.Jobs
-                .Where(j => !Catalog.IsServicePackage(j.Id))
-                .Where(j => Catalog.IsServiceAvailableAsAdditionalService(j.Id, packageId))
-                .Where(j => string.IsNullOrWhiteSpace(JobCardAdditionalServiceFilter) || j.Name.Contains(JobCardAdditionalServiceFilter, StringComparison.OrdinalIgnoreCase))
-                .GroupBy(j => j.Category)
-                .OrderBy(g => g.Key)
-                .ToDictionary(g => g.Key, g => g.OrderBy(j => j.Name).ToList(), StringComparer.OrdinalIgnoreCase);
+            var orderedJobs = Catalog
+                .OrderJobsForDisplay(
+                    Catalog.Jobs
+                        .Where(j => !Catalog.IsServicePackage(j.Id))
+                        .Where(j => Catalog.IsServiceAvailableAsAdditionalService(j.Id, packageId))
+                        .Where(j => string.IsNullOrWhiteSpace(JobCardAdditionalServiceFilter)
+                                    || j.Name.Contains(JobCardAdditionalServiceFilter, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            return orderedJobs
+                .GroupBy(j => (j.Category ?? "").Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
         }
     }
 
@@ -663,6 +669,9 @@ public partial class StoreScheduler
 
         if (Catalog.IsServicePackage(job.Id))
             AppendPackageChecklistItems(JobCardEditor, serviceRow);
+
+        if (IsManualPricingPending(serviceRow))
+            SetJobCardManualPricingMessageIfRequired();
     }
 
     private void RemoveCatalogServiceFromJobCard(string jobId)
@@ -885,6 +894,31 @@ public partial class StoreScheduler
         }
 
         return "-";
+    }
+
+    private bool IsManualPricingPending(JobCardServiceItem service)
+    {
+        if (service is null || IsPackageChecklistRow(service))
+            return false;
+
+        var jobId = (service.JobId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(jobId) || !Catalog.RequiresManualQuoteAtUse(jobId))
+            return false;
+
+        return service.EstimatedMinutes <= 0 || service.EstimatedPriceIncVat <= 0m;
+    }
+
+    private List<JobCardServiceItem> GetPendingManualPricingServices(BookingJobCard card)
+        => card.Services.Where(IsManualPricingPending).ToList();
+
+    private void SetJobCardManualPricingMessageIfRequired()
+    {
+        if (JobCardEditor is null)
+            return;
+
+        var pendingCount = GetPendingManualPricingServices(JobCardEditor).Count;
+        if (pendingCount > 0)
+            JobCardMessage = $"Set minutes and price for {pendingCount} TBC service(s) before saving.";
     }
 
     private IEnumerable<JobCardServiceItem> GetProgressTrackedServices(BookingJobCard card)
@@ -1173,6 +1207,14 @@ public partial class StoreScheduler
         }
 
         NormalizeJobCardEditor();
+
+        var pendingManualPricing = GetPendingManualPricingServices(JobCardEditor);
+        if (pendingManualPricing.Count > 0)
+        {
+            JobCardMessage = $"Set minutes and price for {pendingManualPricing.Count} TBC service(s) before saving.";
+            return;
+        }
+
         JobCardEditor.LastUpdatedUtc = DateTime.UtcNow;
         var currentServiceSnapshot = BuildServiceAmendmentSnapshot(JobCardEditor.Services);
         var currentServiceSummary = DescribeServicesForNote(JobCardEditor.Services);

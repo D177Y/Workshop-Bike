@@ -1587,12 +1587,12 @@ else
 
         var jobs = await db.JobDefinitions
             .Where(j => j.TenantId == tenantId)
-            .OrderBy(j => j.Name)
             .ToListAsync();
+        jobs = Catalog.OrderJobsForDisplay(jobs, servicePackagesFirst: true).ToList();
 
         // If DB query returns empty but in-memory catalog has jobs, keep the UI usable.
         if (jobs.Count == 0 && Catalog.Jobs.Count > 0)
-            jobs = Catalog.Jobs.OrderBy(j => j.Name).ToList();
+            jobs = Catalog.OrderJobsForDisplay(Catalog.Jobs, servicePackagesFirst: true).ToList();
 
         CustomSelectableJobs = jobs;
         if (CustomExpandedGroups.Count == 0 && jobs.Count > 0)
@@ -1607,22 +1607,19 @@ else
     {
         get
         {
-            var filtered = CustomSelectableJobs
-                .Where(j => string.IsNullOrWhiteSpace(CustomJobFilter) || j.Name.Contains(CustomJobFilter, StringComparison.OrdinalIgnoreCase))
-                .GroupBy(j => j.Category)
-                .ToDictionary(g => g.Key, g => g.OrderBy(j => j.Name).ToList(), StringComparer.OrdinalIgnoreCase);
+            var orderedJobs = Catalog
+                .OrderJobsForDisplay(
+                    CustomSelectableJobs.Where(j => string.IsNullOrWhiteSpace(CustomJobFilter)
+                                                    || j.Name.Contains(CustomJobFilter, StringComparison.OrdinalIgnoreCase)),
+                    servicePackagesFirst: true)
+                .ToList();
 
-            var ordered = new List<KeyValuePair<string, List<JobDefinition>>>();
-            if (filtered.TryGetValue("Service Packages", out var packages))
-            {
-                ordered.Add(new KeyValuePair<string, List<JobDefinition>>("Service Packages", packages));
-                filtered.Remove("Service Packages");
-            }
-
-            foreach (var group in filtered.OrderBy(g => g.Key))
-                ordered.Add(group);
-
-            return ordered.ToDictionary(k => k.Key, v => v.Value, StringComparer.OrdinalIgnoreCase);
+            return orderedJobs
+                .GroupBy(j => (j.Category ?? "").Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
         }
     }
 

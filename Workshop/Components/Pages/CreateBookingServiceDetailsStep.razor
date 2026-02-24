@@ -1,3 +1,4 @@
+﻿@using System.Globalization
 @using Workshop.Models
 
 <div class="section-title">SERVICE DETAILS</div>
@@ -35,7 +36,7 @@
                 <div class="job-group @((IsGroupOpen?.Invoke(group.Key) ?? false) ? "" : "group-collapsed")">
                     <button type="button" class="job-group-header" @onclick="() => ToggleGroup.InvokeAsync(group.Key)">
                         <span>@group.Key</span>
-                        <span>@((IsGroupOpen?.Invoke(group.Key) ?? false) ? "▾" : "▸")</span>
+                        <span>@((IsGroupOpen?.Invoke(group.Key) ?? false) ? "v" : ">")</span>
                     </button>
                     @if (IsGroupOpen?.Invoke(group.Key) ?? false)
                     {
@@ -46,7 +47,7 @@
                                        checked="@(IsJobSelected?.Invoke(job.Id) ?? false)"
                                        @onchange="e => ToggleJob.InvokeAsync(new JobToggleRequest(job, e))" />
                                 <span>@job.Name</span>
-                                <span class="job-meta">@job.DefaultMinutes mins · £@job.BasePriceIncVat.ToString("0.00")</span>
+                                <span class="job-meta">@((GetJobMeta?.Invoke(job)) ?? $"{job.DefaultMinutes} mins / GBP {job.BasePriceIncVat:0.00}")</span>
                             </label>
                         }
                     }
@@ -66,7 +67,7 @@
                     <div class="job-group @((IsPackageServiceGroupOpen?.Invoke(group.Key) ?? false) ? "" : "group-collapsed")">
                         <button type="button" class="job-group-header" @onclick="() => TogglePackageServiceGroup.InvokeAsync(group.Key)">
                             <span>@group.Key</span>
-                            <span>@((IsPackageServiceGroupOpen?.Invoke(group.Key) ?? false) ? "▾" : "▸")</span>
+                            <span>@((IsPackageServiceGroupOpen?.Invoke(group.Key) ?? false) ? "v" : ">")</span>
                         </button>
                         @if (IsPackageServiceGroupOpen?.Invoke(group.Key) ?? false)
                         {
@@ -81,6 +82,33 @@
                                 </label>
                             }
                         }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (SelectedManualPricingJobs.Count > 0)
+    {
+        <div class="form-block">
+            <label>Manual Time and Price (TBC services)</label>
+            <div class="job-picker">
+                @foreach (var job in SelectedManualPricingJobs)
+                {
+                    var hasError = IsManualServiceInputInvalid?.Invoke(job.Id) ?? false;
+                    <div class="job-item manual-pricing-row">
+                        <span>@job.Name</span>
+                        <input type="number"
+                               min="0"
+                               value="@((GetManualServiceMinutes?.Invoke(job.Id) ?? 0).ToString(CultureInfo.InvariantCulture))"
+                               class="@(hasError ? "input-invalid" : "")"
+                               @onchange="e => UpdateManualServiceMinutes.InvokeAsync(new ManualServiceMinutesUpdateRequest(job.Id, e))" />
+                        <input type="number"
+                               min="0"
+                               step="0.01"
+                               value="@((GetManualServicePrice?.Invoke(job.Id) ?? 0m).ToString("0.00", CultureInfo.InvariantCulture))"
+                               class="@(hasError ? "input-invalid" : "")"
+                               @onchange="e => UpdateManualServicePrice.InvokeAsync(new ManualServicePriceUpdateRequest(job.Id, e))" />
                     </div>
                 }
             </div>
@@ -107,6 +135,7 @@
     [Parameter] public Func<string, bool>? IsGroupOpen { get; set; }
     [Parameter] public EventCallback<string> ToggleGroup { get; set; }
     [Parameter] public Func<string, bool>? IsJobSelected { get; set; }
+    [Parameter] public Func<JobDefinition, string>? GetJobMeta { get; set; }
     [Parameter] public EventCallback<JobToggleRequest> ToggleJob { get; set; }
     [Parameter] public bool CanSelectPackageServices { get; set; }
     [Parameter] public string PackageServiceFilter { get; set; } = "";
@@ -117,6 +146,12 @@
     [Parameter] public ISet<string>? SelectedPackageServices { get; set; }
     [Parameter] public EventCallback<PackageServiceToggleRequest> TogglePackageService { get; set; }
     [Parameter] public Func<string, string>? GetPackageServiceMeta { get; set; }
+    [Parameter] public IReadOnlyList<JobDefinition> SelectedManualPricingJobs { get; set; } = new List<JobDefinition>();
+    [Parameter] public Func<string, int>? GetManualServiceMinutes { get; set; }
+    [Parameter] public Func<string, decimal>? GetManualServicePrice { get; set; }
+    [Parameter] public Func<string, bool>? IsManualServiceInputInvalid { get; set; }
+    [Parameter] public EventCallback<ManualServiceMinutesUpdateRequest> UpdateManualServiceMinutes { get; set; }
+    [Parameter] public EventCallback<ManualServicePriceUpdateRequest> UpdateManualServicePrice { get; set; }
     [Parameter] public string JobNotes { get; set; } = "";
     [Parameter] public EventCallback<string> JobNotesChanged { get; set; }
     [Parameter] public int SelectedJobCount { get; set; }
@@ -134,4 +169,6 @@
 
     public sealed record JobToggleRequest(JobDefinition Job, ChangeEventArgs Args);
     public sealed record PackageServiceToggleRequest(string ServiceId, ChangeEventArgs Args);
+    public sealed record ManualServiceMinutesUpdateRequest(string JobId, ChangeEventArgs Args);
+    public sealed record ManualServicePriceUpdateRequest(string JobId, ChangeEventArgs Args);
 }

@@ -77,6 +77,15 @@ public partial class CreateBooking
             ApplyLegacyAdditionalServicesFromQuery(addOnsValue.ToString());
         }
 
+        SyncManualServicePricingInputs();
+
+        if (query.TryGetValue("manual", out var manualValue))
+        {
+            ApplyManualPricingFromQuery(manualValue.ToString());
+        }
+
+        SyncManualServicePricingInputs();
+
         if (query.TryGetValue("notes", out var notesValue))
         {
             var notes = notesValue.ToString();

@@ -48,10 +48,18 @@ public sealed class CustomerQuoteRecord
     public string BikeDetails { get; set; } = "";
     public string[] JobIds { get; set; } = Array.Empty<string>();
     public string[] JobNames { get; set; } = Array.Empty<string>();
+    public List<CustomerQuoteManualServiceOverride> ManualServiceOverrides { get; set; } = new();
     public int EstimatedMinutes { get; set; }
     public decimal EstimatedPriceIncVat { get; set; }
     public string Notes { get; set; } = "";
     public string CreatedBy { get; set; } = "";
+}
+
+public sealed class CustomerQuoteManualServiceOverride
+{
+    public string JobId { get; set; } = "";
+    public int Minutes { get; set; }
+    public decimal PriceIncVat { get; set; }
 }
 
 public sealed class CustomerCommunicationRecord

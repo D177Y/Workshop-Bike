@@ -1,101 +1,362 @@
 @page "/super/settings/default-services"
 @attribute [Authorize(Roles = "SuperAdmin")]
+@implements IDisposable
+@using System.Globalization
+@using Microsoft.JSInterop
+@using Syncfusion.Blazor.DropDowns
+@using Syncfusion.Blazor.Inputs
+@using Syncfusion.Blazor.Popups
 @using Workshop.Models
 @using Workshop.Services
 @inject SuggestedCatalogService SuggestedCatalog
+@inject SuperAdminDefaultsService DefaultsService
+@inject IJSRuntime JS
 
-<h3>Default Services</h3>
+<div class="sd-shell">
+    <header class="sd-header">
+        <h3>Default Services</h3>
+        <p>Build the global starter service catalog used by one-click setup.</p>
+    </header>
 
-@if (!string.IsNullOrWhiteSpace(Message))
-{
-    <div class="@(IsError ? "error-message" : "success-message")">@Message</div>
-}
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <section class="sd-flash @(IsError ? "error" : "success")">@Message</section>
+    }
 
-<div class="editor-section">
-    <h4>@(EditingId > 0 ? "Edit Default Service" : "Add Default Service")</h4>
-    <div class="grid">
-        <input type="text" @bind="Editor.Name" placeholder="Service name" />
-        <input type="text" @bind="Editor.Category1" placeholder="Category 1" />
-        <input type="text" @bind="Editor.Category2" placeholder="Category 2" />
-        <input type="number" min="1" @bind="Editor.DefaultMinutes" placeholder="Minutes" />
-        <select @bind="Editor.PricingMode">
-            <option value="@ServicePricingMode.AutoRate">Auto rate</option>
-            <option value="@ServicePricingMode.FixedPrice">Fixed price</option>
-            <option value="@ServicePricingMode.EstimatedPrice">Estimated price</option>
-        </select>
-        <select @bind="Editor.AutoPricingTier">
-            <option value="@ServiceHourlyRateTier.Default">Default tier</option>
-            <option value="@ServiceHourlyRateTier.Discounted">Discounted tier</option>
-            <option value="@ServiceHourlyRateTier.LossLeader">Loss leader tier</option>
-        </select>
-        <input type="number" min="0" step="0.01" @bind="Editor.BasePriceIncVat" placeholder="Price" />
-        <input type="number" min="0" step="0.01" @bind="Editor.EstimatedPriceIncVat" placeholder="Estimated" />
-        <input type="text" @bind="Editor.SkillLevel" placeholder="Skill level" />
-        <input type="number" min="0" @bind="Editor.SortOrder" placeholder="Sort" />
-        <textarea @bind="Editor.Description" placeholder="Description"></textarea>
-        <div class="actions">
-            <button class="btn btn-primary" @onclick="SaveAsync">Save</button>
-            @if (EditingId > 0)
-            {
-                <button class="btn btn-secondary" @onclick="ResetEditor">Cancel</button>
-            }
+    <section class="sd-card">
+        <div class="sd-toolbar">
+            <div class="sd-filter">
+                <SfTextBox Placeholder="Service filter"
+                           FloatLabelType="FloatLabelType.Never"
+                           @bind-Value="ServiceFilter" />
+            </div>
+            <span class="sd-count">@FilteredServiceCount services</span>
         </div>
-    </div>
+
+        @if (!CanReorderServices)
+        {
+            <div class="sd-note">Clear the filter and close the service popup to reorder services by drag and drop.</div>
+        }
+
+        <div class="sd-muted-hint">Use the blue plus icon inside a Category 2 card to add a service.</div>
+
+        @if (FilteredServiceGroups.Count == 0)
+        {
+            <div class="sd-empty">No services match the current filter.</div>
+        }
+        else
+        {
+            <div class="service-group-list">
+                @foreach (var group in FilteredServiceGroups)
+                {
+                    <article class="service-group-card">
+                        <button type="button"
+                                class="service-group-toggle @(IsGroupExpanded(group.Category1) ? "expanded" : "")"
+                                @onclick="() => ToggleGroup(group.Category1)">
+                            <span class="service-group-name">@group.Category1</span>
+                            <span class="service-group-count">@group.TotalCount services</span>
+                            <svg viewBox="0 0 24 24" class="service-chevron" aria-hidden="true" focusable="false">
+                                <path d="m6 9 6 6 6-6"></path>
+                            </svg>
+                        </button>
+
+                        @if (IsGroupExpanded(group.Category1))
+                        {
+                            <div class="service-subgroup-list">
+                                @foreach (var subgroup in group.Category2Groups)
+                                {
+                                    var subgroupKey = BuildSubgroupKey(group.Category1, subgroup.Category2);
+                                    <article class="service-subgroup-card">
+                                        <button type="button"
+                                                class="service-subgroup-toggle @(IsSubgroupExpanded(subgroupKey) ? "expanded" : "")"
+                                                @onclick="() => ToggleSubgroup(subgroupKey)">
+                                            <span class="service-subgroup-name">@subgroup.Category2</span>
+                                            <span class="service-subgroup-count">@subgroup.Services.Count services</span>
+                                            <svg viewBox="0 0 24 24" class="service-chevron" aria-hidden="true" focusable="false">
+                                                <path d="m6 9 6 6 6-6"></path>
+                                            </svg>
+                                        </button>
+
+                                        @if (IsSubgroupExpanded(subgroupKey))
+                                        {
+                                            <div class="service-list service-dnd-list" data-dnd-key="@subgroupKey">
+                                                @for (var serviceIndex = 0; serviceIndex < subgroup.Services.Count; serviceIndex++)
+                                                {
+                                                    var service = subgroup.Services[serviceIndex];
+                                                    <article class="service-row service-dnd-row"
+                                                             data-index="@serviceIndex"
+                                                             draggable="@(CanReorderServices ? "true" : "false")">
+                                                        <span class="service-drag-handle @(CanReorderServices ? "" : "disabled")" aria-hidden="true">&#9776;</span>
+                                                        <div class="service-main">
+                                                            <span class="service-name">@service.Name</span>
+                                                            <span class="service-meta">@FormatServiceMeta(service)</span>
+                                                            @if (!string.IsNullOrWhiteSpace(service.Description))
+                                                            {
+                                                                <span class="service-description">@service.Description</span>
+                                                            }
+                                                        </div>
+                                                        <div class="row-icons">
+                                                            <button type="button" class="icon-btn edit-icon-btn" title="Edit service" @onclick="() => OpenEditDialog(service)">
+                                                                <svg viewBox="0 0 24 24" class="service-action-icon" aria-hidden="true" focusable="false">
+                                                                    <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                                                    <path d="M18.375 2.625a1.5 1.5 0 1 1 2.121 2.121L12 13.243l-4 1 1-4 8.496-8.618z"></path>
+                                                                </svg>
+                                                            </button>
+                                                            <button type="button" class="icon-btn danger" title="Delete service" @onclick="() => DeleteAsync(service.Id)">
+                                                                <svg viewBox="0 0 24 24" class="service-action-icon" aria-hidden="true" focusable="false">
+                                                                    <path d="M3 6h18"></path>
+                                                                    <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"></path>
+                                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                                                                    <path d="M10 11v6"></path>
+                                                                    <path d="M14 11v6"></path>
+                                                                </svg>
+                                                            </button>
+                                                        </div>
+                                                    </article>
+                                                }
+                                            </div>
+
+                                            <div class="service-subgroup-footer">
+                                                <button type="button"
+                                                        class="icon-btn plus"
+                                                        title="Add service"
+                                                        @onclick="() => OpenCreateDialog(group.Category1, subgroup.Category2)">
+                                                    <svg viewBox="0 0 24 24" class="service-action-icon" aria-hidden="true" focusable="false">
+                                                        <path d="M12 5v14"></path>
+                                                        <path d="M5 12h14"></path>
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        }
+                                    </article>
+                                }
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
 </div>
 
-<table class="table">
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>Category</th>
-            <th>Mins</th>
-            <th>Pricing</th>
-            <th>Price</th>
-            <th>Estimated</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var service in Services)
-        {
-            <tr>
-                <td>@service.Name</td>
-                <td>@service.Category1 / @service.Category2</td>
-                <td>@service.DefaultMinutes</td>
-                <td>@service.PricingMode (@service.AutoPricingTier)</td>
-                <td>£@service.BasePriceIncVat.ToString("0.00")</td>
-                <td>£@service.EstimatedPriceIncVat.ToString("0.00")</td>
-                <td>
-                    <button class="btn btn-secondary" @onclick="() => Edit(service)">Edit</button>
-                    <button class="btn btn-danger" @onclick="() => DeleteAsync(service.Id)">Delete</button>
-                </td>
-            </tr>
-        }
-    </tbody>
-</table>
+<SfDialog Width="700px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          @bind-Visible="IsServiceDialogVisible"
+          Header="@ServiceDialogTitle">
+    <DialogTemplates>
+        <Content>
+            <div class="service-dialog-wrap">
+                <div class="service-dialog-context">@DialogLocationLabel</div>
+                @if (!string.IsNullOrWhiteSpace(DialogMessage))
+                {
+                    <div class="service-dialog-error">@DialogMessage</div>
+                }
 
-<style>
-    .editor-section { margin-bottom: 16px; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
-    .grid { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 8px; }
-    textarea { min-height: 64px; grid-column: span 2; padding: 6px; }
-    input, select { padding: 6px; }
-    .actions { display: flex; gap: 8px; align-items: center; }
-    .table { width: 100%; border-collapse: collapse; background: #fff; }
-    .table th, .table td { border: 1px solid #e2e8f0; padding: 8px; text-align: left; }
-    .btn { padding: 6px 10px; border: none; border-radius: 999px; cursor: pointer; margin-right: 4px; }
-    .btn-primary { background: #0d6efd; color: #fff; }
-    .btn-secondary { background: #64748b; color: #fff; }
-    .btn-danger { background: #b91c1c; color: #fff; }
-    .error-message { color: #b91c1c; margin: 10px 0; }
-    .success-message { color: #166534; margin: 10px 0; }
-</style>
+                <div class="sd-form-grid service-dialog-grid">
+                    <div class="sd-field">
+                        <label>Service name</label>
+                        <SfTextBox Placeholder="Service name"
+                                   FloatLabelType="FloatLabelType.Never"
+                                   @bind-Value="Editor.Name" />
+                    </div>
+
+                    <div class="sd-field">
+                        <label>Mins</label>
+                        <SfNumericTextBox TValue="int?"
+                                          Min="0"
+                                          ShowSpinButton="false"
+                                          FloatLabelType="FloatLabelType.Never"
+                                          @bind-Value="EditorMinutesInput" />
+                    </div>
+
+                    <div class="sd-field">
+                        <label>Price (GBP)</label>
+                        <SfNumericTextBox TValue="decimal?"
+                                          Min="0"
+                                          Decimals="2"
+                                          Format="n2"
+                                          ShowSpinButton="false"
+                                          FloatLabelType="FloatLabelType.Never"
+                                          @bind-Value="EditorPriceInput" />
+                    </div>
+
+                    <div class="sd-field">
+                        <label>Skill level</label>
+                        <SfDropDownList TValue="string"
+                                        TItem="SkillLevelOption"
+                                        DataSource="@SkillLevelOptions"
+                                        FloatLabelType="FloatLabelType.Never"
+                                        @bind-Value="Editor.SkillLevel">
+                            <DropDownListFieldSettings Text="Text" Value="Value" />
+                        </SfDropDownList>
+                    </div>
+
+                    <div class="sd-field">
+                        <label>Mode</label>
+                        <SfDropDownList TValue="ServicePricingMode"
+                                        TItem="PricingModeOption"
+                                        DataSource="@PricingModeOptions"
+                                        FloatLabelType="FloatLabelType.Never"
+                                        @bind-Value="Editor.PricingMode">
+                            <DropDownListFieldSettings Text="Text" Value="Value" />
+                        </SfDropDownList>
+                    </div>
+
+                    <div class="sd-field">
+                        <label>Tier</label>
+                        <SfDropDownList TValue="ServiceHourlyRateTier"
+                                        TItem="HourlyRateTierOption"
+                                        DataSource="@TierOptions"
+                                        FloatLabelType="FloatLabelType.Never"
+                                        @bind-Value="Editor.AutoPricingTier">
+                            <DropDownListFieldSettings Text="Text" Value="Value" />
+                        </SfDropDownList>
+                    </div>
+
+                    <section class="service-addon-section span-2">
+                        <div class="service-addon-head">
+                            <h5>Add-On Time and Price by Package</h5>
+                            <span>@ServicePackages.Count packages</span>
+                        </div>
+
+                        @if (ServicePackages.Count == 0)
+                        {
+                            <div class="service-addon-empty">No default service packages found. Add packages first in Default Service Packages.</div>
+                        }
+                        else
+                        {
+                            var previewTemplate = BuildPricingPreviewTemplate();
+                            <div class="service-addon-grid-wrap">
+                                <div class="service-addon-grid-head">
+                                    <span>Add-on</span>
+                                    <span>Service Package</span>
+                                    <span>Mins</span>
+                                    <span>Price</span>
+                                </div>
+                                @foreach (var package in ServicePackages)
+                                {
+                                    var input = GetPackageOverrideInput(package.Id);
+                                    var reduction = ResolvePackageReduction(package.Id);
+                                    var reducedMinutes = ResolveAddOnMinutes(previewTemplate.DefaultMinutes, reduction);
+                                    var currentMinutes = ResolveAddOnMinutesInput(input, reducedMinutes);
+                                    var autoPriceForCurrentMinutes = ResolveDefaultAddOnPrice(previewTemplate, currentMinutes);
+                                    <div class="service-addon-grid-row">
+                                        <label class="service-addon-check" title="Available as add-on in this package">
+                                            <input type="checkbox"
+                                                   checked="@input.IsAvailable"
+                                                   @onchange="e => OnPackageOverrideAvailabilityChanged(input, e, autoPriceForCurrentMinutes)" />
+                                        </label>
+                                        <span class="service-addon-package">@package.Name</span>
+                                        <div class="service-addon-time-field">
+                                            <SfNumericTextBox TValue="int?"
+                                                              Min="0"
+                                                              Decimals="0"
+                                                              Format="n0"
+                                                              ShowSpinButton="false"
+                                                              FloatLabelType="FloatLabelType.Never"
+                                                              Enabled="@input.IsAvailable"
+                                                              @bind-Value="input.MinutesInput"
+                                                              ValueChange="args => OnPackageOverrideMinutesChanged(input, args)" />
+                                        </div>
+                                        <div class="service-addon-price-field">
+                                            <SfNumericTextBox TValue="decimal?"
+                                                              Min="0"
+                                                              Decimals="2"
+                                                              Format="n2"
+                                                              ShowSpinButton="false"
+                                                              FloatLabelType="FloatLabelType.Never"
+                                                              Enabled="@input.IsAvailable"
+                                                              @bind-Value="input.CustomPriceInput"
+                                                              ValueChange="args => OnPackageOverridePriceChanged(input, args)" />
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="service-addon-note">
+                                Mins start as service mins minus package reduction.
+                                Untick a row to hide this service as an add-on for that package.
+                                Price uses the default hourly rate unless you enter a custom value.
+                            </div>
+                        }
+                    </section>
+
+                    <div class="sd-field span-full">
+                        <label>Description</label>
+                        <textarea class="sd-textarea"
+                                  placeholder="Optional notes shown in default service template"
+                                  @bind="Editor.Description"></textarea>
+                    </div>
+                </div>
+
+                <div class="sd-actions service-dialog-actions">
+                    <button type="button" class="sd-btn sd-btn-primary" @onclick="SaveAsync">Save Service</button>
+                    <button type="button" class="sd-btn sd-btn-ghost" @onclick="CloseDialog">Cancel</button>
+                </div>
+            </div>
+        </Content>
+    </DialogTemplates>
+</SfDialog>
 
 @code {
+    private const int UnknownCategoryOrder = int.MaxValue / 4;
+
     private List<GlobalServiceTemplate> Services = new();
+    private List<GlobalServiceCategory> Categories = new();
+    private List<GlobalServicePackageTemplate> ServicePackages = new();
+    private Dictionary<int, int> AddOnReductionByPackageTemplateId = new();
+    private readonly Dictionary<int, PackageOverrideInput> PackageOverrideInputsByPackageTemplateId = new();
+    private decimal DefaultHourlyRate = 76m;
+    private decimal DiscountedHourlyRate = 60m;
+    private decimal LossLeaderHourlyRate = 50m;
+    private decimal AutoPriceRoundingIncrement = 0.50m;
+    private PriceRoundingMode AutoPriceRoundingMode = PriceRoundingMode.Down;
+    private Dictionary<string, int> Category1Order = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, Dictionary<string, int>> Category2Order = new(StringComparer.OrdinalIgnoreCase);
     private string Message = "";
     private bool IsError;
     private int EditingId;
+    private string ServiceFilter = "";
+    private bool IsServiceDialogVisible;
+    private string ServiceDialogTitle = "Add Service";
+    private string DialogCategory1 = "";
+    private string DialogCategory2 = "";
+    private string DialogMessage = "";
+    private bool GroupExpansionInitialized;
+    private readonly HashSet<string> ExpandedGroups = new(StringComparer.OrdinalIgnoreCase);
+    private bool SubgroupExpansionInitialized;
+    private readonly HashSet<string> ExpandedSubgroups = new(StringComparer.OrdinalIgnoreCase);
+    private DotNetObjectReference<SuperDefaultServices>? DotNetRef;
     private GlobalServiceTemplate Editor = new();
+    private int? EditorMinutesInput;
+    private decimal? EditorPriceInput;
+
+    private static readonly List<PricingModeOption> PricingModeOptions =
+    [
+        new(ServicePricingMode.AutoRate, "Auto rate"),
+        new(ServicePricingMode.FixedPrice, "Fixed price"),
+        new(ServicePricingMode.EstimatedPrice, "Estimated price")
+    ];
+
+    private static readonly List<HourlyRateTierOption> TierOptions =
+    [
+        new(ServiceHourlyRateTier.Default, "Default tier"),
+        new(ServiceHourlyRateTier.Discounted, "Discounted tier"),
+        new(ServiceHourlyRateTier.LossLeader, "Loss leader tier")
+    ];
+
+    private static readonly List<SkillLevelOption> SkillLevelOptions =
+    [
+        new("All", "All"),
+        new("Beginner", "Beginner"),
+        new("Intermediate", "Intermediate"),
+        new("Advanced", "Advanced")
+    ];
+
+    private static readonly HashSet<string> SkillLevelValues = SkillLevelOptions
+        .Select(option => option.Value)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     protected override async Task OnInitializedAsync()
     {
@@ -103,68 +364,879 @@
         ResetEditor();
     }
 
+    private List<ServiceCategory1Group> FilteredServiceGroups =>
+        Services
+            .Where(MatchesServiceFilter)
+            .GroupBy(s => NormalizeCategory(s.Category1), StringComparer.OrdinalIgnoreCase)
+            .Select(g => new
+            {
+                Group = g,
+                Category1Order = GetCategory1SortOrder(g.Key)
+            })
+            .OrderBy(g => g.Category1Order)
+            .ThenBy(g => g.Group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                var category1 = g.Group.Key;
+                var category2Groups = g.Group
+                    .GroupBy(s => NormalizeCategory2(s.Category2), StringComparer.OrdinalIgnoreCase)
+                    .Select(sub => new
+                    {
+                        Subgroup = sub,
+                        Category2Order = GetCategory2SortOrder(category1, sub.Key)
+                    })
+                    .OrderBy(sub => sub.Category2Order)
+                    .ThenBy(sub => sub.Subgroup.Key, StringComparer.OrdinalIgnoreCase)
+                    .Select(sub => new ServiceCategory2Group(
+                        sub.Subgroup.Key,
+                        sub.Subgroup.OrderBy(s => s.SortOrder)
+                            .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+                            .ToList()))
+                    .ToList();
+
+                return new ServiceCategory1Group(category1, category2Groups);
+            })
+            .ToList();
+
+    private int FilteredServiceCount => FilteredServiceGroups.Sum(g => g.TotalCount);
+
+    private string DialogLocationLabel => $"{DialogCategory1} / {DialogCategory2}";
+
+    private bool CanReorderServices =>
+        string.IsNullOrWhiteSpace((ServiceFilter ?? "").Trim()) && !IsServiceDialogVisible;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        DotNetRef ??= DotNetObjectReference.Create(this);
+        await EnsureServiceDndAsync();
+    }
+
+    public void Dispose()
+    {
+        DotNetRef?.Dispose();
+    }
+
+    private bool MatchesServiceFilter(GlobalServiceTemplate service)
+    {
+        var filter = (ServiceFilter ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(filter))
+            return true;
+
+        return (service.Name ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+               || (service.Category1 ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+               || (service.Category2 ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+               || (service.PartNumber ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+               || (service.Description ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase);
+    }
+
     private async Task LoadAsync()
     {
-        Services = await SuggestedCatalog.GetGlobalTemplatesAsync();
+        var servicesTask = SuggestedCatalog.GetGlobalTemplatesAsync();
+        var categoriesTask = SuggestedCatalog.GetGlobalCategoriesAsync();
+        var packagesTask = SuggestedCatalog.GetGlobalServicePackageTemplatesAsync();
+        var addOnRatesTask = DefaultsService.GetDefaultAddOnRatesAsync();
+        var hourlyRatesTask = DefaultsService.GetHourlyRatesAsync();
+
+        await Task.WhenAll(servicesTask, categoriesTask, packagesTask, addOnRatesTask, hourlyRatesTask);
+
+        Services = servicesTask.Result;
+        Categories = categoriesTask.Result;
+        ServicePackages = packagesTask.Result;
+
+        var addOnDefaults = addOnRatesTask.Result;
+        AddOnReductionByPackageTemplateId = addOnDefaults.Packages
+            .GroupBy(package => package.GlobalServicePackageTemplateId)
+            .ToDictionary(
+                group => group.Key,
+                group => Math.Max(0, group.First().TimeReductionMinutes));
+
+        var rates = hourlyRatesTask.Result;
+        DefaultHourlyRate = decimal.Round(Math.Max(0m, rates.DefaultHourlyRate), 2, MidpointRounding.AwayFromZero);
+        DiscountedHourlyRate = decimal.Round(Math.Max(0m, rates.DiscountedHourlyRate), 2, MidpointRounding.AwayFromZero);
+        LossLeaderHourlyRate = decimal.Round(Math.Max(0m, rates.LossLeaderHourlyRate), 2, MidpointRounding.AwayFromZero);
+        AutoPriceRoundingIncrement = NormalizeRoundingIncrement(rates.RoundingIncrement);
+        AutoPriceRoundingMode = PriceRoundingMode.Down;
+
+        RefreshCategoryOrderMaps();
+        SyncExpandedGroups();
     }
 
     private async Task SaveAsync()
     {
         Message = "";
+        DialogMessage = "";
         IsError = false;
 
-        if (string.IsNullOrWhiteSpace(Editor.Name) || string.IsNullOrWhiteSpace(Editor.Category1))
+        if (string.IsNullOrWhiteSpace(Editor.Name)
+            || string.IsNullOrWhiteSpace(DialogCategory1)
+            || string.IsNullOrWhiteSpace(DialogCategory2))
         {
-            Message = "Service name and Category 1 are required.";
+            DialogMessage = "Service name and category are required.";
+            Message = DialogMessage;
             IsError = true;
             return;
         }
 
+        if ((EditorMinutesInput ?? 0) < 0 || (EditorPriceInput ?? 0m) < 0m)
+        {
+            DialogMessage = "Minutes and price must be 0 or greater.";
+            Message = DialogMessage;
+            IsError = true;
+            return;
+        }
+
+        var roundedPrice = decimal.Round(EditorPriceInput ?? 0m, 2, MidpointRounding.AwayFromZero);
         Editor.Id = EditingId;
+        Editor.Name = (Editor.Name ?? "").Trim();
+        Editor.Category1 = NormalizeCategory(DialogCategory1);
+        Editor.Category2 = NormalizeCategory2(DialogCategory2);
+        Editor.SkillLevel = NormalizeSkill(Editor.SkillLevel);
+        Editor.Description = (Editor.Description ?? "").Trim();
+        Editor.DefaultMinutes = Math.Max(0, EditorMinutesInput ?? 0);
+        if (EditingId <= 0)
+            Editor.SortOrder = NextSortOrder(Editor.Category1, Editor.Category2);
+
+        if (Editor.PricingMode == ServicePricingMode.EstimatedPrice)
+        {
+            Editor.EstimatedPriceIncVat = roundedPrice;
+            Editor.BasePriceIncVat = 0m;
+        }
+        else
+        {
+            Editor.BasePriceIncVat = roundedPrice;
+            Editor.EstimatedPriceIncVat = 0m;
+        }
+
+        Editor.PackageOverrides = BuildEditorPackageOverrides(Editor, out var packageOverrideError);
+        if (!string.IsNullOrWhiteSpace(packageOverrideError))
+        {
+            DialogMessage = packageOverrideError;
+            Message = DialogMessage;
+            IsError = true;
+            return;
+        }
+
         await SuggestedCatalog.SaveGlobalTemplateAsync(Editor);
         Message = "Saved default service.";
         await LoadAsync();
-        ResetEditor();
+        CloseDialog();
     }
 
-    private void Edit(GlobalServiceTemplate service)
+    private void OpenCreateDialog(string category1, string category2)
     {
+        ServiceDialogTitle = "Add Service";
+        DialogCategory1 = NormalizeCategory(category1);
+        DialogCategory2 = NormalizeCategory2(category2);
+        DialogMessage = "";
+        EditingId = 0;
+
+        Editor = new GlobalServiceTemplate
+        {
+            Category1 = DialogCategory1,
+            Category2 = DialogCategory2,
+            SkillLevel = "All",
+            DefaultMinutes = 30,
+            PricingMode = ServicePricingMode.FixedPrice,
+            AutoPricingTier = ServiceHourlyRateTier.Default,
+            PackageOverrides = new List<JobServicePackageOverride>(),
+            SortOrder = NextSortOrder(DialogCategory1, DialogCategory2)
+        };
+
+        EditorMinutesInput = Editor.DefaultMinutes;
+        EditorPriceInput = 0m;
+        InitializePackageOverrideInputs(Editor);
+        IsServiceDialogVisible = true;
+    }
+
+    private void OpenEditDialog(GlobalServiceTemplate service)
+    {
+        ServiceDialogTitle = "Edit Service";
+        DialogCategory1 = NormalizeCategory(service.Category1);
+        DialogCategory2 = NormalizeCategory2(service.Category2);
+        DialogMessage = "";
         EditingId = service.Id;
+
         Editor = new GlobalServiceTemplate
         {
             Id = service.Id,
             Name = service.Name,
             PartNumber = service.PartNumber,
-            Category1 = service.Category1,
-            Category2 = service.Category2,
-            SkillLevel = service.SkillLevel,
+            Category1 = DialogCategory1,
+            Category2 = DialogCategory2,
+            SkillLevel = NormalizeSkill(service.SkillLevel),
             Description = service.Description,
             DefaultMinutes = service.DefaultMinutes,
             BasePriceIncVat = service.BasePriceIncVat,
             PricingMode = service.PricingMode,
             AutoPricingTier = service.AutoPricingTier,
             EstimatedPriceIncVat = service.EstimatedPriceIncVat,
+            PackageOverrides = (service.PackageOverrides ?? new List<JobServicePackageOverride>())
+                .Select(ClonePackageOverride)
+                .ToList(),
             SortOrder = service.SortOrder
         };
+
+        EditorMinutesInput = Editor.DefaultMinutes;
+        EditorPriceInput = Editor.PricingMode == ServicePricingMode.EstimatedPrice
+            ? Editor.EstimatedPriceIncVat
+            : Editor.BasePriceIncVat;
+        InitializePackageOverrideInputs(Editor);
+        IsServiceDialogVisible = true;
     }
 
     private void ResetEditor()
     {
         EditingId = 0;
+        DialogCategory1 = "";
+        DialogCategory2 = "";
+        DialogMessage = "";
         Editor = new GlobalServiceTemplate
         {
             SkillLevel = "All",
             DefaultMinutes = 30,
             PricingMode = ServicePricingMode.FixedPrice,
-            AutoPricingTier = ServiceHourlyRateTier.Default
+            AutoPricingTier = ServiceHourlyRateTier.Default,
+            PackageOverrides = new List<JobServicePackageOverride>()
         };
+
+        EditorMinutesInput = Editor.DefaultMinutes;
+        EditorPriceInput = 0m;
+        InitializePackageOverrideInputs(Editor);
+    }
+
+    private void CloseDialog()
+    {
+        IsServiceDialogVisible = false;
+        ResetEditor();
+    }
+
+    private int NextSortOrder(string category1, string category2)
+    {
+        var targetCategory1 = NormalizeCategory(category1);
+        var targetCategory2 = NormalizeCategory2(category2);
+
+        var currentMax = Services
+            .Where(s => NormalizeCategory(s.Category1).Equals(targetCategory1, StringComparison.OrdinalIgnoreCase)
+                        && NormalizeCategory2(s.Category2).Equals(targetCategory2, StringComparison.OrdinalIgnoreCase))
+            .Select(s => s.SortOrder)
+            .DefaultIfEmpty(-1)
+            .Max();
+
+        return currentMax + 1;
     }
 
     private async Task DeleteAsync(int id)
     {
         await SuggestedCatalog.DeleteGlobalTemplateAsync(id);
+        if (EditingId == id)
+            CloseDialog();
+
         Message = "Deleted default service.";
         IsError = false;
         await LoadAsync();
+    }
+
+    [JSInvokable]
+    public async Task ReorderService(string subgroupKey, int fromIndex, int toIndex)
+    {
+        if (!CanReorderServices)
+            return;
+
+        if (string.IsNullOrWhiteSpace(subgroupKey))
+            return;
+
+        var ordered = Services
+            .Where(s => BuildSubgroupKey(s.Category1, s.Category2).Equals(subgroupKey, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(s => s.SortOrder)
+            .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= ordered.Count || toIndex >= ordered.Count || fromIndex == toIndex)
+            return;
+
+        var moved = ordered[fromIndex];
+        ordered.RemoveAt(fromIndex);
+        ordered.Insert(toIndex, moved);
+
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var service = ordered[i];
+            if (service.SortOrder == i)
+                continue;
+
+            service.SortOrder = i;
+            await SuggestedCatalog.SaveGlobalTemplateAsync(service);
+        }
+
+        Message = "Saved service order.";
+        IsError = false;
+        await LoadAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static string NormalizeCategory(string? category)
+    {
+        var normalized = (category ?? "").Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? "Uncategorized" : normalized;
+    }
+
+    private static string NormalizeCategory2(string? category)
+    {
+        var normalized = (category ?? "").Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? "General" : normalized;
+    }
+
+    private static string NormalizeSkill(string? skillLevel)
+    {
+        var normalized = (skillLevel ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return "All";
+
+        return SkillLevelValues.Contains(normalized) ? normalized : "All";
+    }
+
+    private GlobalServiceTemplate BuildPricingPreviewTemplate()
+    {
+        var roundedPrice = decimal.Round(Math.Max(0m, EditorPriceInput ?? 0m), 2, MidpointRounding.AwayFromZero);
+        return new GlobalServiceTemplate
+        {
+            DefaultMinutes = Math.Max(0, EditorMinutesInput ?? 0),
+            PricingMode = Editor.PricingMode,
+            AutoPricingTier = Editor.AutoPricingTier,
+            BasePriceIncVat = Editor.PricingMode == ServicePricingMode.EstimatedPrice ? 0m : roundedPrice,
+            EstimatedPriceIncVat = Editor.PricingMode == ServicePricingMode.EstimatedPrice ? roundedPrice : 0m
+        };
+    }
+
+    private void InitializePackageOverrideInputs(GlobalServiceTemplate? template = null)
+    {
+        PackageOverrideInputsByPackageTemplateId.Clear();
+        var source = template ?? BuildPricingPreviewTemplate();
+        var sourceTemplateId = source.Id > 0 ? source.Id : 0;
+        var packagesById = ServicePackages
+            .GroupBy(package => package.Id)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        var existingByPackageId = new Dictionary<int, JobServicePackageOverride>();
+        foreach (var entry in source.PackageOverrides ?? new List<JobServicePackageOverride>())
+        {
+            if (!TryParseGlobalServicePackageTemplateId(entry.ServicePackageJobId, out var globalServicePackageTemplateId))
+                continue;
+
+            existingByPackageId[globalServicePackageTemplateId] = ClonePackageOverride(entry);
+        }
+
+        foreach (var package in ServicePackages)
+        {
+            var reduction = ResolvePackageReduction(package.Id);
+            var reducedMinutes = ResolveAddOnMinutes(source.DefaultMinutes, reduction);
+            var defaultPrice = ResolveDefaultAddOnPrice(source, reducedMinutes);
+            var includedInPackage = sourceTemplateId > 0
+                && IsServiceIncludedInPackage(package.Id, sourceTemplateId, packagesById);
+
+            if (!existingByPackageId.TryGetValue(package.Id, out var existing))
+            {
+                PackageOverrideInputsByPackageTemplateId[package.Id] = new PackageOverrideInput
+                {
+                    IsAvailable = !includedInPackage,
+                    UseCustomPrice = false,
+                    MinutesInput = reducedMinutes,
+                    CustomPriceInput = defaultPrice
+                };
+                continue;
+            }
+
+            if (!existing.IsAvailableAsAdditionalService)
+            {
+                PackageOverrideInputsByPackageTemplateId[package.Id] = new PackageOverrideInput
+                {
+                    IsAvailable = false,
+                    UseCustomPrice = false,
+                    MinutesInput = reducedMinutes,
+                    CustomPriceInput = defaultPrice
+                };
+                continue;
+            }
+
+            var customMinutes = Math.Max(0, existing.Minutes);
+            var customPrice = decimal.Round(Math.Max(0m, existing.PriceIncVat), 2, MidpointRounding.AwayFromZero);
+            var expectedAutoPriceForMinutes = ResolveDefaultAddOnPrice(source, customMinutes);
+            var useCustomPrice = customPrice != expectedAutoPriceForMinutes;
+            PackageOverrideInputsByPackageTemplateId[package.Id] = new PackageOverrideInput
+            {
+                IsAvailable = true,
+                UseCustomPrice = useCustomPrice,
+                MinutesInput = customMinutes,
+                CustomPriceInput = useCustomPrice ? customPrice : expectedAutoPriceForMinutes
+            };
+        }
+    }
+
+    private PackageOverrideInput GetPackageOverrideInput(int globalServicePackageTemplateId)
+    {
+        if (PackageOverrideInputsByPackageTemplateId.TryGetValue(globalServicePackageTemplateId, out var input))
+            return input;
+
+        input = new PackageOverrideInput();
+        PackageOverrideInputsByPackageTemplateId[globalServicePackageTemplateId] = input;
+        return input;
+    }
+
+    private static int ResolveAddOnMinutesInput(PackageOverrideInput input, int defaultMinutes)
+        => Math.Max(0, input.MinutesInput ?? defaultMinutes);
+
+    private void OnPackageOverrideAvailabilityChanged(
+        PackageOverrideInput input,
+        Microsoft.AspNetCore.Components.ChangeEventArgs e,
+        decimal autoPriceForCurrentMinutes)
+    {
+        var available = ParseCheckboxValue(e?.Value);
+        input.IsAvailable = available;
+        if (!available)
+            return;
+
+        input.MinutesInput = Math.Max(0, input.MinutesInput ?? 0);
+        if (input.UseCustomPrice)
+        {
+            input.CustomPriceInput = decimal.Round(
+                Math.Max(0m, input.CustomPriceInput ?? autoPriceForCurrentMinutes),
+                2,
+                MidpointRounding.AwayFromZero);
+        }
+        else
+        {
+            input.CustomPriceInput = autoPriceForCurrentMinutes;
+        }
+    }
+
+    private void OnPackageOverrideMinutesChanged(
+        PackageOverrideInput input,
+        Syncfusion.Blazor.Inputs.ChangeEventArgs<int?> args)
+    {
+        var minutes = Math.Max(0, args?.Value ?? 0);
+        input.MinutesInput = minutes;
+
+        if (input.UseCustomPrice)
+            return;
+
+        var previewTemplate = BuildPricingPreviewTemplate();
+        input.CustomPriceInput = ResolveDefaultAddOnPrice(previewTemplate, minutes);
+    }
+
+    private void OnPackageOverridePriceChanged(
+        PackageOverrideInput input,
+        Syncfusion.Blazor.Inputs.ChangeEventArgs<decimal?> args)
+    {
+        var minutes = Math.Max(0, input.MinutesInput ?? 0);
+        var previewTemplate = BuildPricingPreviewTemplate();
+        var autoPriceForCurrentMinutes = ResolveDefaultAddOnPrice(previewTemplate, minutes);
+        var enteredPrice = decimal.Round(
+            Math.Max(0m, args?.Value ?? autoPriceForCurrentMinutes),
+            2,
+            MidpointRounding.AwayFromZero);
+
+        input.CustomPriceInput = enteredPrice;
+        input.UseCustomPrice = enteredPrice != autoPriceForCurrentMinutes;
+        if (!input.UseCustomPrice)
+            input.CustomPriceInput = autoPriceForCurrentMinutes;
+    }
+
+    private static bool ParseCheckboxValue(object? value)
+        => value switch
+        {
+            bool checkedValue => checkedValue,
+            string text when bool.TryParse(text, out var parsed) => parsed,
+            _ => false
+        };
+
+    private List<JobServicePackageOverride> BuildEditorPackageOverrides(
+        GlobalServiceTemplate service,
+        out string validationError)
+    {
+        validationError = "";
+        var overrides = new List<JobServicePackageOverride>();
+        foreach (var package in ServicePackages)
+        {
+            var input = GetPackageOverrideInput(package.Id);
+            if (!input.IsAvailable)
+            {
+                overrides.Add(new JobServicePackageOverride
+                {
+                    ServicePackageJobId = BuildGlobalServicePackageTemplateKey(package.Id),
+                    IsAvailableAsAdditionalService = false,
+                    Minutes = 0,
+                    PriceIncVat = 0m
+                });
+                continue;
+            }
+
+            if (input.CustomPriceInput.HasValue && input.CustomPriceInput.Value < 0m)
+            {
+                validationError = $"Add-on price for {package.Name} must be 0 or greater.";
+                return new List<JobServicePackageOverride>();
+            }
+
+            var reduction = ResolvePackageReduction(package.Id);
+            var reducedMinutes = ResolveAddOnMinutes(service.DefaultMinutes, reduction);
+            var defaultPrice = ResolveDefaultAddOnPrice(service, reducedMinutes);
+            var finalMinutes = ResolveAddOnMinutesInput(input, reducedMinutes);
+            var autoPriceForFinalMinutes = ResolveDefaultAddOnPrice(service, finalMinutes);
+            var finalPrice = input.UseCustomPrice
+                ? decimal.Round(Math.Max(0m, input.CustomPriceInput ?? autoPriceForFinalMinutes), 2, MidpointRounding.AwayFromZero)
+                : autoPriceForFinalMinutes;
+
+            if (finalMinutes == reducedMinutes && finalPrice == defaultPrice)
+                continue;
+
+            overrides.Add(new JobServicePackageOverride
+            {
+                ServicePackageJobId = BuildGlobalServicePackageTemplateKey(package.Id),
+                IsAvailableAsAdditionalService = true,
+                Minutes = finalMinutes,
+                PriceIncVat = finalPrice
+            });
+        }
+
+        return overrides
+            .OrderBy(overrideItem => overrideItem.ServicePackageJobId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private int ResolvePackageReduction(int globalServicePackageTemplateId)
+        => AddOnReductionByPackageTemplateId.TryGetValue(globalServicePackageTemplateId, out var reductionMinutes)
+            ? Math.Max(0, reductionMinutes)
+            : 0;
+
+    private static int ResolveAddOnMinutes(int serviceMinutes, int reductionMinutes)
+        => Math.Max(0, Math.Max(0, serviceMinutes) - Math.Max(0, reductionMinutes));
+
+    private bool IsServiceIncludedInPackage(
+        int globalServicePackageTemplateId,
+        int globalServiceTemplateId,
+        IReadOnlyDictionary<int, GlobalServicePackageTemplate> packagesById)
+    {
+        if (globalServicePackageTemplateId <= 0 || globalServiceTemplateId <= 0)
+            return false;
+
+        return IsServiceIncludedInPackageRecursive(
+            globalServicePackageTemplateId,
+            globalServiceTemplateId,
+            packagesById,
+            new HashSet<int>());
+    }
+
+    private static bool IsServiceIncludedInPackageRecursive(
+        int globalServicePackageTemplateId,
+        int globalServiceTemplateId,
+        IReadOnlyDictionary<int, GlobalServicePackageTemplate> packagesById,
+        HashSet<int> traversalPath)
+    {
+        if (!traversalPath.Add(globalServicePackageTemplateId))
+            return false;
+
+        if (!packagesById.TryGetValue(globalServicePackageTemplateId, out var package))
+        {
+            traversalPath.Remove(globalServicePackageTemplateId);
+            return false;
+        }
+
+        foreach (var item in package.Items ?? new List<GlobalServicePackageItemDefinition>())
+        {
+            if (item.ItemType == GlobalServicePackageItemType.Service
+                && item.LinkedGlobalServiceTemplateId.GetValueOrDefault() == globalServiceTemplateId)
+            {
+                return true;
+            }
+
+            if (item.ItemType != GlobalServicePackageItemType.IncludePackage
+                || !item.IncludedGlobalServicePackageTemplateId.HasValue)
+            {
+                continue;
+            }
+
+            if (IsServiceIncludedInPackageRecursive(
+                    item.IncludedGlobalServicePackageTemplateId.Value,
+                    globalServiceTemplateId,
+                    packagesById,
+                    traversalPath))
+            {
+                return true;
+            }
+        }
+
+        traversalPath.Remove(globalServicePackageTemplateId);
+        return false;
+    }
+
+    private decimal ResolveDefaultAddOnPrice(GlobalServiceTemplate _, int addOnMinutes)
+    {
+        if (addOnMinutes <= 0)
+            return 0m;
+
+        var raw = decimal.Round((addOnMinutes / 60m) * DefaultHourlyRate, 2, MidpointRounding.AwayFromZero);
+        return ApplyPriceRounding(raw);
+    }
+
+    private decimal ApplyPriceRounding(decimal value)
+    {
+        var increment = NormalizeRoundingIncrement(AutoPriceRoundingIncrement);
+        if (increment <= 0.01m)
+            return decimal.Round(value, 2, MidpointRounding.AwayFromZero);
+
+        var ratio = value / increment;
+        var roundedRatio = AutoPriceRoundingMode switch
+        {
+            PriceRoundingMode.Up => decimal.Ceiling(ratio),
+            PriceRoundingMode.Nearest => decimal.Round(ratio, 0, MidpointRounding.AwayFromZero),
+            _ => decimal.Floor(ratio)
+        };
+
+        return decimal.Round(roundedRatio * increment, 2, MidpointRounding.AwayFromZero);
+    }
+
+    private static decimal NormalizeRoundingIncrement(decimal increment)
+    {
+        var supported = new[] { 0.01m, 0.25m, 0.50m, 1.00m };
+        if (supported.Contains(increment))
+            return increment;
+
+        return 0.50m;
+    }
+
+    private static bool TryParseGlobalServicePackageTemplateId(string? value, out int globalServicePackageTemplateId)
+    {
+        globalServicePackageTemplateId = 0;
+        if (!int.TryParse((value ?? "").Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+            return false;
+
+        if (parsed <= 0)
+            return false;
+
+        globalServicePackageTemplateId = parsed;
+        return true;
+    }
+
+    private static string BuildGlobalServicePackageTemplateKey(int globalServicePackageTemplateId)
+        => Math.Max(0, globalServicePackageTemplateId).ToString(CultureInfo.InvariantCulture);
+
+    private static JobServicePackageOverride ClonePackageOverride(JobServicePackageOverride source)
+        => new()
+        {
+            ServicePackageJobId = (source.ServicePackageJobId ?? "").Trim(),
+            IsAvailableAsAdditionalService = source.IsAvailableAsAdditionalService,
+            Minutes = source.IsAvailableAsAdditionalService ? Math.Max(0, source.Minutes) : 0,
+            PriceIncVat = source.IsAvailableAsAdditionalService
+                ? decimal.Round(Math.Max(0m, source.PriceIncVat), 2, MidpointRounding.AwayFromZero)
+                : 0m
+        };
+
+    private bool IsGroupExpanded(string category)
+        => ExpandedGroups.Contains(category);
+
+    private void ToggleGroup(string category)
+    {
+        if (!ExpandedGroups.Add(category))
+            ExpandedGroups.Remove(category);
+    }
+
+    private static string BuildSubgroupKey(string category1, string category2)
+        => $"{NormalizeCategory(category1)}::{NormalizeCategory2(category2)}";
+
+    private int GetCategory1SortOrder(string category1)
+    {
+        var normalized = NormalizeCategory(category1);
+        return Category1Order.TryGetValue(normalized, out var order)
+            ? order
+            : UnknownCategoryOrder;
+    }
+
+    private int GetCategory2SortOrder(string category1, string category2)
+    {
+        var normalizedCategory2 = NormalizeCategory2(category2);
+        if (string.IsNullOrWhiteSpace(normalizedCategory2))
+            return -1;
+
+        var normalizedCategory1 = NormalizeCategory(category1);
+        if (Category2Order.TryGetValue(normalizedCategory1, out var map)
+            && map.TryGetValue(normalizedCategory2, out var order))
+        {
+            return order;
+        }
+
+        return UnknownCategoryOrder;
+    }
+
+    private bool IsSubgroupExpanded(string subgroupKey)
+        => ExpandedSubgroups.Contains(subgroupKey);
+
+    private void ToggleSubgroup(string subgroupKey)
+    {
+        if (!ExpandedSubgroups.Add(subgroupKey))
+            ExpandedSubgroups.Remove(subgroupKey);
+    }
+
+    private void SyncExpandedGroups()
+    {
+        var allGroups = Services
+            .Select(s => NormalizeCategory(s.Category1))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var allSubgroups = Services
+            .Select(s => BuildSubgroupKey(s.Category1, s.Category2))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (!GroupExpansionInitialized)
+        {
+            ExpandedGroups.Clear();
+            foreach (var group in allGroups)
+                ExpandedGroups.Add(group);
+
+            GroupExpansionInitialized = true;
+        }
+        else
+        {
+            ExpandedGroups.RemoveWhere(group => !allGroups.Contains(group));
+            foreach (var group in allGroups)
+                ExpandedGroups.Add(group);
+        }
+
+        if (!SubgroupExpansionInitialized)
+        {
+            ExpandedSubgroups.Clear();
+            foreach (var subgroup in allSubgroups)
+                ExpandedSubgroups.Add(subgroup);
+
+            SubgroupExpansionInitialized = true;
+        }
+        else
+        {
+            ExpandedSubgroups.RemoveWhere(subgroup => !allSubgroups.Contains(subgroup));
+            foreach (var subgroup in allSubgroups)
+                ExpandedSubgroups.Add(subgroup);
+        }
+    }
+
+    private void RefreshCategoryOrderMaps()
+    {
+        Category1Order = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        Category2Order = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+        var nextCategory1 = 0;
+        var orderedRows = Categories
+            .OrderBy(c => c.SortOrder)
+            .ThenBy(c => c.Category1, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(c => c.Category2, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var rootRows = orderedRows
+            .Where(c => string.IsNullOrWhiteSpace((c.Category2 ?? "").Trim()))
+            .ToList();
+        var subRows = orderedRows
+            .Where(c => !string.IsNullOrWhiteSpace((c.Category2 ?? "").Trim()))
+            .ToList();
+
+        foreach (var root in rootRows)
+        {
+            var category1 = NormalizeCategory(root.Category1);
+            if (Category1Order.ContainsKey(category1))
+                continue;
+
+            Category1Order[category1] = nextCategory1++;
+            Category2Order[category1] = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                [NormalizeCategory2("")] = -1
+            };
+        }
+
+        foreach (var sub in subRows)
+        {
+            var category1 = NormalizeCategory(sub.Category1);
+            if (!Category1Order.ContainsKey(category1))
+                Category1Order[category1] = nextCategory1++;
+        }
+
+        foreach (var sub in subRows
+                     .OrderBy(c => Category1Order.TryGetValue(NormalizeCategory(c.Category1), out var order) ? order : UnknownCategoryOrder)
+                     .ThenBy(c => c.SortOrder)
+                     .ThenBy(c => c.Category2, StringComparer.OrdinalIgnoreCase))
+        {
+            var category1 = NormalizeCategory(sub.Category1);
+            var category2 = NormalizeCategory2(sub.Category2);
+            if (string.IsNullOrWhiteSpace((sub.Category2 ?? "").Trim()))
+                continue;
+
+            if (!Category2Order.TryGetValue(category1, out var map))
+            {
+                map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                Category2Order[category1] = map;
+            }
+
+            if (map.ContainsKey(category2))
+                continue;
+
+            map[category2] = map.Values.DefaultIfEmpty(-1).Max() + 1;
+        }
+    }
+
+    private static string FormatServiceMeta(GlobalServiceTemplate service)
+    {
+        var priceValue = service.PricingMode == ServicePricingMode.EstimatedPrice
+            ? Math.Max(0m, service.EstimatedPriceIncVat)
+            : Math.Max(0m, service.BasePriceIncVat);
+
+        var modeLabel = service.PricingMode switch
+        {
+            ServicePricingMode.AutoRate => $"Auto ({service.AutoPricingTier})",
+            ServicePricingMode.EstimatedPrice => "Estimated",
+            _ => "Fixed"
+        };
+
+        var packageOverrideCount = service.PackageOverrides?.Count ?? 0;
+        var addOnLabel = packageOverrideCount > 0
+            ? $" / {packageOverrideCount} package add-on settings"
+            : "";
+
+        return $"GBP {priceValue:0.##} / {Math.Max(0, service.DefaultMinutes)} mins / {modeLabel}{addOnLabel}";
+    }
+
+    private async Task EnsureServiceDndAsync()
+    {
+        if (DotNetRef is null)
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "workshopStatusDnd.initSelector",
+                ".service-dnd-list",
+                DotNetRef,
+                "ReorderService",
+                ".service-dnd-row",
+                ".service-drag-handle");
+        }
+        catch
+        {
+            // No-op if drag init fails.
+        }
+    }
+
+    private sealed class PackageOverrideInput
+    {
+        public bool IsAvailable { get; set; } = true;
+        public int? MinutesInput { get; set; }
+        public bool UseCustomPrice { get; set; }
+        public decimal? CustomPriceInput { get; set; }
+    }
+
+    private sealed record PricingModeOption(ServicePricingMode Value, string Text);
+
+    private sealed record HourlyRateTierOption(ServiceHourlyRateTier Value, string Text);
+
+    private sealed record SkillLevelOption(string Value, string Text);
+
+    private sealed record ServiceCategory2Group(string Category2, List<GlobalServiceTemplate> Services);
+
+    private sealed record ServiceCategory1Group(string Category1, List<ServiceCategory2Group> Category2Groups)
+    {
+        public int TotalCount => Category2Groups.Sum(g => g.Services.Count);
     }
 }

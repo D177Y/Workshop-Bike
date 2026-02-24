@@ -193,12 +193,14 @@
         }
     }
 
-    private static readonly IReadOnlyList<UpgradeOption> AllPlanOptions = new List<UpgradeOption>
-    {
-        new(PlanTier.Starter, "Starter", 1, "GBP 15 / month", "Great for single-mechanic workshops."),
-        new(PlanTier.Standard, "Standard", 6, "GBP 25 / month", "Best for growing workshops with multiple mechanics."),
-        new(PlanTier.Premium, "Premium", 36, "GBP 45 / month", "Scale up with larger teams and busier schedules.")
-    };
+    private static readonly IReadOnlyList<UpgradeOption> AllPlanOptions = PlanCatalog.Ordered
+        .Select(definition => new UpgradeOption(
+            definition.Tier,
+            definition.Name,
+            definition.MechanicLimit,
+            $"GBP {definition.MonthlyPrice:0} / month",
+            GetPlanDescription(definition.Tier)))
+        .ToList();
 
     private IReadOnlyList<UpgradeOption> UpgradeOptions =>
         AllPlanOptions
@@ -282,6 +284,15 @@
         PlanTier.Premium => 2,
         PlanTier.Enterprise => 3,
         _ => -1
+    };
+
+    private static string GetPlanDescription(PlanTier tier) => tier switch
+    {
+        PlanTier.Starter => "Great for single-mechanic workshops.",
+        PlanTier.Standard => "Best for growing workshops with multiple mechanics.",
+        PlanTier.Premium => "Scale up with larger teams and busier schedules.",
+        PlanTier.Enterprise => "For multi-store operations with EPOS integration (Abacus).",
+        _ => "Plan upgrade."
     };
 
     private sealed record UpgradeOption(

@@ -367,8 +367,8 @@
                                    checked="@_selectedQuoteJobIds.Contains(job.Id)"
                                    @onchange="e => ToggleQuoteJob(job.Id, e)" />
                             <span class="quote-job-name">@job.Name</span>
-                            <span class="quote-job-meta">@job.DefaultMinutes mins</span>
-                            <span class="quote-job-meta">GBP @job.BasePriceIncVat.ToString("0.00")</span>
+                            <span class="quote-job-meta">@GetQuoteJobMinutesLabel(job)</span>
+                            <span class="quote-job-meta">@GetQuoteJobPriceLabel(job)</span>
                             @if (IsServicePackage(job))
                             {
                                 <span class="package-tag">Package</span>
@@ -377,6 +377,37 @@
                     }
                 }
             </div>
+
+            @if (SelectedManualQuoteJobs.Count > 0)
+            {
+                <section class="quote-manual-section">
+                    <h5>Manual time and price required</h5>
+                    @foreach (var job in SelectedManualQuoteJobs)
+                    {
+                        var hasError = IsManualQuoteOverrideInvalid(job.Id);
+                        <div class="quote-manual-row">
+                            <span class="quote-manual-name">@job.Name</span>
+                            <label>
+                                Minutes
+                                <input type="number"
+                                       min="0"
+                                       value="@GetManualQuoteMinutes(job.Id)"
+                                       class="@(hasError ? "manual-input-error" : "")"
+                                       @onchange="e => SetManualQuoteMinutes(job.Id, e)" />
+                            </label>
+                            <label>
+                                Price (GBP)
+                                <input type="number"
+                                       min="0"
+                                       step="0.01"
+                                       value="@GetManualQuotePrice(job.Id).ToString("0.00")"
+                                       class="@(hasError ? "manual-input-error" : "")"
+                                       @onchange="e => SetManualQuotePrice(job.Id, e)" />
+                            </label>
+                        </div>
+                    }
+                </section>
+            }
 
             <div class="estimate-summary">
                 <div><strong>Selected options:</strong> @(SelectedQuoteJobs.Count == 0 ? "-" : string.Join(", ", SelectedQuoteJobs.Select(j => j.Name)))</div>
@@ -419,6 +450,13 @@
                 </div>
             }
 
+            @if (MissingManualQuoteOverrideCount > 0)
+            {
+                <div class="validation-banner">
+                    Set minutes and price for @MissingManualQuoteOverrideCount TBC service(s) before saving or sending to booking.
+                </div>
+            }
+
             <div class="final-actions">
                 <button type="button" class="btn-secondary" @onclick="SaveQuote">Save quote</button>
                 <button type="button" class="btn-secondary" @onclick="EmailQuote">Email quote to customer + booking</button>
@@ -437,6 +475,7 @@
     private readonly List<AssessmentCheckState> _beginnerChecks = BuildBeginnerChecks();
     private readonly List<AssessmentCheckState> _advancedChecks = BuildAdvancedChecks();
     private readonly HashSet<string> _selectedQuoteJobIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, CustomerQuoteManualServiceOverride> _manualQuoteOverridesByJobId = new(StringComparer.OrdinalIgnoreCase);
     private UserAccessScope _userAccess = UserAccessScope.AllowAll();
     private string _statusMessage = "";
     private bool _statusIsError;
@@ -538,6 +577,12 @@
             .ThenBy(j => j.Name)
             .ToList();
 
+    private List<JobDefinition> SelectedManualQuoteJobs =>
+        SelectedQuoteJobs
+            .Where(RequiresManualQuoteAtUse)
+            .OrderBy(j => j.Name)
+            .ToList();
+
     private List<JobDefinition> ServicePackageJobs =>
         Catalog.Jobs
             .Where(IsServicePackage)
@@ -546,10 +591,11 @@
 
     private List<JobDefinition> RecommendedJobs => GetRecommendedJobs();
 
-    private int QuoteMinutes => SelectedQuoteJobs.Sum(j => j.DefaultMinutes);
-    private decimal QuotePrice => SelectedQuoteJobs.Sum(j => j.BasePriceIncVat);
-    private decimal TargetedRepairTotal => SelectedQuoteJobs.Where(j => !IsServicePackage(j)).Sum(j => j.BasePriceIncVat);
+    private int QuoteMinutes => SelectedQuoteJobs.Sum(j => ResolveQuoteJobMinutes(j));
+    private decimal QuotePrice => SelectedQuoteJobs.Sum(j => ResolveQuoteJobPrice(j));
+    private decimal TargetedRepairTotal => SelectedQuoteJobs.Where(j => !IsServicePackage(j)).Sum(j => ResolveQuoteJobPrice(j));
     private int MissingNoteCount => ActiveChecks.Count(c => RequiresNote(c) && string.IsNullOrWhiteSpace(c.Note));
+    private int MissingManualQuoteOverrideCount => SelectedManualQuoteJobs.Count(j => IsManualQuoteOverrideInvalid(j.Id));
 
     private JobDefinition? SuggestedPackage
     {
@@ -615,6 +661,130 @@
 
     private static bool IsServicePackage(JobDefinition job) =>
         job.Category.Equals("Service Packages", StringComparison.OrdinalIgnoreCase);
+
+    private bool RequiresManualQuoteAtUse(JobDefinition job)
+        => Catalog.RequiresManualQuoteAtUse(job);
+
+    private int ResolveQuoteJobMinutes(JobDefinition job)
+    {
+        if (!RequiresManualQuoteAtUse(job))
+            return Math.Max(0, job.DefaultMinutes);
+
+        return _manualQuoteOverridesByJobId.TryGetValue(job.Id, out var overrideValue)
+            ? Math.Max(0, overrideValue.Minutes)
+            : 0;
+    }
+
+    private decimal ResolveQuoteJobPrice(JobDefinition job)
+    {
+        if (!RequiresManualQuoteAtUse(job))
+            return Math.Max(0m, job.BasePriceIncVat);
+
+        return _manualQuoteOverridesByJobId.TryGetValue(job.Id, out var overrideValue)
+            ? Math.Max(0m, overrideValue.PriceIncVat)
+            : 0m;
+    }
+
+    private string GetQuoteJobMinutesLabel(JobDefinition job)
+        => RequiresManualQuoteAtUse(job) ? "TBC mins" : $"{Math.Max(0, job.DefaultMinutes)} mins";
+
+    private string GetQuoteJobPriceLabel(JobDefinition job)
+        => RequiresManualQuoteAtUse(job) ? "TBC price" : $"GBP {Math.Max(0m, job.BasePriceIncVat):0.00}";
+
+    private int GetManualQuoteMinutes(string jobId)
+        => _manualQuoteOverridesByJobId.TryGetValue(jobId, out var value) ? Math.Max(0, value.Minutes) : 0;
+
+    private decimal GetManualQuotePrice(string jobId)
+        => _manualQuoteOverridesByJobId.TryGetValue(jobId, out var value) ? Math.Max(0m, value.PriceIncVat) : 0m;
+
+    private bool IsManualQuoteOverrideInvalid(string jobId)
+    {
+        if (!_manualQuoteOverridesByJobId.TryGetValue(jobId, out var value))
+            return true;
+
+        return value.Minutes <= 0 || value.PriceIncVat <= 0m;
+    }
+
+    private void SetManualQuoteMinutes(string jobId, ChangeEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+            return;
+
+        var current = _manualQuoteOverridesByJobId.TryGetValue(jobId, out var existing)
+            ? existing
+            : new CustomerQuoteManualServiceOverride { JobId = jobId };
+
+        if (int.TryParse(e?.Value?.ToString(), out var minutes))
+            current.Minutes = Math.Max(0, minutes);
+
+        _manualQuoteOverridesByJobId[jobId] = current;
+    }
+
+    private void SetManualQuotePrice(string jobId, ChangeEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+            return;
+
+        var current = _manualQuoteOverridesByJobId.TryGetValue(jobId, out var existing)
+            ? existing
+            : new CustomerQuoteManualServiceOverride { JobId = jobId };
+
+        var raw = (e?.Value?.ToString() ?? "").Trim();
+        if (decimal.TryParse(raw, out var price)
+            || decimal.TryParse(raw, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out price))
+        {
+            current.PriceIncVat = decimal.Round(Math.Max(0m, price), 2, MidpointRounding.AwayFromZero);
+        }
+
+        _manualQuoteOverridesByJobId[jobId] = current;
+    }
+
+    private void SyncManualQuoteOverrides()
+    {
+        var selectedManualJobs = SelectedQuoteJobs
+            .Where(RequiresManualQuoteAtUse)
+            .ToList();
+
+        var selectedIds = selectedManualJobs
+            .Select(j => j.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var staleIds = _manualQuoteOverridesByJobId.Keys
+            .Where(id => !selectedIds.Contains(id))
+            .ToList();
+        foreach (var staleId in staleIds)
+            _manualQuoteOverridesByJobId.Remove(staleId);
+
+        foreach (var job in selectedManualJobs)
+        {
+            if (_manualQuoteOverridesByJobId.ContainsKey(job.Id))
+                continue;
+
+            _manualQuoteOverridesByJobId[job.Id] = new CustomerQuoteManualServiceOverride
+            {
+                JobId = job.Id,
+                Minutes = Math.Max(0, job.DefaultMinutes),
+                PriceIncVat = 0m
+            };
+        }
+    }
+
+    private string BuildManualQuoteOverridesQueryValue()
+    {
+        var items = SelectedManualQuoteJobs
+            .Where(job => _manualQuoteOverridesByJobId.TryGetValue(job.Id, out var value)
+                          && value.Minutes > 0
+                          && value.PriceIncVat > 0m)
+            .Select(job =>
+            {
+                var value = _manualQuoteOverridesByJobId[job.Id];
+                var priceText = value.PriceIncVat.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                return $"{job.Id}:{value.Minutes}:{priceText}";
+            })
+            .ToList();
+
+        return items.Count == 0 ? "" : string.Join(",", items);
+    }
 
     private void SetOutcome(AssessmentCheckState item, AssessmentOutcome outcome)
     {
@@ -857,6 +1027,8 @@
         {
             _selectedQuoteJobIds.Remove(jobId);
         }
+
+        SyncManualQuoteOverrides();
     }
 
     private void ApplySuggestedPackage()
@@ -869,12 +1041,15 @@
             _selectedQuoteJobIds.Remove(servicePackage.Id);
 
         _selectedQuoteJobIds.Add(package.Id);
+        SyncManualQuoteOverrides();
     }
 
     private void UseTargetedRepairsOnly()
     {
         foreach (var servicePackage in ServicePackageJobs)
             _selectedQuoteJobIds.Remove(servicePackage.Id);
+
+        SyncManualQuoteOverrides();
     }
 
     private void LoadSavedQuote(string quoteId)
@@ -897,6 +1072,23 @@
             if (Catalog.Jobs.Any(j => j.Id.Equals(jobId, StringComparison.OrdinalIgnoreCase)))
                 _selectedQuoteJobIds.Add(jobId);
         }
+
+        _manualQuoteOverridesByJobId.Clear();
+        foreach (var overrideValue in quote.ManualServiceOverrides ?? new List<CustomerQuoteManualServiceOverride>())
+        {
+            var jobId = (overrideValue.JobId ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(jobId))
+                continue;
+
+            _manualQuoteOverridesByJobId[jobId] = new CustomerQuoteManualServiceOverride
+            {
+                JobId = jobId,
+                Minutes = Math.Max(0, overrideValue.Minutes),
+                PriceIncVat = decimal.Round(Math.Max(0m, overrideValue.PriceIncVat), 2, MidpointRounding.AwayFromZero)
+            };
+        }
+
+        SyncManualQuoteOverrides();
 
         _statusMessage = $"Loaded quote from {quote.CreatedUtc.ToLocalTime():dd MMM yyyy HH:mm}.";
         _statusIsError = false;
@@ -969,6 +1161,13 @@
             return (null, null);
         }
 
+        if (MissingManualQuoteOverrideCount > 0)
+        {
+            _statusMessage = "Set minutes and price for all TBC services before saving this quote.";
+            _statusIsError = true;
+            return (null, null);
+        }
+
         if (string.IsNullOrWhiteSpace(SelectedBikeDetails))
         {
             _statusMessage = "Select one bike for this quote before saving.";
@@ -990,6 +1189,19 @@
             BikeDetails = SelectedBikeDetails,
             JobIds = SelectedQuoteJobs.Select(j => j.Id).ToArray(),
             JobNames = SelectedQuoteJobs.Select(j => j.Name).ToArray(),
+            ManualServiceOverrides = SelectedManualQuoteJobs
+                .Where(j => _manualQuoteOverridesByJobId.TryGetValue(j.Id, out var value))
+                .Select(j =>
+                {
+                    var value = _manualQuoteOverridesByJobId[j.Id];
+                    return new CustomerQuoteManualServiceOverride
+                    {
+                        JobId = j.Id,
+                        Minutes = Math.Max(0, value.Minutes),
+                        PriceIncVat = decimal.Round(Math.Max(0m, value.PriceIncVat), 2, MidpointRounding.AwayFromZero)
+                    };
+                })
+                .ToList(),
             EstimatedMinutes = QuoteMinutes,
             EstimatedPriceIncVat = QuotePrice,
             Notes = BuildBookingNotes(),
@@ -1034,6 +1246,8 @@
                     _selectedQuoteJobIds.Add(fallbackPackage.Id);
             }
         }
+
+        SyncManualQuoteOverrides();
     }
 
     private void RebuildCustomerIndex()
@@ -1380,6 +1594,15 @@
             BikeDetails = quote.BikeDetails,
             JobIds = quote.JobIds.ToArray(),
             JobNames = quote.JobNames.ToArray(),
+            ManualServiceOverrides = (quote.ManualServiceOverrides ?? new List<CustomerQuoteManualServiceOverride>())
+                .Select(o => new CustomerQuoteManualServiceOverride
+                {
+                    JobId = (o.JobId ?? "").Trim(),
+                    Minutes = Math.Max(0, o.Minutes),
+                    PriceIncVat = decimal.Round(Math.Max(0m, o.PriceIncVat), 2, MidpointRounding.AwayFromZero)
+                })
+                .Where(o => !string.IsNullOrWhiteSpace(o.JobId))
+                .ToList(),
             EstimatedMinutes = quote.EstimatedMinutes,
             EstimatedPriceIncVat = quote.EstimatedPriceIncVat,
             Notes = quote.Notes,

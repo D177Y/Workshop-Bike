@@ -1,18 +1,27 @@
-﻿@page "/pricing"
+@page "/pricing"
 @layout MarketingLayout
 @attribute [AllowAnonymous]
 @using System.Net
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthStateProvider
 
 <Section>
     <div class="mk-center-head mk-reveal">
         <h1 class="mk-page-title">Simple, transparent pricing</h1>
-        <p class="mk-page-sub">Start free. Scale when you're ready.</p>
+        <p class="mk-page-sub">@PageSubtitle</p>
     </div>
+
+    @if (PaidOnlyMode && !string.IsNullOrWhiteSpace(ReasonMessage))
+    {
+        <div class="mk-signup-message mk-signup-message-error" style="max-width:760px;margin:0 auto 20px;">
+            @ReasonMessage
+        </div>
+    }
 
     <div class="mk-pricing-toggle-wrap">
         <div class="mk-pricing-toggle" role="group" aria-label="Billing toggle">
             <button type="button" class="@(AnnualBilling ? string.Empty : "active")" @onclick="() => AnnualBilling = false">Monthly</button>
-            <button type="button" class="@(AnnualBilling ? "active" : string.Empty)" @onclick="() => AnnualBilling = true">Annual <span>Save 17%</span></button>
+            <button type="button" class="@(AnnualBilling ? "active" : string.Empty)" @onclick="() => AnnualBilling = true">Pay annually <span>(2 months free)</span></button>
         </div>
     </div>
 
@@ -20,40 +29,40 @@
         <PricingCard Name="Starter"
                      Description="For single-store workshops getting started."
                      MonthlyPrice="£15"
-                     AnnualPrice="£12"
+                     AnnualPrice="£150"
                      Features="@StarterFeatures"
                      AnnualBilling="@AnnualBilling"
-                     CtaHref="/signup"
-                     CtaText="Start free trial" />
+                     CtaHref="@StarterPlanHref"
+                     CtaText="@PlanCtaText" />
 
         <PricingCard Name="Standard"
                      Description="For growing workshops running multiple mechanics."
                      MonthlyPrice="£25"
-                     AnnualPrice="£21"
+                     AnnualPrice="£250"
                      Features="@StandardFeatures"
                      AnnualBilling="@AnnualBilling"
                      IsPopular="true"
-                     CtaHref="/signup"
-                     CtaText="Start free trial" />
+                     CtaHref="@StandardPlanHref"
+                     CtaText="@PlanCtaText" />
 
         <PricingCard Name="Premium"
                      Description="For high-volume workshops needing scale."
-                     MonthlyPrice="£49"
-                     AnnualPrice="£41"
+                     MonthlyPrice="£45"
+                     AnnualPrice="£450"
                      Features="@PremiumFeatures"
                      AnnualBilling="@AnnualBilling"
-                     CtaHref="/signup"
-                     CtaText="Start free trial" />
+                     CtaHref="@PremiumPlanHref"
+                     CtaText="@PlanCtaText" />
 
         <PricingCard Name="Enterprise"
                      Description="For large operations across many locations."
                      MonthlyPrice="£99"
-                     AnnualPrice="£82"
+                     AnnualPrice="£990"
                      Features="@EnterpriseFeatures"
                      AnnualBilling="@AnnualBilling"
                      ExtraCtaTopSpace="true"
-                     CtaHref="/signup"
-                     CtaText="Start free trial" />
+                     CtaHref="@EnterprisePlanHref"
+                     CtaText="@PlanCtaText" />
     </div>
 </Section>
 
@@ -67,7 +76,7 @@
                 <tr><th>Feature</th><th>Starter</th><th>Standard</th><th>Premium</th><th>Enterprise</th></tr>
             </thead>
             <tbody>
-                @foreach (var row in ComparisonRows)
+                @foreach (var row in ComparisonRowsView)
                 {
                     <tr>
                         <td>@row.Name</td>
@@ -87,20 +96,105 @@
         <h2>Frequently asked questions</h2>
     </div>
     <div class="mk-faq-wrap">
-        <FAQAccordion Items="@FaqItems" />
+        <FAQAccordion Items="@FaqItemsView" />
     </div>
 </Section>
 
 <Section Soft="true">
     <div class="mk-final-cta">
-        <h2>Start your free trial today</h2>
-        <p>No credit card required. Set up in under a minute.</p>
-        <a class="mk-btn mk-btn-primary" href="/signup">Get started free</a>
+        @if (PaidOnlyMode)
+        {
+            <h2>Choose your paid plan</h2>
+            <p>Pick monthly or annual billing and continue securely to Stripe checkout.</p>
+            <a class="mk-btn mk-btn-primary" href="@StandardPlanHref">Choose paid plan</a>
+        }
+        else
+        {
+            <h2>Start your free trial today</h2>
+            <p>No credit card required. Set up in under a minute.</p>
+            <a class="mk-btn mk-btn-primary" href="@BuildSignupHref()">Get started free</a>
+        }
     </div>
 </Section>
 
 @code {
+    [SupplyParameterFromQuery(Name = "paid")]
+    public string? PaidQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "reason")]
+    public string? ReasonQuery { get; set; }
+
     private bool AnnualBilling;
+    private bool PaidOnlyMode;
+    private bool IsAuthenticated;
+
+    private string StarterPlanHref => BuildPlanHref("starter");
+    private string StandardPlanHref => BuildPlanHref("standard");
+    private string PremiumPlanHref => BuildPlanHref("premium");
+    private string EnterprisePlanHref => BuildPlanHref("enterprise");
+    private string PlanCtaText => PaidOnlyMode ? "Choose paid plan" : "Start free trial";
+    private string PageSubtitle => PaidOnlyMode ? "Choose your paid plan and continue." : "Start free. Scale when you're ready.";
+    private string ReasonMessage => NormalizeReason(ReasonQuery) switch
+    {
+        "trial-used" => "A free trial has already been used for this account. Please choose a paid plan to continue.",
+        "subscription-inactive" => "Your subscription is not currently active. Choose a paid plan to continue using VeloLabs.",
+        "price-missing" => "That plan is not configured for checkout yet. Please choose another plan or contact support.",
+        _ => ""
+    };
+
+    private IReadOnlyList<ComparisonRow> ComparisonRowsView =>
+        PaidOnlyMode
+            ? ComparisonRows.Where(x => !string.Equals(x.Name, "14-day free trial", StringComparison.OrdinalIgnoreCase)).ToList()
+            : ComparisonRows;
+
+    private IReadOnlyList<FAQAccordion.FaqItem> FaqItemsView =>
+        PaidOnlyMode
+            ? FaqItems.Where(x => !string.Equals(x.Question, "Is there a free trial?", StringComparison.OrdinalIgnoreCase)).ToList()
+            : FaqItems;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        PaidOnlyMode = IsTruthy(PaidQuery);
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        IsAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+    }
+
+    private string BuildPlanHref(string plan)
+    {
+        if (!PaidOnlyMode)
+            return BuildSignupHref(plan);
+
+        var annual = AnnualBilling ? "1" : "0";
+        var checkout = $"/billing/start?plan={plan}&annual={annual}";
+        if (IsAuthenticated)
+            return checkout;
+
+        return $"/login?ReturnUrl={Uri.EscapeDataString(checkout)}";
+    }
+
+    private static bool IsTruthy(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        return value.Trim().ToLowerInvariant() is "1" or "true" or "yes";
+    }
+
+    private static string NormalizeReason(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return value.Trim().ToLowerInvariant();
+    }
+
+    private static string BuildSignupHref(string? plan = null)
+    {
+        if (string.IsNullOrWhiteSpace(plan))
+            return "/signup";
+
+        return $"/signup?plan={plan}";
+    }
 
     private static readonly IReadOnlyList<string> StarterFeatures =
     [
@@ -166,8 +260,8 @@
     [
         new("Is there a free trial?", "Yes. Every plan includes a 14-day free trial with no card required."),
         new("Can I switch plans later?", "Yes. Upgrade or downgrade at any time as your workshop changes."),
-        new("What happens when my trial ends?", "Choose a paid plan to continue. Your data stays intact."),
-        new("Do you offer discounts for annual billing?", "Yes. Annual billing provides roughly 17% savings."),
+        new("What happens when my trial ends?", "Choose a paid plan to continue. Data is retained for a limited period before deletion."),
+        new("Do you offer discounts for annual billing?", "Yes. Annual billing gives 12 months for the price of 10."),
         new("Can I add more stores later?", "Yes. Move to a higher plan whenever you need additional locations."),
         new("Is my data secure?", "We use secure hosting, role controls, and encrypted transport."),
         new("Do you integrate with other tools?", "Timetastic integration is available and more integrations are planned."),

@@ -178,6 +178,10 @@
         margin: 0;
     }
 
+    .manual-pricing-row {
+        grid-template-columns: minmax(220px, 1fr) 100px 120px;
+    }
+
     .job-meta {
         color: #666;
         white-space: nowrap;
@@ -513,6 +517,10 @@
         .bike-editor-grid {
             grid-template-columns: 1fr;
         }
+
+        .manual-pricing-row {
+            grid-template-columns: 1fr;
+        }
     }
 </style>
 
@@ -576,6 +584,7 @@ else
                                              IsGroupOpen="IsGroupOpen"
                                              ToggleGroup="ToggleGroup"
                                              IsJobSelected="IsJobSelected"
+                                             GetJobMeta="GetJobMeta"
                                              ToggleJob="OnServiceDetailsJobToggle"
                                              CanSelectPackageServices="CanSelectPackageServices"
                                              PackageServiceFilter="PackageServiceFilter"
@@ -586,6 +595,12 @@ else
                                              SelectedPackageServices="SelectedPackageServices"
                                              TogglePackageService="OnServiceDetailsPackageToggle"
                                              GetPackageServiceMeta="GetPackageServiceMeta"
+                                             SelectedManualPricingJobs="SelectedManualPricingJobs"
+                                             GetManualServiceMinutes="GetManualServiceMinutes"
+                                             GetManualServicePrice="GetManualServicePrice"
+                                             IsManualServiceInputInvalid="IsManualServiceInputInvalid"
+                                             UpdateManualServiceMinutes="OnManualServiceMinutesChanged"
+                                             UpdateManualServicePrice="OnManualServicePriceChanged"
                                              JobNotes="JobNotes"
                                              JobNotesChanged="SetJobNotes"
                                              SelectedJobCount="SelectedJobIds.Count" />
@@ -636,8 +651,10 @@ else
                                   OnBack="PrevStep"
                                   OnNext="NextStep"
                                   OnSubmit="Create" />
-
-        @* message block removed *@
+        @if (!string.IsNullOrWhiteSpace(Message))
+        {
+            <div class="customer-status error">@Message</div>
+        }
     </div>
 
     <CreateBookingSummarySidebar SummaryEarliestDate="SummaryEarliestDate"
@@ -663,6 +680,7 @@ else
     private readonly HashSet<string> ExpandedGroups = new(StringComparer.OrdinalIgnoreCase);
     private string PackageServiceFilter = "";
     private readonly HashSet<string> ExpandedPackageServiceGroups = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ManualServicePricingInput> ManualServicePricingByJobId = new(StringComparer.OrdinalIgnoreCase);
     private int ActiveStep
     {
         get => Wizard.ActiveStep;

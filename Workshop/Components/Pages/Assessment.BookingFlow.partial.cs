@@ -25,6 +25,7 @@ public partial class Assessment
         AddQuery(queryParts, "storeId", (quote.StoreId > 0 ? quote.StoreId : SelectedStoreId).ToString());
         AddQuery(queryParts, "quoteId", quote.Id);
         AddQuery(queryParts, "jobs", quote.JobIds.Length == 0 ? string.Join(",", SelectedQuoteJobs.Select(j => j.Id)) : string.Join(",", quote.JobIds));
+        AddQuery(queryParts, "manual", BuildManualQuoteOverridesQueryValue());
         AddQuery(queryParts, "notes", bookingNotes);
         AddQuery(queryParts, "customerAccountNumber", customer.AccountNumber);
         AddQuery(queryParts, "customerFirstName", customer.FirstName);

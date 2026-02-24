@@ -634,6 +634,59 @@ namespace Workshop.Migrations
                     b.ToTable("GlobalServiceCategories");
                 });
 
+            modelBuilder.Entity("Workshop.Models.GlobalServicePackageTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AutoPricingTier")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("BasePriceIncVat")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<int>("DefaultMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)");
+
+                    b.Property<decimal>("EstimatedPriceIncVat")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<string>("Items")
+                        .IsRequired()
+                        .HasColumnType("json");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<int>("PricingMode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SkillLevel")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("GlobalServicePackageTemplates");
+                });
+
             modelBuilder.Entity("Workshop.Models.GlobalServiceTemplate", b =>
                 {
                     b.Property<int>("Id")
@@ -672,6 +725,10 @@ namespace Workshop.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
+
+                    b.Property<string>("PackageOverrides")
+                        .IsRequired()
+                        .HasColumnType("json");
 
                     b.Property<string>("PartNumber")
                         .IsRequired()
@@ -1024,6 +1081,9 @@ namespace Workshop.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(1);
 
+                    b.Property<bool>("HasActivatedSubscription")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
@@ -1044,6 +1104,9 @@ namespace Workshop.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<DateTime?>("StripeCurrentPeriodEndUtc")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("StripeCustomerId")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -1052,7 +1115,24 @@ namespace Workshop.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<string>("StripeSubscriptionStatus")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime?>("StripeSubscriptionUpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("TrialDataPurgedAtUtc")
+                        .HasColumnType("datetime(6)");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("HasActivatedSubscription");
+
+                    b.HasIndex("StripeSubscriptionStatus");
+
+                    b.HasIndex("TrialDataPurgedAtUtc");
 
                     b.ToTable("Tenants");
                 });
@@ -1095,6 +1175,45 @@ namespace Workshop.Migrations
                     b.HasIndex("TenantId", "ReceivedUtc");
 
                     b.ToTable("TimetasticWebhookEvents");
+                });
+
+            modelBuilder.Entity("Workshop.Models.TrialExitFeedback", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Disliked")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
+                    b.Property<string>("Improvements")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
+                    b.Property<string>("NoSignupReason")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
+                    b.Property<DateTime>("SubmittedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "SubmittedAtUtc");
+
+                    b.ToTable("TrialExitFeedbackEntries");
                 });
 
             modelBuilder.Entity("Workshop.Models.UserMechanicAccess", b =>

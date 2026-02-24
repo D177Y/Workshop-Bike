@@ -1,0 +1,226 @@
+@page "/trial-access"
+@layout MarketingLayout
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Workshop.Data
+@using Workshop.Models
+@using Workshop.Services
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDbContextFactory<WorkshopDbContext> DbFactory
+@inject TrialLifecycleService TrialLifecycle
+@inject NavigationManager Nav
+@inject ILogger<TrialAccess> Logger
+
+<Section Soft="true">
+    <div class="mk-center-head">
+        <h1 class="mk-page-title">@_title</h1>
+        <p class="mk-page-sub">@_subtitle</p>
+    </div>
+
+    <article class="mk-card trial-access-card">
+        @if (_status.Phase == TrialLifecyclePhase.UpgradeWindow)
+        {
+            <p>Your free trial has ended.</p>
+            <p>Your data will be retained for <strong>@_status.DaysUntilFeedbackWindowEnd</strong> more @DaysLabel(_status.DaysUntilFeedbackWindowEnd) before deletion.</p>
+            <a class="mk-btn mk-btn-primary" href="/pricing?paid=1">UPGRADE NOW</a>
+        }
+        else if (_status.Phase == TrialLifecyclePhase.FeedbackWindow)
+        {
+            <p>Your free trial has ended.</p>
+            <p>Your data will be retained for <strong>@_status.DaysUntilFeedbackWindowEnd</strong> more @DaysLabel(_status.DaysUntilFeedbackWindowEnd) before deletion.</p>
+
+            <div class="trial-feedback-head">
+                <h2>Help us improve</h2>
+                <p>Thank you for trialling VeloLabs. Your feedback helps us improve for the next workshop.</p>
+            </div>
+
+            <EditForm Model="_feedback" OnValidSubmit="SubmitFeedbackAsync">
+                <DataAnnotationsValidator />
+
+                <div class="mk-field">
+                    <label for="feedback-disliked">What did you dislike about our product?</label>
+                    <InputTextArea id="feedback-disliked" class="mk-input trial-feedback-input" @bind-Value="_feedback.Disliked" />
+                    <ValidationMessage For="@(() => _feedback.Disliked)" />
+                </div>
+
+                <div class="mk-field">
+                    <label for="feedback-better">How could we make it better?</label>
+                    <InputTextArea id="feedback-better" class="mk-input trial-feedback-input" @bind-Value="_feedback.Improvements" />
+                    <ValidationMessage For="@(() => _feedback.Improvements)" />
+                </div>
+
+                <div class="mk-field">
+                    <label for="feedback-stop">What stopped you signing up to a paid plan?</label>
+                    <InputTextArea id="feedback-stop" class="mk-input trial-feedback-input" @bind-Value="_feedback.NoSignupReason" />
+                    <ValidationMessage For="@(() => _feedback.NoSignupReason)" />
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_feedbackMessage))
+                {
+                    <div class="trial-feedback-message @(_feedbackError ? "trial-feedback-error" : "trial-feedback-success")">@_feedbackMessage</div>
+                }
+
+                <button class="mk-btn mk-btn-secondary" type="submit" disabled="@_savingFeedback">
+                    @(_savingFeedback ? "Submitting..." : "SUBMIT FEEDBACK")
+                </button>
+            </EditForm>
+
+            <div class="trial-upgrade-cta">
+                <a class="mk-btn mk-btn-primary" href="/pricing?paid=1">UPGRADE NOW</a>
+                <p>It's not too late to save your data.</p>
+            </div>
+        }
+        else
+        {
+            <p>Your free trial has ended and your workshop data has been removed.</p>
+            <p>This account has already used its free trial. Choose a paid plan to continue.</p>
+            <a class="mk-btn mk-btn-primary" href="/pricing?paid=1&reason=trial-used">VIEW PAID PLANS</a>
+        }
+    </article>
+</Section>
+
+@code {
+    private int _tenantId;
+    private int? _userId;
+    private string _title = "Checking access";
+    private string _subtitle = "Please wait...";
+    private TrialLifecycleStatus _status = TrialLifecycleStatus.Unknown;
+    private readonly FeedbackModel _feedback = new();
+    private string _feedbackMessage = "";
+    private bool _feedbackError;
+    private bool _savingFeedback;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            Nav.NavigateTo("/login?ReturnUrl=%2Ftrial-access", forceLoad: true);
+            return;
+        }
+
+        var tenantClaim = user.FindFirst("tenant_id")?.Value;
+        if (!int.TryParse(tenantClaim, out _tenantId) || _tenantId <= 0)
+        {
+            Nav.NavigateTo("/login", forceLoad: true);
+            return;
+        }
+
+        var userIdClaim = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(userIdClaim, out var parsedUserId))
+            _userId = parsedUserId;
+
+        _status = await TrialLifecycle.GetForTenantAsync(_tenantId);
+
+        if (_status.Phase is TrialLifecyclePhase.ActiveTrial or TrialLifecyclePhase.Paid)
+        {
+            Nav.NavigateTo("/app", forceLoad: true);
+            return;
+        }
+
+        if (_status.Phase == TrialLifecyclePhase.UpgradeWindow)
+        {
+            _title = "Your free trial has ended";
+            _subtitle = "Upgrade now to keep full access.";
+            return;
+        }
+
+        if (_status.Phase == TrialLifecyclePhase.FeedbackWindow)
+        {
+            _title = "Before your data is deleted";
+            _subtitle = "Share feedback and upgrade if you want to keep your data.";
+            await LoadLatestFeedbackAsync();
+            return;
+        }
+
+        _title = "Free trial already used";
+        _subtitle = "Choose a paid plan to continue.";
+    }
+
+    private async Task LoadLatestFeedbackAsync()
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var latest = await db.TrialExitFeedbackEntries
+                .AsNoTracking()
+                .Where(x => x.TenantId == _tenantId)
+                .OrderByDescending(x => x.SubmittedAtUtc)
+                .FirstOrDefaultAsync();
+            if (latest is null)
+                return;
+
+            _feedback.Disliked = latest.Disliked;
+            _feedback.Improvements = latest.Improvements;
+            _feedback.NoSignupReason = latest.NoSignupReason;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not load prior trial feedback for tenant {TenantId}.", _tenantId);
+        }
+    }
+
+    private async Task SubmitFeedbackAsync()
+    {
+        _feedbackMessage = "";
+        _feedbackError = false;
+
+        if (_status.Phase != TrialLifecyclePhase.FeedbackWindow)
+            return;
+
+        if (string.IsNullOrWhiteSpace(_feedback.Disliked)
+            && string.IsNullOrWhiteSpace(_feedback.Improvements)
+            && string.IsNullOrWhiteSpace(_feedback.NoSignupReason))
+        {
+            _feedbackMessage = "Please answer at least one question before submitting.";
+            _feedbackError = true;
+            return;
+        }
+
+        _savingFeedback = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            db.TrialExitFeedbackEntries.Add(new TrialExitFeedback
+            {
+                TenantId = _tenantId,
+                UserId = _userId,
+                Disliked = (_feedback.Disliked ?? "").Trim(),
+                Improvements = (_feedback.Improvements ?? "").Trim(),
+                NoSignupReason = (_feedback.NoSignupReason ?? "").Trim(),
+                SubmittedAtUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+
+            _feedbackMessage = "Thanks. Your feedback has been submitted.";
+            _feedbackError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save trial feedback for tenant {TenantId}.", _tenantId);
+            _feedbackMessage = "We could not submit feedback right now. Please try again.";
+            _feedbackError = true;
+        }
+        finally
+        {
+            _savingFeedback = false;
+        }
+    }
+
+    private static string DaysLabel(int days) => days == 1 ? "day" : "days";
+
+    private sealed class FeedbackModel
+    {
+        [StringLength(4000)]
+        public string Disliked { get; set; } = "";
+
+        [StringLength(4000)]
+        public string Improvements { get; set; } = "";
+
+        [StringLength(4000)]
+        public string NoSignupReason { get; set; } = "";
+    }
+}

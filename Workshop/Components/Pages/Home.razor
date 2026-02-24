@@ -7,12 +7,19 @@
 @inject UserAccessService UserAccess
 @inject SuggestedCatalogService SuggestedCatalog
 @inject Workshop.Data.TenantContext TenantContext
+@inject ILogger<Home> Logger
 
 <div class="setup-shell">
     <h1>Welcome to VeloLabs</h1>
     <p class="lead">
         Let's get your workshop ready. Complete the setup steps below to unlock booking and scheduling features.
     </p>
+    @if (!string.IsNullOrWhiteSpace(_setupMessage))
+    {
+        <section class="setup-flash @(_setupMessageIsError ? "error" : "success")">
+            @_setupMessage
+        </section>
+    }
 
     <section class="progress-card">
         <div class="progress-head">
@@ -44,7 +51,7 @@
                         {
                             @if (step.Key == "services")
                             {
-                                <button type="button" class="pill action" @onclick="ImportSuggestedSetupAsync">1-Click Setup</button>
+                                <button type="button" class="pill action" @onclick="OpenSuggestedSetupDialog" disabled="@_isImporting">1-Click Setup</button>
                                 <a class="pill action" href="@step.ActionUrl">@step.ActionText</a>
                             }
                             else
@@ -91,11 +98,42 @@
             Setup complete. All core features are unlocked.
         </section>
     }
+
+    @if (_isSuggestedSetupDialogOpen)
+    {
+        <div class="setup-modal-backdrop" @onclick="CloseSuggestedSetupDialog">
+            <section class="setup-modal" role="dialog" aria-modal="true" aria-labelledby="suggested-setup-title" @onclick:stopPropagation="true">
+                <h3 id="suggested-setup-title">Run 1-Click Setup</h3>
+                <p>
+                    This will import the recommended starter catalog so you can begin taking bookings immediately.
+                </p>
+                <ul class="setup-modal-list">
+                    <li>Adds default service categories.</li>
+                    <li>Adds suggested services with default timings.</li>
+                    <li>Applies suggested starter prices.</li>
+                    <li>Updates matching existing services when needed.</li>
+                </ul>
+                <p class="setup-modal-note">
+                    You can still edit everything later in Manage Services and Manage Service Categories.
+                </p>
+                <div class="setup-modal-actions">
+                    <button type="button" class="pill ghost" @onclick="CloseSuggestedSetupDialog" disabled="@_isImporting">Cancel</button>
+                    <button type="button" class="pill action" @onclick="ImportSuggestedSetupAsync" disabled="@_isImporting">
+                        @(_isImporting ? "Running setup..." : "Continue")
+                    </button>
+                </div>
+            </section>
+        </div>
+    }
 </div>
 
 @code {
     private TenantSetupStatus _status = TenantSetupStatus.Empty;
     private UserAccessScope _userAccess = UserAccessScope.AllowAll();
+    private bool _isSuggestedSetupDialogOpen;
+    private bool _isImporting;
+    private string _setupMessage = "";
+    private bool _setupMessageIsError;
 
     private string ProgressStyle
     {
@@ -132,10 +170,45 @@
         _status = await SetupService.GetStatusAsync();
     }
 
+    private void OpenSuggestedSetupDialog()
+    {
+        _isSuggestedSetupDialogOpen = true;
+    }
+
+    private void CloseSuggestedSetupDialog()
+    {
+        if (_isImporting)
+            return;
+
+        _isSuggestedSetupDialogOpen = false;
+    }
+
     private async Task ImportSuggestedSetupAsync()
     {
-        await SuggestedCatalog.ImportSuggestedAsync(TenantContext.TenantId, SuggestedImportMode.FullSetup);
-        _status = await SetupService.GetStatusAsync();
+        if (_isImporting)
+            return;
+
+        _isImporting = true;
+        _setupMessage = "";
+        _setupMessageIsError = false;
+
+        try
+        {
+            var result = await SuggestedCatalog.ImportSuggestedAsync(TenantContext.TenantId, SuggestedImportMode.FullSetup);
+            _status = await SetupService.GetStatusAsync();
+            _setupMessage = $"1-click setup complete. Categories +{result.CategoriesAdded}, categories updated {result.CategoriesUpdated}, services +{result.ServicesAdded}, services updated {result.ServicesUpdated}.";
+            _isSuggestedSetupDialogOpen = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "1-click setup failed for tenant {TenantId}", TenantContext.TenantId);
+            _setupMessage = $"1-click setup failed: {ex.Message}";
+            _setupMessageIsError = true;
+        }
+        finally
+        {
+            _isImporting = false;
+        }
     }
 
     private sealed record FeatureUnlock(string Title, string Url, bool Unlocked);

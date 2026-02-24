@@ -1,138 +1,324 @@
 @page "/manage-service-categories"
 @attribute [Authorize]
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
 @using Workshop.Models
 @using Workshop.Services
 @inject JobCatalogService Catalog
 @inject SuggestedCatalogService SuggestedCatalog
 @inject Workshop.Data.TenantContext TenantContext
+@inject IJSRuntime JS
 
-<h3>Manage Service Categories</h3>
+<div class="sd-shell">
+    <header class="sd-header">
+        <h3>Service Categories</h3>
+        <p>Manage your service category structure for this tenant.</p>
+    </header>
 
-@if (!string.IsNullOrWhiteSpace(Message))
-{
-    <div class="@(IsError ? "error-message" : "success-message")">@Message</div>
-}
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <section class="sd-flash @(IsError ? "error" : "success")">@Message</section>
+    }
 
-<div class="editor-section">
-    <h4>@(EditingRootOriginalName is not null ? "Edit Category 1" : "Add Category 1")</h4>
-    <div class="row">
-        <input type="text" @bind="RootNameInput" placeholder="Category 1 name" />
-        <input type="text" @bind="RootColorInput" placeholder="#RRGGBB" />
-        <button class="btn btn-primary" @onclick="SaveRootAsync">Save</button>
-        @if (EditingRootOriginalName is not null)
-        {
-            <button class="btn btn-secondary" @onclick="ResetRootEditor">Cancel</button>
-        }
-    </div>
-</div>
-
-<div class="row" style="margin-bottom:12px;">
-    <button class="btn btn-primary" @onclick="ImportSuggestedCategoriesAsync">Import Suggested Categories</button>
-</div>
-
-@foreach (var root in Category1Rows)
-{
-    var subRows = GetCategory2Rows(root);
-    <section class="category-card">
-        <div class="head-row">
-            <button class="btn btn-secondary" @onclick="() => ToggleExpanded(root)">
-                @(IsExpanded(root) ? "Hide" : "Show")
-            </button>
-            <strong>@root</strong>
-            <span class="muted">@GetColor(root)</span>
-            <button class="btn btn-secondary" @onclick="() => EditRoot(root)">Edit</button>
-            <button class="btn btn-danger" @onclick="() => DeleteRootAsync(root)">Delete</button>
+    <section class="sd-card">
+        <div class="sd-toolbar">
+            <div class="sd-filter">
+                <input class="inline-input filter-input"
+                       placeholder="Category filter"
+                       @bind="CategoryFilter"
+                       @bind:event="oninput" />
+            </div>
+            <div class="sd-toolbar-actions">
+                <span class="sd-count">@FilteredCategory1Rows.Count root categories</span>
+                <button type="button" class="sd-btn sd-btn-primary" @onclick="ImportSuggestedCategoriesAsync">Import Suggested Categories</button>
+            </div>
         </div>
 
-        @if (IsExpanded(root))
+        @if (FilteredCategory1Rows.Count == 0)
         {
-            <div class="sub-list">
-                @foreach (var sub in subRows)
+            <div class="sd-empty">No categories match the current filter.</div>
+        }
+        else
+        {
+            <div class="root-list">
+                @for (var i = 0; i < FilteredCategory1Rows.Count; i++)
                 {
-                    <div class="sub-row">
-                        <span>@sub</span>
-                        <button class="btn btn-secondary" @onclick="() => EditSub(root, sub)">Edit</button>
-                        <button class="btn btn-danger" @onclick="() => DeleteSubAsync(root, sub)">Delete</button>
-                    </div>
+                    var root = FilteredCategory1Rows[i];
+                    var subRows = SubRows(root);
+
+                    <article class="category-card">
+                        <div class="category-head">
+                            <span class="drag-handle" aria-hidden="true">&#9776;</span>
+
+                            <label class="category-dot-picker" title="Edit category color">
+                                <input type="color"
+                                       value="@NormalizeColor(GetColor(root))"
+                                       @onchange="e => SaveRootColorAsync(root, e.Value?.ToString())" />
+                                <span class="category-dot" style="@($"background:{NormalizeColor(GetColor(root))};")"></span>
+                            </label>
+
+                            <div class="category-main">
+                                @if (EditingRootOriginalName is not null
+                                  && root.Equals(EditingRootOriginalName, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <input class="inline-input root-name-input"
+                                           @bind="RootNameInput"
+                                           @bind:event="oninput"
+                                           @onblur="CommitRootEditAsync"
+                                           @onkeydown="OnRootEditKeyDown" />
+                                }
+                                else
+                                {
+                                    <span class="category-name">@root</span>
+                                }
+                                <span class="category-meta">@subRows.Count sub-categories</span>
+                            </div>
+
+                            <div class="row-icons">
+                                <button type="button" class="icon-btn edit-icon-btn" title="Edit category" @onclick="() => BeginRootEdit(root)">
+                                    <svg viewBox="0 0 24 24" class="sd-svg" aria-hidden="true" focusable="false">
+                                        <path d="M12 20h9"></path>
+                                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                    </svg>
+                                </button>
+                                <button type="button" class="icon-btn danger" title="Delete category" @onclick="() => DeleteRootAsync(root)">
+                                    <i data-lucide="trash-2" class="sd-lucide" aria-hidden="true"></i>
+                                </button>
+                                <button type="button"
+                                        class="icon-btn chevron-btn @(IsExpanded(root) ? "expanded" : "")"
+                                        title="Expand/collapse"
+                                        @onclick="() => ToggleExpanded(root)">
+                                    <svg viewBox="0 0 24 24" class="chevron-svg" aria-hidden="true" focusable="false">
+                                        <path d="m6 9 6 6 6-6"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        @if (IsExpanded(root))
+                        {
+                            <div class="category-body">
+                                <div class="sub-list">
+                                    @for (var subIndex = 0; subIndex < subRows.Count; subIndex++)
+                                    {
+                                        var sub = subRows[subIndex];
+                                        <div class="sub-row">
+                                            <span class="drag-handle" aria-hidden="true">&#9776;</span>
+
+                                            @if (EditingSubRootName is not null
+                                              && EditingSubOriginalName is not null
+                                              && root.Equals(EditingSubRootName, StringComparison.OrdinalIgnoreCase)
+                                              && sub.Equals(EditingSubOriginalName, StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <input class="inline-input sub-name-input"
+                                                       @bind="SubNameInput"
+                                                       @bind:event="oninput"
+                                                       @onblur="CommitSubEditAsync"
+                                                       @onkeydown="OnSubEditKeyDown" />
+                                            }
+                                            else
+                                            {
+                                                <span class="sub-name">@sub</span>
+                                            }
+
+                                            <div class="row-icons">
+                                                <button type="button" class="icon-btn edit-icon-btn" title="Edit sub-category" @onclick="() => BeginSubEdit(root, sub)">
+                                                    <svg viewBox="0 0 24 24" class="sd-svg" aria-hidden="true" focusable="false">
+                                                        <path d="M12 20h9"></path>
+                                                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                                    </svg>
+                                                </button>
+                                                <button type="button" class="icon-btn danger" title="Delete sub-category" @onclick="() => DeleteSubAsync(root, sub)">
+                                                    <i data-lucide="trash-2" class="sd-lucide" aria-hidden="true"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+
+                                    @if (IsDraftSubRow(root))
+                                    {
+                                        <div class="sub-row draft">
+                                            <span class="drag-handle" aria-hidden="true">&#9776;</span>
+                                            <input class="inline-input sub-name-input"
+                                                   placeholder="New category 2"
+                                                   @bind="NewSubDraftValue"
+                                                   @bind:event="oninput"
+                                                   @onblur="CommitNewSubAsync"
+                                                   @onkeydown="OnNewSubKeyDown" />
+                                            <div class="row-icons">
+                                                <button type="button" class="icon-btn danger" title="Discard new row" @onclick="ClearNewSubDraft">
+                                                    <i data-lucide="trash-2" class="sd-lucide" aria-hidden="true"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+
+                                    <div class="sub-list-footer">
+                                        <button type="button" class="icon-btn plus" title="Add Category 2" @onclick="() => BeginNewSub(root)">
+                                            <svg viewBox="0 0 24 24" class="sd-svg" aria-hidden="true" focusable="false">
+                                                <path d="M12 5v14"></path>
+                                                <path d="M5 12h14"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </article>
                 }
 
-                <div class="row">
-                    <input type="text" @bind="SubNameInput" placeholder="Category 2 name" />
-                    <button class="btn btn-primary" @onclick="() => SaveSubAsync(root)">@(EditingSubOriginalName is not null ? "Update" : "Add")</button>
-                    @if (EditingSubOriginalName is not null)
-                    {
-                        <button class="btn btn-secondary" @onclick="ResetSubEditor">Cancel</button>
-                    }
+                @if (IsRootDraftActive)
+                {
+                    <article class="category-card root-draft-card">
+                        <div class="category-head">
+                            <span class="drag-handle" aria-hidden="true">&#9776;</span>
+                            <label class="category-dot-picker" title="Choose color">
+                                <input type="color"
+                                       value="@NormalizeColor(NewRootDraftColor)"
+                                       @onchange="OnRootDraftColorChanged" />
+                                <span class="category-dot" style="@($"background:{NormalizeColor(NewRootDraftColor)};")"></span>
+                            </label>
+                            <div class="category-main">
+                                <input class="inline-input root-name-input"
+                                       placeholder="New category 1"
+                                       @bind="NewRootDraftName"
+                                       @bind:event="oninput"
+                                       @onblur="CommitNewRootDraftAsync"
+                                       @onkeydown="OnNewRootDraftKeyDown" />
+                            </div>
+                            <div class="row-icons">
+                                <button type="button" class="icon-btn danger" title="Discard new row" @onclick="ClearRootDraft">
+                                    <i data-lucide="trash-2" class="sd-lucide" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                }
+
+                <div class="root-list-footer">
+                    <button type="button" class="icon-btn plus" title="Add Category 1" @onclick="BeginNewRoot">
+                        <svg viewBox="0 0 24 24" class="sd-svg" aria-hidden="true" focusable="false">
+                            <path d="M12 5v14"></path>
+                            <path d="M5 12h14"></path>
+                        </svg>
+                    </button>
                 </div>
             </div>
         }
     </section>
-}
-
-<style>
-    .editor-section, .category-card { margin-bottom: 16px; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
-    .row, .head-row, .sub-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .sub-list { margin-top: 10px; padding: 10px; border-radius: 6px; background: #f8fafc; }
-    .muted { color: #64748b; font-size: 12px; }
-    input { padding: 6px; }
-    .btn { padding: 6px 10px; border: none; border-radius: 999px; cursor: pointer; }
-    .btn-primary { background: #0d6efd; color: #fff; }
-    .btn-secondary { background: #64748b; color: #fff; }
-    .btn-danger { background: #b91c1c; color: #fff; }
-    .error-message { color: #b91c1c; margin: 10px 0; }
-    .success-message { color: #166534; margin: 10px 0; }
-</style>
+</div>
 
 @code {
+    private const string DefaultColor = "#94a3b8";
+
     private string Message = "";
     private bool IsError;
+    private string CategoryFilter = "";
 
     private string RootNameInput = "";
-    private string RootColorInput = "#94a3b8";
+    private string RootColorInput = DefaultColor;
     private string? EditingRootOriginalName;
 
     private string SubNameInput = "";
     private string? EditingSubRootName;
     private string? EditingSubOriginalName;
 
-    private readonly HashSet<string> Expanded = new(StringComparer.OrdinalIgnoreCase);
+    private bool IsRootDraftActive;
+    private string NewRootDraftName = "";
+    private string NewRootDraftColor = DefaultColor;
+
+    private string NewSubDraftCategory1 = "";
+    private string NewSubDraftValue = "";
+
+    private string? ExpandedRootName;
+    private bool RootExpansionInitialized;
 
     protected override async Task OnInitializedAsync()
     {
         await Catalog.EnsureInitializedAsync();
         EnsureSeededStructure();
+        SyncExpandedRoot();
     }
 
-    private List<string> Category1Rows => Catalog.ServiceCategoryHierarchy.Keys
-        .Union(Catalog.Categories, StringComparer.OrdinalIgnoreCase)
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
-        .ToList();
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("marketingIcons.refresh");
+        }
+        catch
+        {
+            // No-op if lucide helper is unavailable.
+        }
+    }
 
-    private List<string> GetCategory2Rows(string category1)
+    private List<string> Category1Rows =>
+        Catalog.OrderCategories(
+                Catalog.ServiceCategoryHierarchy.Keys
+                    .Union(Catalog.Categories, StringComparer.OrdinalIgnoreCase)
+                    .Select(NormalizeCategory1)
+                    .Where(v => !string.IsNullOrWhiteSpace(v)))
+            .ToList();
+
+    private List<string> FilteredCategory1Rows =>
+        Category1Rows
+            .Where(MatchesFilter)
+            .ToList();
+
+    private List<string> SubRows(string category1)
     {
         if (!Catalog.ServiceCategoryHierarchy.TryGetValue(category1, out var items))
             return new List<string>();
 
-        return items
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
+        return Catalog
+            .OrderCategory2Options(category1, items)
             .ToList();
     }
 
-    private bool IsExpanded(string category1) => Expanded.Contains(category1);
+    private bool MatchesFilter(string category1)
+    {
+        var filter = (CategoryFilter ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(filter))
+            return true;
+
+        if (category1.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return SubRows(category1).Any(c => c.Contains(filter, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool IsExpanded(string category1) =>
+        !string.IsNullOrWhiteSpace(ExpandedRootName)
+        && category1.Equals(ExpandedRootName, StringComparison.OrdinalIgnoreCase);
 
     private void ToggleExpanded(string category1)
     {
-        if (!Expanded.Add(category1))
-            Expanded.Remove(category1);
+        ExpandedRootName = IsExpanded(category1) ? null : category1;
+        ClearSubEditState();
+    }
+
+    private void SyncExpandedRoot()
+    {
+        var roots = Category1Rows;
+        if (!RootExpansionInitialized)
+        {
+            ExpandedRootName = roots.FirstOrDefault();
+            RootExpansionInitialized = true;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(ExpandedRootName)
+            || roots.All(r => !r.Equals(ExpandedRootName, StringComparison.OrdinalIgnoreCase)))
+        {
+            ExpandedRootName = roots.FirstOrDefault();
+        }
     }
 
     private string GetColor(string category1)
     {
         if (Catalog.CategoryColors.TryGetValue(category1, out var color))
             return color;
-        return "#94a3b8";
+        return DefaultColor;
     }
 
     private void EnsureSeededStructure()
@@ -161,10 +347,17 @@
             }
         }
 
-        foreach (var entry in hierarchy)
-            entry.Value.Sort(StringComparer.OrdinalIgnoreCase);
+        foreach (var category1 in hierarchy.Keys.ToList())
+            hierarchy[category1] = Catalog.OrderCategory2Options(category1, hierarchy[category1]).ToList();
 
         Catalog.ReplaceServiceCategoryHierarchy(hierarchy);
+    }
+
+    private async Task RefreshAsync()
+    {
+        await Catalog.ReloadAsync();
+        EnsureSeededStructure();
+        SyncExpandedRoot();
     }
 
     private async Task SaveRootAsync()
@@ -200,7 +393,7 @@
 
             var oldColor = colors.TryGetValue(EditingRootOriginalName, out var oldColorHex)
                 ? oldColorHex
-                : "#94a3b8";
+                : DefaultColor;
             colors.Remove(EditingRootOriginalName);
             colors[newName] = NormalizeColor(RootColorInput, oldColor);
             hierarchy[newName] = existingChildren;
@@ -225,25 +418,111 @@
 
         Catalog.ReplaceServiceCategoryHierarchy(hierarchy);
         await Catalog.SaveSettingsAsync();
-        await Catalog.ReloadAsync();
+        await RefreshAsync();
 
+        ExpandedRootName = newName;
         Message = "Saved category.";
+        IsError = false;
         ResetRootEditor();
     }
 
-    private void EditRoot(string category1)
+    private void BeginRootEdit(string category1)
     {
+        ClearRootDraft();
+        ClearSubEditState();
         EditingRootOriginalName = category1;
         RootNameInput = category1;
         RootColorInput = GetColor(category1);
-        Expanded.Add(category1);
+        ExpandedRootName = category1;
+    }
+
+    private async Task CommitRootEditAsync()
+    {
+        if (EditingRootOriginalName is null)
+            return;
+
+        var updated = NormalizeCategory1(RootNameInput);
+        if (string.IsNullOrWhiteSpace(updated))
+        {
+            ResetRootEditor();
+            return;
+        }
+
+        await SaveRootAsync();
+    }
+
+    private async Task OnRootEditKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            await CommitRootEditAsync();
+        else if (args.Key == "Escape")
+            ResetRootEditor();
     }
 
     private void ResetRootEditor()
     {
         EditingRootOriginalName = null;
         RootNameInput = "";
-        RootColorInput = "#94a3b8";
+        RootColorInput = DefaultColor;
+    }
+
+    private async Task SaveRootColorAsync(string category1, string? rawColor)
+    {
+        var next = NormalizeColor(rawColor, DefaultColor);
+        if (string.Equals(GetColor(category1), next, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        Catalog.CategoryColors[category1] = next;
+        await Catalog.SaveSettingsAsync();
+        await RefreshAsync();
+    }
+
+    private void BeginNewRoot()
+    {
+        ResetRootEditor();
+        ClearSubEditState();
+        IsRootDraftActive = true;
+        NewRootDraftName = "";
+        NewRootDraftColor = DefaultColor;
+    }
+
+    private void OnRootDraftColorChanged(ChangeEventArgs args)
+    {
+        NewRootDraftColor = NormalizeColor(args.Value?.ToString(), DefaultColor);
+    }
+
+    private async Task CommitNewRootDraftAsync()
+    {
+        if (!IsRootDraftActive)
+            return;
+
+        var name = NormalizeCategory1(NewRootDraftName);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            ClearRootDraft();
+            return;
+        }
+
+        EditingRootOriginalName = null;
+        RootNameInput = name;
+        RootColorInput = NormalizeColor(NewRootDraftColor, DefaultColor);
+        await SaveRootAsync();
+        ClearRootDraft();
+    }
+
+    private async Task OnNewRootDraftKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            await CommitNewRootDraftAsync();
+        else if (args.Key == "Escape")
+            ClearRootDraft();
+    }
+
+    private void ClearRootDraft()
+    {
+        IsRootDraftActive = false;
+        NewRootDraftName = "";
+        NewRootDraftColor = DefaultColor;
     }
 
     private async Task DeleteRootAsync(string category1)
@@ -262,18 +541,45 @@
 
         Catalog.CategoryColors.Remove(category1);
         await Catalog.SaveSettingsAsync();
-        await Catalog.ReloadAsync();
+        await RefreshAsync();
+
         Message = "Deleted category.";
         IsError = false;
-        Expanded.Remove(category1);
+        ResetRootEditor();
+        ClearSubEditState();
     }
 
-    private void EditSub(string category1, string category2)
+    private void BeginSubEdit(string category1, string category2)
     {
+        ResetRootEditor();
+        ClearNewSubDraft();
         EditingSubRootName = category1;
         EditingSubOriginalName = category2;
         SubNameInput = category2;
-        Expanded.Add(category1);
+        ExpandedRootName = category1;
+    }
+
+    private async Task CommitSubEditAsync()
+    {
+        if (string.IsNullOrWhiteSpace(EditingSubRootName) || string.IsNullOrWhiteSpace(EditingSubOriginalName))
+            return;
+
+        var newSub = NormalizeCategory2(SubNameInput);
+        if (string.IsNullOrWhiteSpace(newSub))
+        {
+            ResetSubEditor();
+            return;
+        }
+
+        await SaveSubAsync(EditingSubRootName);
+    }
+
+    private async Task OnSubEditKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            await CommitSubEditAsync();
+        else if (args.Key == "Escape")
+            ResetSubEditor();
     }
 
     private async Task SaveSubAsync(string category1)
@@ -305,7 +611,7 @@
         }
 
         existing.Add(newSub);
-        existing = existing.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(v => v, StringComparer.OrdinalIgnoreCase).ToList();
+        existing = Catalog.OrderCategory2Options(root, existing).ToList();
         hierarchy[root] = existing;
         Catalog.ReplaceServiceCategoryHierarchy(hierarchy);
 
@@ -321,9 +627,57 @@
         }
 
         await Catalog.SaveSettingsAsync();
-        await Catalog.ReloadAsync();
+        await RefreshAsync();
+
         Message = "Saved sub-category.";
+        IsError = false;
         ResetSubEditor();
+        ExpandedRootName = root;
+    }
+
+    private void BeginNewSub(string category1)
+    {
+        ResetRootEditor();
+        ResetSubEditor();
+        NewSubDraftCategory1 = category1;
+        NewSubDraftValue = "";
+        ExpandedRootName = category1;
+    }
+
+    private async Task CommitNewSubAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewSubDraftCategory1))
+            return;
+
+        var name = NormalizeCategory2(NewSubDraftValue);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            ClearNewSubDraft();
+            return;
+        }
+
+        EditingSubRootName = NewSubDraftCategory1;
+        EditingSubOriginalName = null;
+        SubNameInput = name;
+        await SaveSubAsync(NewSubDraftCategory1);
+        ClearNewSubDraft();
+    }
+
+    private async Task OnNewSubKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            await CommitNewSubAsync();
+        else if (args.Key == "Escape")
+            ClearNewSubDraft();
+    }
+
+    private bool IsDraftSubRow(string category1) =>
+        NewSubDraftCategory1.Equals(category1, StringComparison.OrdinalIgnoreCase);
+
+    private void ClearNewSubDraft()
+    {
+        NewSubDraftCategory1 = "";
+        NewSubDraftValue = "";
     }
 
     private void ResetSubEditor()
@@ -331,6 +685,12 @@
         EditingSubRootName = null;
         EditingSubOriginalName = null;
         SubNameInput = "";
+    }
+
+    private void ClearSubEditState()
+    {
+        ResetSubEditor();
+        ClearNewSubDraft();
     }
 
     private async Task DeleteSubAsync(string category1, string category2)
@@ -353,9 +713,12 @@
         hierarchy[category1] = sub;
         Catalog.ReplaceServiceCategoryHierarchy(hierarchy);
         await Catalog.SaveSettingsAsync();
-        await Catalog.ReloadAsync();
+        await RefreshAsync();
+
         Message = "Deleted sub-category.";
         IsError = false;
+        ResetSubEditor();
+        ClearNewSubDraft();
     }
 
     private async Task ImportSuggestedCategoriesAsync()
@@ -363,7 +726,7 @@
         Message = "";
         IsError = false;
         var result = await SuggestedCatalog.ImportSuggestedAsync(TenantContext.TenantId, SuggestedImportMode.CategoriesOnly);
-        await Catalog.ReloadAsync();
+        await RefreshAsync();
         Message = $"Imported suggested categories. Added: {result.CategoriesAdded}, Updated: {result.CategoriesUpdated}.";
     }
 
@@ -387,4 +750,7 @@
 
         return normalized;
     }
+
+    private static string NormalizeColor(string? value)
+        => NormalizeColor(value, DefaultColor);
 }

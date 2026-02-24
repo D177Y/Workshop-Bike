@@ -1,0 +1,31 @@
+@page "/signup-success"
+@layout MarketingLayout
+@attribute [AllowAnonymous]
+
+<Section>
+    <div class="mk-center-head mk-verify-head">
+        <h1 class="mk-page-title">Verify your email</h1>
+    </div>
+</Section>
+
+<Section Soft="true">
+    <div class="mk-verify-grid">
+        <article class="mk-card mk-verify-card">
+            <p>We sent a verification link to <strong>@EmailDisplay</strong>.</p>
+            <p>Please confirm your email address before logging in.</p>
+
+            <a class="mk-btn mk-btn-primary mk-verify-login" href="/login">Login</a>
+
+            <p class="mk-verify-help">
+                If you cannot find it, check your spam folder and then try again.
+            </p>
+        </article>
+    </div>
+</Section>
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "email")]
+    public string? Email { get; set; }
+
+    private string EmailDisplay => string.IsNullOrWhiteSpace(Email) ? "your email address" : Email.Trim();
+}

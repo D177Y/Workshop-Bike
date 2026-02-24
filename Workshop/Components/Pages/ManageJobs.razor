@@ -1,11 +1,11 @@
 ﻿@rendermode InteractiveServer
 @page "/manage-jobs"
+@page "/manage-service-packages"
 @attribute [Authorize]
 @using System.Globalization
 @using Microsoft.JSInterop
 @using Workshop.Models
 @using Workshop.Services
-@using Syncfusion.Blazor.Grids
 @using Syncfusion.Blazor.Popups
 @using TooltipPosition = Syncfusion.Blazor.Popups.Position
 @inject JobCatalogService Catalog
@@ -13,448 +13,22 @@
 @inject SuggestedCatalogService SuggestedCatalog
 @inject Workshop.Data.TenantContext TenantContext
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 @inject ILogger<ManageJobs> Logger
 
-<style>
-    .form-section {
-        margin-bottom: 15px;
-    }
-
-    .form-section label {
-        display: block;
-        font-weight: 600;
-        margin-bottom: 5px;
-    }
-
-    .label-inline {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-    }
-
-    .field-tip {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        font-size: 11px;
-        font-weight: 700;
-        color: #0d6efd;
-        border: 1px solid #0d6efd;
-        cursor: help;
-        line-height: 1;
-        user-select: none;
-    }
-
-    .required-asterisk {
-        color: #dc3545;
-        margin-left: 4px;
-    }
-
-    .job-tooltip.e-tooltip-wrap.e-popup {
-        background-color: #fff !important;
-        border: 1px solid #fff;
-        border-radius: 4px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-    }
-
-    .job-tooltip.e-tooltip-wrap .e-tip-content {
-        color: #2f2f2f;
-        background-color: #fff !important;
-        padding: 10px 12px;
-        font-size: 14px;
-        line-height: 1.35;
-    }
-
-    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-top,
-    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-bottom,
-    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-left,
-    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-right {
-        border-color: transparent;
-    }
-
-    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-top {
-        border-bottom-color: #fff !important;
-    }
-
-    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-bottom {
-        border-top-color: #fff !important;
-    }
-
-    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-left {
-        border-right-color: #fff !important;
-    }
-
-    .job-tooltip.e-tooltip-wrap .e-arrow-tip-outer.e-tip-right {
-        border-left-color: #fff !important;
-    }
-
-    .job-tooltip.e-tooltip-wrap .e-arrow-tip-inner.e-tip-top,
-    .job-tooltip.e-tooltip-wrap .e-arrow-tip-inner.e-tip-bottom,
-    .job-tooltip.e-tooltip-wrap .e-arrow-tip-inner.e-tip-left,
-    .job-tooltip.e-tooltip-wrap .e-arrow-tip-inner.e-tip-right {
-        color: #fff !important;
-    }
-
-    .inline-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-
-    .catalog-editor-row {
-        display: grid;
-        grid-template-columns: 20px 220px 1fr;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 0;
-        cursor: grab;
-        user-select: none;
-    }
-
-    .skill-editor-row {
-        display: grid;
-        grid-template-columns: 20px 1fr;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 0;
-        cursor: grab;
-        user-select: none;
-    }
-
-    .catalog-editor-row.dragging,
-    .skill-editor-row.dragging {
-        opacity: 0.6;
-    }
-
-    .drag-handle {
-        cursor: grab;
-        color: #6b7280;
-        user-select: none;
-        font-size: 18px;
-        line-height: 1;
-    }
-
-    .editor-name {
-        width: 100%;
-        padding: 4px;
-        box-sizing: border-box;
-    }
-
-    .editor-color {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-
-    .editor-hex {
-        width: 100px;
-        padding: 4px;
-        box-sizing: border-box;
-    }
-
-    .btn {
-        padding: 8px 16px;
-        margin-right: 8px;
-        border: none;
-        border-radius: 999px;
-        cursor: pointer;
-    }
-
-    .btn-primary {
-        background: #0d6efd;
-        color: white;
-    }
-
-    .btn-primary:hover {
-        background: #0b5ed7;
-    }
-
-    .btn-secondary {
-        background: #6c757d;
-        color: white;
-    }
-
-    .btn-secondary:hover {
-        background: #545b62;
-    }
-
-    .btn-success {
-        background: #0d6efd;
-        color: white;
-    }
-
-    .btn-success:hover {
-        background: #0b5ed7;
-    }
-
-    .btn-danger {
-        background: #6c757d;
-        color: white;
-    }
-
-    .btn-danger:hover {
-        background: #5a6268;
-    }
-
-    .grid-btn {
-        width: 64px;
-        height: 24px;
-        padding: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .add-job-section {
-        border: 2px dashed #0066cc;
-        padding: 20px;
-        margin-bottom: 30px;
-        border-radius: 6px;
-        background: #f0f8ff;
-    }
-
-    .error-message {
-        color: #dc3545;
-        margin-top: 10px;
-        margin-bottom: 14px;
-        padding: 10px;
-        background: #f8d7da;
-        border: 1px solid #f5c6cb;
-        border-radius: 4px;
-    }
-
-    .success-message {
-        color: #155724;
-        margin-top: 10px;
-        margin-bottom: 14px;
-        padding: 10px;
-        background: #d4edda;
-        border: 1px solid #c3e6cb;
-        border-radius: 4px;
-    }
-
-    .grid-inline-input,
-    .grid-inline-select {
-        width: 100%;
-        padding: 4px;
-        background: transparent;
-        outline: none;
-        box-sizing: border-box;
-    }
-
-    .e-grid .grid-inline-input {
-        border: none !important;
-        box-shadow: none !important;
-    }
-
-    .grid-inline-select {
-        border: 1px solid #d1d5db !important;
-        border-radius: 4px;
-    }
-
-    .grid-inline-input.numeric {
-        width: 90px !important;
-        margin: 0 auto;
-        display: block;
-        text-align: center;
-    }
-
-    .grid-inline-color {
-        width: 100%;
-        height: 32px;
-        border: none;
-        background: transparent;
-        padding: 0;
-        box-sizing: border-box;
-    }
-
-    .package-override-table {
-        display: grid;
-        gap: 8px;
-        max-width: 640px;
-    }
-
-    .package-override-header,
-    .package-override-row {
-        display: grid;
-        grid-template-columns: 24px 1fr 120px 120px;
-        gap: 10px;
-        align-items: center;
-    }
-
-    .package-override-header {
-        font-weight: 600;
-        color: #334155;
-    }
-
-    .package-override-row input {
-        width: 100%;
-        padding: 5px;
-        box-sizing: border-box;
-    }
-
-    .package-rates-cell {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 6px;
-        min-width: 0;
-    }
-
-    .package-rates-summary {
-        display: block;
-        max-width: 100%;
-        white-space: pre-line;
-        overflow-wrap: anywhere;
-        word-break: break-word;
-        line-height: 1.35;
-    }
-
-    .package-checklist-builder {
-        display: grid;
-        gap: 8px;
-        max-width: 760px;
-    }
-
-    .package-checklist-toolbar {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-
-    .package-checklist-toolbar input,
-    .package-checklist-toolbar select {
-        padding: 5px;
-    }
-
-    .package-checklist-list {
-        display: grid;
-        gap: 0;
-        border: 1px solid #dbe3ee;
-        border-radius: 8px;
-        background: #fff;
-        overflow: hidden;
-    }
-
-    .package-checklist-row {
-        display: grid;
-        grid-template-columns: 20px minmax(220px, 1fr) 130px auto;
-        gap: 8px;
-        align-items: center;
-        padding: 8px 10px;
-        border-top: 1px solid #edf2f7;
-        cursor: grab;
-    }
-
-    .package-checklist-main {
-        min-width: 0;
-    }
-
-    .package-checklist-name {
-        display: block;
-        font-weight: 600;
-        color: #0f172a;
-    }
-
-    .package-checklist-description {
-        display: block;
-        font-size: 12px;
-        color: #64748b;
-        margin-top: 2px;
-        overflow-wrap: anywhere;
-    }
-
-    .package-checklist-row:first-child {
-        border-top: none;
-    }
-
-    .package-checklist-row.dragging {
-        opacity: 0.65;
-    }
-
-    .package-checklist-type {
-        font-size: 12px;
-        color: #64748b;
-    }
-
-    .package-checklist-empty {
-        font-size: 13px;
-        color: #64748b;
-        border: 1px dashed #cbd5e1;
-        border-radius: 8px;
-        padding: 10px;
-        background: #f8fafc;
-    }
-
-    .package-checklist-service-picker {
-        border: 1px solid #dbe3ee;
-        border-radius: 8px;
-        background: #fff;
-        padding: 8px;
-        display: grid;
-        gap: 6px;
-    }
-
-    .package-checklist-service-filter {
-        width: 100%;
-        padding: 6px 8px;
-        border: 1px solid #c7c7c7;
-        border-radius: 4px;
-        box-sizing: border-box;
-    }
-
-    .package-checklist-service-group {
-        border-top: 1px solid #eef2f7;
-        padding-top: 4px;
-    }
-
-    .package-checklist-service-group:first-of-type {
-        border-top: none;
-        padding-top: 0;
-    }
-
-    .package-checklist-service-group-header {
-        width: 100%;
-        text-align: left;
-        background: transparent;
-        border: none;
-        padding: 4px 2px;
-        font-weight: 600;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-
-    .package-checklist-service-group.group-collapsed .package-checklist-service-group-header {
-        opacity: 0.8;
-    }
-
-    .package-checklist-service-item {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        align-items: center;
-        gap: 8px;
-        padding: 4px 0;
-        font-size: 13px;
-    }
-</style>
-
-<h3>Manage Services</h3>
-
-@if (!string.IsNullOrWhiteSpace(Message))
-{
-    <div class="@(IsError ? "error-message" : "success-message")">
-        @Message
-    </div>
-}
-
-@if (ShowAddForm)
+<div class="sd-shell">
+    <header class="sd-header">
+        <h3>@(IsServicePackagesPage ? "Manage Service Packages" : "Manage Services")</h3>
+        <p>@(IsServicePackagesPage
+            ? "Manage service package templates for this tenant in a dedicated page."
+            : "Manage your individual service catalog grouped by categories.")</p>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <section class="sd-flash @(IsError ? "error" : "success")">@Message</section>
+    }
+@if (ShowAddForm && ((IsServicePackagesPage && IsServicePackagesEditor) || (!IsServicePackagesPage && !IsServicePackagesEditor)))
 {
     <div class="add-job-section">
         <h4>@(EditingJobId is not null
@@ -469,7 +43,7 @@
         <div class="form-section">
             <label>Time (minutes)<span class="required-asterisk">*</span></label>
             <input type="number"
-                   min="1"
+                   min="0"
                    required
                    @bind="NewJobMinutesInput"
                    style="width: 120px; padding: 5px;"
@@ -704,7 +278,7 @@
                                 <button type="button"
                                         class="package-checklist-service-group-header"
                                         @onclick="() => ToggleChecklistServiceGroup(group.Key)">
-                                    <span>@(IsChecklistServiceGroupOpen(group.Key) ? "▾" : "▸") @group.Key (@group.Value.Count)</span>
+                                    <span>@(IsChecklistServiceGroupOpen(group.Key) ? "?" : "?") @group.Key (@group.Value.Count)</span>
                                 </button>
                                 @if (IsChecklistServiceGroupOpen(group.Key))
                                 {
@@ -794,306 +368,264 @@
     </div>
 }
 
-<div class="inline-row" style="margin: 0 0 16px 0;">
-    <button class="btn btn-secondary" type="button" @onclick="ImportSuggestedServicesOnlyAsync">Import Suggested Services</button>
-    <button class="btn btn-secondary" type="button" @onclick="ImportSuggestedServicesAndTimesAsync">Import Suggested Services + Times</button>
-    <button class="btn btn-secondary" type="button" @onclick="ImportSuggestedServicePricesAsync">Import Suggested Prices</button>
-</div>
 
-<h4>Service Packages (@GetServicePackagesCount())</h4>
-<div style="margin-bottom: 20px;">
-    <button class="btn btn-primary" @onclick="ShowAddServicePackageForm">+ Add New Service</button>
-</div>
-
-@{
-    var servicePackageJobs = Catalog.Jobs
-        .Where(j => IsServicePackagesCategory(NormalizeCategory(j.Category)))
-        .OrderBy(j => j.Name)
-        .ToList();
-}
-
-<div style="margin-bottom: 24px;">
-    <h5 style="margin: 0 0 10px 0;">@ServicePackagesCategory (@servicePackageJobs.Count)</h5>
-    @if (!servicePackageJobs.Any())
+    @if (!IsServicePackagesPage)
     {
-        <div style="color:#666;">No services in this category yet.</div>
+        <section class="sd-card">
+            <div class="sd-toolbar">
+                <div class="sd-filter">
+                    <input class="inline-input filter-input"
+                           placeholder="Service filter"
+                           @bind="ServiceFilter"
+                           @bind:event="oninput" />
+                </div>
+                <div class="sd-toolbar-actions">
+                    <span class="sd-count">@FilteredServiceCount services</span>
+                    <a class="sd-btn sd-btn-ghost" href="/manage-service-categories">Manage Service Categories</a>
+                    <a class="sd-btn sd-btn-ghost" href="/manage-service-packages">Manage Service Packages</a>
+                    <button class="sd-btn sd-btn-primary" type="button" @onclick="ShowAddIndividualServiceForm">Add Service</button>
+                </div>
+            </div>
+
+            <div class="action-strip">
+                <button class="sd-btn sd-btn-ghost" type="button" @onclick="ImportSuggestedServicesOnlyAsync">Import Suggested Services</button>
+                <button class="sd-btn sd-btn-ghost" type="button" @onclick="ImportSuggestedServicesAndTimesAsync">Import Suggested Services + Times</button>
+                <button class="sd-btn sd-btn-ghost" type="button" @onclick="ImportSuggestedServicePricesAsync">Import Suggested Prices</button>
+            </div>
+
+            @if (FilteredIndividualServiceGroups.Count == 0)
+            {
+                <div class="sd-empty">No services match the current filter.</div>
+            }
+            else
+            {
+                <div class="service-group-list">
+                    @foreach (var group in FilteredIndividualServiceGroups)
+                    {
+                        <article class="service-group-card">
+                            <button type="button"
+                                    class="service-group-toggle @(IsServiceGroupExpanded(group.Category1) ? "expanded" : "")"
+                                    @onclick="() => ToggleServiceGroup(group.Category1)">
+                                <span class="service-group-title">
+                                    <span class="category-dot" style="@($"background:{GetCategoryColor(group.Category1)};")"></span>
+                                    <span class="service-group-name">@group.Category1</span>
+                                </span>
+                                <span class="service-group-count">@group.TotalCount services</span>
+                                <svg viewBox="0 0 24 24" class="service-chevron" aria-hidden="true" focusable="false">
+                                    <path d="m6 9 6 6 6-6"></path>
+                                </svg>
+                            </button>
+
+                            @if (IsServiceGroupExpanded(group.Category1))
+                            {
+                                <div class="service-subgroup-list">
+                                    @foreach (var subgroup in group.Category2Groups)
+                                    {
+                                        var subgroupKey = BuildServiceSubgroupKey(group.Category1, subgroup.Category2);
+                                        <article class="service-subgroup-card">
+                                            <button type="button"
+                                                    class="service-subgroup-toggle @(IsServiceSubgroupExpanded(subgroupKey) ? "expanded" : "")"
+                                                    @onclick="() => ToggleServiceSubgroup(subgroupKey)">
+                                                <span class="service-subgroup-name">@subgroup.Category2</span>
+                                                <span class="service-subgroup-count">@subgroup.Services.Count services</span>
+                                                <svg viewBox="0 0 24 24" class="service-chevron" aria-hidden="true" focusable="false">
+                                                    <path d="m6 9 6 6 6-6"></path>
+                                                </svg>
+                                            </button>
+
+                                            @if (IsServiceSubgroupExpanded(subgroupKey))
+                                            {
+                                                <div class="service-list">
+                                                    @foreach (var service in subgroup.Services)
+                                                    {
+                                                        <article class="service-row">
+                                                            <span class="service-drag-handle" aria-hidden="true">&#9776;</span>
+                                                            <div class="service-main">
+                                                                <span class="service-name">@service.Name</span>
+                                                                <span class="service-meta">@FormatServiceMeta(service)</span>
+                                                                @if (!string.IsNullOrWhiteSpace(service.Description))
+                                                                {
+                                                                    <span class="service-description">@service.Description</span>
+                                                                }
+                                                            </div>
+                                                            <div class="row-icons">
+                                                                <button type="button" class="icon-btn edit-icon-btn" title="Edit service" @onclick="() => EditJob(service.Id)">
+                                                                    <svg viewBox="0 0 24 24" class="sd-svg" aria-hidden="true" focusable="false">
+                                                                        <path d="M12 20h9"></path>
+                                                                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                                                    </svg>
+                                                                </button>
+                                                                <button type="button"
+                                                                        class="row-link-btn"
+                                                                        title="Set package rates"
+                                                                        @onclick="() => OpenPackageRatesDialog(service)">
+                                                                    Rates
+                                                                </button>
+                                                                <button type="button" class="icon-btn danger" title="Delete service" @onclick="() => DeleteJob(service.Id)">
+                                                                    <svg viewBox="0 0 24 24" class="sd-svg" aria-hidden="true" focusable="false">
+                                                                        <path d="M3 6h18"></path>
+                                                                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                                                                        <path d="M10 11v6"></path>
+                                                                        <path d="M14 11v6"></path>
+                                                                    </svg>
+                                                                </button>
+                                                            </div>
+                                                        </article>
+                                                    }
+                                                </div>
+
+                                                <div class="service-subgroup-footer">
+                                                    <button type="button"
+                                                            class="icon-btn plus"
+                                                            title="Add service"
+                                                            @onclick="() => ShowAddIndividualServiceForm(group.Category1, subgroup.Category2)">
+                                                        <svg viewBox="0 0 24 24" class="sd-svg" aria-hidden="true" focusable="false">
+                                                            <path d="M12 5v14"></path>
+                                                            <path d="M5 12h14"></path>
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            }
+                                        </article>
+                                    }
+                                </div>
+                            }
+                        </article>
+                    }
+                </div>
+            }
+        </section>
     }
-    else
+    @if (IsServicePackagesPage)
     {
-        <SfGrid DataSource="@servicePackageJobs" AllowSorting="true" Width="100%">
-            <GridColumns>
-                <GridColumn HeaderText="Name" Width="220">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <input type="text"
-                               value="@job.Name"
-                               class="grid-inline-input"
-                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.Name), e.Value?.ToString()))" />
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Time (mins)" Width="120" TextAlign="TextAlign.Center">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <input type="number"
-                               min="1"
-                               value="@job.DefaultMinutes"
-                               class="grid-inline-input numeric"
-                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.DefaultMinutes), e.Value?.ToString()))" />
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Category 2" Width="170">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <input type="text"
-                               value="@job.Category2"
-                               class="grid-inline-input"
-                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.Category2), e.Value?.ToString()))" />
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Pricing" Width="210">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <div class="package-rates-cell">
-                            <span class="package-rates-summary">@GetPricingSummary(job)</span>
-                            <span class="package-rates-summary">Current £@ResolveEffectivePrice(job).ToString("0.00")</span>
-                        </div>
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Part Number" Width="160">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <input type="text"
-                               value="@job.PartNumber"
-                               class="grid-inline-input"
-                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.PartNumber), e.Value?.ToString()))" />
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Skill Level" Width="250">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <div class="inline-row" style="flex-wrap:nowrap;">
-                            <select value="@job.SkillLevel"
-                                    class="grid-inline-select"
-                                    @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.SkillLevel), e.Value?.ToString()))">
-                                <option value="All">All</option>
-                                @foreach (var level in Catalog.SkillLevels)
-                                {
-                                    <option value="@level">@level</option>
-                                }
-                            </select>
-                            <button class="btn btn-secondary grid-btn"
-                                    style="width:auto; padding:0 10px;"
-                                    type="button"
-                                    @onclick="OpenSkillEditor">Add/Edit</button>
-                        </div>
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Description" Width="260">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <input type="text"
-                               value="@job.Description"
-                               class="grid-inline-input"
-                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.Description), e.Value?.ToString()))" />
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Color" Width="120">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                            var colorValue = string.IsNullOrWhiteSpace(job.ColorHex) ? "#94a3b8" : job.ColorHex;
-                        }
-                        <input type="color"
-                               value="@colorValue"
-                               class="grid-inline-color"
-                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.ColorHex), e.Value?.ToString()))" />
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Actions" Width="160" TextAlign="TextAlign.Center">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <button class="btn btn-primary grid-btn" @onclick="() => EditJob(job.Id)">Edit</button>
-                        <button class="btn btn-danger grid-btn" style="margin-right:0;" @onclick="() => DeleteJob(job.Id)">Delete</button>
-                    </Template>
-                </GridColumn>
-            </GridColumns>
-        </SfGrid>
+        var filteredServicePackages = FilteredServicePackages;
+
+        <section class="sd-card">
+            <div class="sd-toolbar">
+                <div class="sd-filter">
+                    <input class="inline-input filter-input"
+                           placeholder="Package filter"
+                           @bind="ServicePackageFilter"
+                           @bind:event="oninput" />
+                </div>
+                <div class="sd-toolbar-actions">
+                    <span class="sd-count">@filteredServicePackages.Count packages</span>
+                    <a class="sd-btn sd-btn-ghost" href="/manage-jobs">Manage Services</a>
+                    <button class="sd-btn sd-btn-primary" type="button" @onclick="ShowAddServicePackageForm">Add Service Package</button>
+                </div>
+            </div>
+
+            @if (filteredServicePackages.Count == 0)
+            {
+                <div class="sd-empty">No service packages match the current filter.</div>
+            }
+            else
+            {
+                <div class="package-list">
+                    @foreach (var package in filteredServicePackages)
+                    {
+                        var checklistItems = (package.PackageChecklistItems ?? new List<ServicePackageChecklistItemDefinition>())
+                            .OrderBy(i => i.SortOrder)
+                            .ThenBy(i => GetChecklistItemDisplayName(i), StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                        <article class="package-card">
+                            <div class="package-head">
+                                <span class="service-drag-handle" aria-hidden="true">&#9776;</span>
+                                <div class="package-main">
+                                    <span class="package-name">@package.Name</span>
+                                    <span class="package-meta">@FormatServicePackageMeta(package) · @checklistItems.Count checklist items</span>
+                                </div>
+                                <div class="row-icons">
+                                    <button type="button" class="icon-btn edit-icon-btn" title="Edit service package" @onclick="() => EditJob(package.Id)">
+                                        <svg viewBox="0 0 24 24" class="sd-svg" aria-hidden="true" focusable="false">
+                                            <path d="M12 20h9"></path>
+                                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                        </svg>
+                                    </button>
+                                    <button type="button" class="icon-btn danger" title="Delete service package" @onclick="() => DeleteJob(package.Id)">
+                                        <svg viewBox="0 0 24 24" class="sd-svg" aria-hidden="true" focusable="false">
+                                            <path d="M3 6h18"></path>
+                                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                                            <path d="M10 11v6"></path>
+                                            <path d="M14 11v6"></path>
+                                        </svg>
+                                    </button>
+                                    <button type="button"
+                                            class="icon-btn chevron-btn @(IsServicePackageExpanded(package.Id) ? "expanded" : "")"
+                                            title="Expand/collapse"
+                                            @onclick="() => ToggleServicePackageExpanded(package.Id)">
+                                        <svg viewBox="0 0 24 24" class="chevron-svg" aria-hidden="true" focusable="false">
+                                            <path d="m6 9 6 6 6-6"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                            @if (IsServicePackageExpanded(package.Id))
+                            {
+                                <div class="package-body">
+                                    @if (!string.IsNullOrWhiteSpace((package.Description ?? "").Trim()))
+                                    {
+                                        <div class="package-description">@package.Description</div>
+                                    }
+
+                                    @if (checklistItems.Count == 0)
+                                    {
+                                        <div class="package-empty">No checklist items yet.</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="package-item-list">
+                                            @foreach (var item in checklistItems)
+                                            {
+                                                var itemDescription = GetChecklistItemDisplayDescription(item);
+                                                <div class="package-item-row">
+                                                    <span class="service-drag-handle" aria-hidden="true">&#9776;</span>
+                                                    <div class="package-item-main">
+                                                        <span class="package-item-name">@GetChecklistItemDisplayName(item)</span>
+                                                        <span class="package-item-meta">@GetPackageChecklistItemMeta(item)</span>
+                                                        @if (!string.IsNullOrWhiteSpace(itemDescription))
+                                                        {
+                                                            <span class="package-item-description">@itemDescription</span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            }
+
+                                            <div class="package-item-footer">
+                                                <button type="button"
+                                                        class="icon-btn plus"
+                                                        title="Add checklist items"
+                                                        @onclick="() => EditJob(package.Id)">
+                                                    <svg viewBox="0 0 24 24" class="sd-svg" aria-hidden="true" focusable="false">
+                                                        <path d="M12 5v14"></path>
+                                                        <path d="M5 12h14"></path>
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </article>
+                    }
+
+                    <div class="package-list-footer">
+                        <button type="button" class="icon-btn plus" title="Add service package" @onclick="ShowAddServicePackageForm">
+                            <svg viewBox="0 0 24 24" class="sd-svg" aria-hidden="true" focusable="false">
+                                <path d="M12 5v14"></path>
+                                <path d="M5 12h14"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            }
+
+        </section>
     }
 </div>
-
-<h4>Individual Services (@GetIndividualServicesCount())</h4>
-<div style="margin-bottom: 20px;">
-    <button class="btn btn-primary" @onclick="ShowAddIndividualServiceForm">+ Add New Service</button>
-</div>
-
-@{
-    var individualCategoryGroups = Catalog.Jobs
-        .Where(j => !IsServicePackagesCategory(NormalizeCategory(j.Category)))
-        .GroupBy(j => new
-        {
-            Category1 = NormalizeCategory(j.Category),
-            Category2 = NormalizeCategory2(j.Category2)
-        })
-        .OrderBy(g => g.Key.Category1, StringComparer.OrdinalIgnoreCase)
-        .ThenBy(g => g.Key.Category2, StringComparer.OrdinalIgnoreCase)
-        .ToList();
-}
-
-@if (!individualCategoryGroups.Any())
-{
-    <div style="color:#666; margin-bottom: 24px;">No individual service categories yet.</div>
-}
-@foreach (var group in individualCategoryGroups)
-{
-    var jobsInCategory = group
-        .OrderBy(j => j.Name)
-        .ToList();
-
-    if (!jobsInCategory.Any())
-    {
-        continue;
-    }
-
-    <div style="margin-bottom: 24px;">
-        <h5 style="margin: 0 0 10px 0;">@group.Key.Category1 / @group.Key.Category2 (@jobsInCategory.Count)</h5>
-        <SfGrid DataSource="@jobsInCategory" AllowSorting="true" Width="100%">
-            <GridColumns>
-                <GridColumn HeaderText="Name" Width="220">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <input type="text"
-                               value="@job.Name"
-                               class="grid-inline-input"
-                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.Name), e.Value?.ToString()))" />
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Time (mins)" Width="120" TextAlign="TextAlign.Center">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <input type="number"
-                               min="1"
-                               value="@job.DefaultMinutes"
-                               class="grid-inline-input numeric"
-                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.DefaultMinutes), e.Value?.ToString()))" />
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Price" Width="120" TextAlign="TextAlign.Center">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <input type="number"
-                               min="0"
-                               step="0.01"
-                               value="@FormatPriceForInput(job.BasePriceIncVat)"
-                               class="grid-inline-input numeric"
-                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.BasePriceIncVat), e.Value?.ToString()))" />
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Package Rates" Width="340">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <div class="package-rates-cell">
-                            <span class="package-rates-summary">@GetPackageOverrideSummary(job)</span>
-                            <button class="btn btn-secondary grid-btn"
-                                    style="width:auto; padding:0 10px;"
-                                    type="button"
-                                    @onclick="() => OpenPackageRatesDialog(job)">Set rates</button>
-                        </div>
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Part Number" Width="160">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <input type="text"
-                               value="@job.PartNumber"
-                               class="grid-inline-input"
-                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.PartNumber), e.Value?.ToString()))" />
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Skill Level" Width="250">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <div class="inline-row" style="flex-wrap:nowrap;">
-                            <select value="@job.SkillLevel"
-                                    class="grid-inline-select"
-                                    @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.SkillLevel), e.Value?.ToString()))">
-                                <option value="All">All</option>
-                                @foreach (var level in Catalog.SkillLevels)
-                                {
-                                    <option value="@level">@level</option>
-                                }
-                            </select>
-                            <button class="btn btn-secondary grid-btn"
-                                    style="width:auto; padding:0 10px;"
-                                    type="button"
-                                    @onclick="OpenSkillEditor">Add/Edit</button>
-                        </div>
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Description" Width="260">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <input type="text"
-                               value="@job.Description"
-                               class="grid-inline-input"
-                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.Description), e.Value?.ToString()))" />
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Color" Width="120">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                            var colorValue = string.IsNullOrWhiteSpace(job.ColorHex) ? "#94a3b8" : job.ColorHex;
-                        }
-                        <input type="color"
-                               value="@colorValue"
-                               class="grid-inline-color"
-                               @onchange="(e => PersistInlineChange(job, nameof(JobDefinition.ColorHex), e.Value?.ToString()))" />
-                    </Template>
-                </GridColumn>
-                <GridColumn HeaderText="Actions" Width="160" TextAlign="TextAlign.Center">
-                    <Template>
-                        @{
-                            var job = (JobDefinition)context;
-                        }
-                        <button class="btn btn-primary grid-btn" @onclick="() => EditJob(job.Id)">Edit</button>
-                        <button class="btn btn-danger grid-btn" style="margin-right:0;" @onclick="() => DeleteJob(job.Id)">Delete</button>
-                    </Template>
-                </GridColumn>
-            </GridColumns>
-        </SfGrid>
-    </div>
-}
-
 <SfDialog Width="620px"
           IsModal="true"
           ShowCloseIcon="true"
@@ -1256,6 +788,7 @@
     </DialogButtons>
 </SfDialog>
 
+
 @code {
     private string _message = "";
     private bool _scrollToTopRequested;
@@ -1327,11 +860,54 @@
     private DotNetObjectReference<ManageJobs>? PackageChecklistDotNetRef;
     private ElementReference PackageChecklistListRef;
     private bool ShouldInitPackageChecklistDnd;
+    private string ServiceFilter = "";
+    private string ServicePackageFilter = "";
+    private bool ServiceGroupExpansionInitialized;
+    private readonly HashSet<string> ExpandedServiceGroups = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> KnownServiceGroups = new(StringComparer.OrdinalIgnoreCase);
+    private bool ServiceSubgroupExpansionInitialized;
+    private readonly HashSet<string> ExpandedServiceSubgroups = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> KnownServiceSubgroups = new(StringComparer.OrdinalIgnoreCase);
+    private bool ServicePackageExpansionInitialized;
+    private readonly HashSet<string> ExpandedServicePackages = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> KnownServicePackages = new(StringComparer.OrdinalIgnoreCase);
+
+    private string CurrentPath
+    {
+        get
+        {
+            var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+            var withoutQuery = relativePath.Split('?', '#')[0];
+            if (string.IsNullOrWhiteSpace(withoutQuery))
+                return "/";
+
+            var normalized = withoutQuery.StartsWith("/", StringComparison.Ordinal)
+                ? withoutQuery
+                : "/" + withoutQuery;
+            return normalized.Length > 1
+                ? normalized.TrimEnd('/')
+                : normalized;
+        }
+    }
+
+    private bool IsServicePackagesPage
+        => string.Equals(CurrentPath, "/manage-service-packages", StringComparison.OrdinalIgnoreCase);
 
     protected override async Task OnInitializedAsync()
     {
         await Catalog.EnsureInitializedAsync();
         await Data.EnsureInitializedAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!ShowAddForm)
+            return;
+
+        if (IsServicePackagesPage && !IsServicePackagesEditor)
+            CancelAddEdit();
+        else if (!IsServicePackagesPage && IsServicePackagesEditor)
+            CancelAddEdit();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -1366,6 +942,16 @@
 
     private void ShowAddIndividualServiceForm()
         => ShowAddJobForm(ServiceEditorMode.IndividualServices);
+
+    private void ShowAddIndividualServiceForm(string category1, string category2)
+    {
+        ShowAddJobForm(ServiceEditorMode.IndividualServices);
+        NewJobCategory = NormalizeCategory(category1);
+        var normalizedCategory2 = NormalizeCategory2(category2);
+        NewJobCategory2 = normalizedCategory2.Equals("General", StringComparison.OrdinalIgnoreCase)
+            ? ""
+            : normalizedCategory2;
+    }
 
     private void ShowAddJobForm(ServiceEditorMode mode)
     {
@@ -1473,11 +1059,272 @@
         Message = "";
     }
 
+    private List<ServiceCategory1Group> FilteredIndividualServiceGroups
+    {
+        get
+        {
+            var groups = Catalog.Jobs
+                .Where(j => !IsServicePackagesCategory(NormalizeCategory(j.Category)))
+                .Where(MatchesServiceFilter)
+                .GroupBy(j => NormalizeCategory(j.Category), StringComparer.OrdinalIgnoreCase)
+                .Select(g => new
+                {
+                    Group = g,
+                    Category1Order = Catalog.GetCategory1SortOrder(g.Key)
+                })
+                .OrderBy(g => g.Category1Order)
+                .ThenBy(g => g.Group.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(g =>
+                {
+                    var category1 = g.Group.Key;
+                    var category2Groups = g.Group
+                        .GroupBy(j => NormalizeCategory2(j.Category2), StringComparer.OrdinalIgnoreCase)
+                        .Select(sub => new
+                        {
+                            Subgroup = sub,
+                            Category2Order = Catalog.GetCategory2SortOrder(category1, sub.Key)
+                        })
+                        .OrderBy(sub => sub.Category2Order)
+                        .ThenBy(sub => sub.Subgroup.Key, StringComparer.OrdinalIgnoreCase)
+                        .Select(sub => new ServiceCategory2Group(
+                            sub.Subgroup.Key,
+                            Catalog.OrderJobsForDisplay(sub.Subgroup).ToList()))
+                        .ToList();
+
+                    return new ServiceCategory1Group(category1, category2Groups);
+                })
+                .ToList();
+
+            SyncServiceExpansion(groups);
+            return groups;
+        }
+    }
+
+    private int FilteredServiceCount => FilteredIndividualServiceGroups.Sum(g => g.TotalCount);
+
+    private List<JobDefinition> FilteredServicePackages
+    {
+        get
+        {
+            var packages = ServicePackages
+                .Where(MatchesServicePackageFilter)
+                .ToList();
+
+            SyncServicePackageExpansion(packages);
+            return packages;
+        }
+    }
+
+    private bool MatchesServicePackageFilter(JobDefinition package)
+    {
+        var filter = (ServicePackageFilter ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(filter))
+            return true;
+
+        if ((package.Name ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || (package.Description ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || (package.PartNumber ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || (package.SkillLevel ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || GetPricingSummary(package).Contains(filter, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var checklistItems = package.PackageChecklistItems ?? new List<ServicePackageChecklistItemDefinition>();
+        return checklistItems.Any(item =>
+            GetChecklistItemDisplayName(item).Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || GetChecklistItemDisplayDescription(item).Contains(filter, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void SyncServicePackageExpansion(List<JobDefinition> packages)
+    {
+        var packageIds = packages
+            .Select(p => (p.Id ?? "").Trim())
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (!ServicePackageExpansionInitialized)
+        {
+            ExpandedServicePackages.Clear();
+            var firstId = packages
+                .Select(p => (p.Id ?? "").Trim())
+                .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
+            if (!string.IsNullOrWhiteSpace(firstId))
+                ExpandedServicePackages.Add(firstId);
+
+            KnownServicePackages.Clear();
+            foreach (var id in packageIds)
+                KnownServicePackages.Add(id);
+
+            ServicePackageExpansionInitialized = true;
+            return;
+        }
+
+        ExpandedServicePackages.RemoveWhere(id => !packageIds.Contains(id));
+        KnownServicePackages.RemoveWhere(id => !packageIds.Contains(id));
+        foreach (var id in packageIds)
+        {
+            if (KnownServicePackages.Add(id))
+                ExpandedServicePackages.Add(id);
+        }
+
+        if (ExpandedServicePackages.Count == 0)
+        {
+            var firstId = packages
+                .Select(p => (p.Id ?? "").Trim())
+                .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
+            if (!string.IsNullOrWhiteSpace(firstId))
+                ExpandedServicePackages.Add(firstId);
+        }
+    }
+
+    private bool IsServicePackageExpanded(string packageId)
+    {
+        var normalizedId = (packageId ?? "").Trim();
+        return !string.IsNullOrWhiteSpace(normalizedId)
+            && ExpandedServicePackages.Contains(normalizedId);
+    }
+
+    private void ToggleServicePackageExpanded(string packageId)
+    {
+        var normalizedId = (packageId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalizedId))
+            return;
+
+        if (!ExpandedServicePackages.Add(normalizedId))
+            ExpandedServicePackages.Remove(normalizedId);
+    }
+
+    private bool MatchesServiceFilter(JobDefinition service)
+    {
+        var filter = (ServiceFilter ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(filter))
+            return true;
+
+        return (service.Name ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+               || (service.Category ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+               || (service.Category2 ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+               || (service.PartNumber ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+               || (service.Description ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void SyncServiceExpansion(List<ServiceCategory1Group> groups)
+    {
+        var allGroups = groups
+            .Select(g => g.Category1)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var allSubgroups = groups
+            .SelectMany(g => g.Category2Groups.Select(sub => BuildServiceSubgroupKey(g.Category1, sub.Category2)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var forceExpandAll = !string.IsNullOrWhiteSpace((ServiceFilter ?? "").Trim());
+
+        if (!ServiceGroupExpansionInitialized || forceExpandAll)
+        {
+            ExpandedServiceGroups.Clear();
+            foreach (var group in allGroups)
+                ExpandedServiceGroups.Add(group);
+            KnownServiceGroups.Clear();
+            foreach (var group in allGroups)
+                KnownServiceGroups.Add(group);
+            ServiceGroupExpansionInitialized = true;
+        }
+        else
+        {
+            ExpandedServiceGroups.RemoveWhere(group => !allGroups.Contains(group));
+            KnownServiceGroups.RemoveWhere(group => !allGroups.Contains(group));
+            foreach (var group in allGroups)
+            {
+                if (KnownServiceGroups.Add(group))
+                    ExpandedServiceGroups.Add(group);
+            }
+        }
+
+        if (!ServiceSubgroupExpansionInitialized || forceExpandAll)
+        {
+            ExpandedServiceSubgroups.Clear();
+            foreach (var subgroup in allSubgroups)
+                ExpandedServiceSubgroups.Add(subgroup);
+            KnownServiceSubgroups.Clear();
+            foreach (var subgroup in allSubgroups)
+                KnownServiceSubgroups.Add(subgroup);
+            ServiceSubgroupExpansionInitialized = true;
+        }
+        else
+        {
+            ExpandedServiceSubgroups.RemoveWhere(subgroup => !allSubgroups.Contains(subgroup));
+            KnownServiceSubgroups.RemoveWhere(subgroup => !allSubgroups.Contains(subgroup));
+            foreach (var subgroup in allSubgroups)
+            {
+                if (KnownServiceSubgroups.Add(subgroup))
+                    ExpandedServiceSubgroups.Add(subgroup);
+            }
+        }
+    }
+
+    private bool IsServiceGroupExpanded(string category)
+        => ExpandedServiceGroups.Contains(category);
+
+    private void ToggleServiceGroup(string category)
+    {
+        if (!ExpandedServiceGroups.Add(category))
+            ExpandedServiceGroups.Remove(category);
+    }
+
+    private string BuildServiceSubgroupKey(string category1, string category2)
+        => $"{NormalizeCategory(category1)}::{NormalizeCategory2(category2)}";
+
+    private bool IsServiceSubgroupExpanded(string subgroupKey)
+        => ExpandedServiceSubgroups.Contains(subgroupKey);
+
+    private void ToggleServiceSubgroup(string subgroupKey)
+    {
+        if (!ExpandedServiceSubgroups.Add(subgroupKey))
+            ExpandedServiceSubgroups.Remove(subgroupKey);
+    }
+
+    private string GetCategoryColor(string category1)
+    {
+        if (Catalog.CategoryColors.TryGetValue(category1, out var color))
+        {
+            var normalized = NormalizeColor(color);
+            if (!string.IsNullOrWhiteSpace(normalized))
+                return normalized;
+        }
+
+        return "#94a3b8";
+    }
+
+    private string FormatServiceMeta(JobDefinition service)
+    {
+        var skill = string.IsNullOrWhiteSpace(service.SkillLevel) ? "All" : service.SkillLevel.Trim();
+        var effectivePrice = ResolveEffectivePrice(service);
+        return $"£{effectivePrice:0.00} / {Math.Max(0, service.DefaultMinutes)} mins / {GetPricingSummary(service)} / Skill: {skill}";
+    }
+
+    private string FormatServicePackageMeta(JobDefinition package)
+    {
+        var skill = string.IsNullOrWhiteSpace(package.SkillLevel) ? "All" : package.SkillLevel.Trim();
+        var effectivePrice = ResolveEffectivePrice(package);
+        return $"£{effectivePrice:0.00} / {Math.Max(0, package.DefaultMinutes)} mins / {GetPricingSummary(package)} / Skill: {skill}";
+    }
+
+    private string GetPackageChecklistItemMeta(ServicePackageChecklistItemDefinition item)
+    {
+        var linkedServiceId = (item.LinkedServiceJobId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(linkedServiceId))
+            return "Manual step";
+
+        var linkedService = Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(linkedServiceId, StringComparison.OrdinalIgnoreCase));
+        if (linkedService is null)
+            return "Linked service";
+
+        return $"Linked service · {NormalizeCategory(linkedService.Category)}";
+    }
+
     private List<JobDefinition> IndividualServicesForChecklist =>
-        Catalog.Jobs
-            .Where(j => !IsServicePackagesCategory(j.Category))
-            .OrderBy(j => j.Category, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(j => j.Name, StringComparer.OrdinalIgnoreCase)
+        Catalog
+            .OrderJobsForDisplay(Catalog.Jobs.Where(j => !IsServicePackagesCategory(j.Category)))
             .ToList();
 
     private IReadOnlyDictionary<string, List<JobDefinition>> ChecklistServiceGroups
@@ -1488,8 +1335,10 @@
                 .Where(j => string.IsNullOrWhiteSpace(ChecklistServiceFilter)
                             || j.Name.Contains(ChecklistServiceFilter, StringComparison.OrdinalIgnoreCase))
                 .GroupBy(j => NormalizeCategory(j.Category))
-                .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => g.OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase).ToList(), StringComparer.OrdinalIgnoreCase);
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
         }
     }
 
@@ -1728,6 +1577,13 @@
         public bool Enabled { get; set; }
         public int Minutes { get; set; }
         public string PriceInput { get; set; } = "0.00";
+    }
+
+    private sealed record ServiceCategory2Group(string Category2, List<JobDefinition> Services);
+
+    private sealed record ServiceCategory1Group(string Category1, List<ServiceCategory2Group> Category2Groups)
+    {
+        public int TotalCount => Category2Groups.Sum(g => g.Services.Count);
     }
 
     private int GetDraftDefaultMinutes()
@@ -2206,9 +2062,9 @@
             return;
         }
 
-        if (newJobMinutes <= 0)
+        if (newJobMinutes < 0)
         {
-            Message = "Time must be greater than 0.";
+            Message = "Time must be 0 or greater.";
             IsError = true;
             return;
         }
@@ -2415,15 +2271,13 @@
         => Catalog.Categories.FirstOrDefault(IsServicePackagesCategory) ?? ServicePackagesCategory;
 
     private string GetDefaultIndividualCategory()
-        => Catalog.Categories
-            .Where(c => !IsServicePackagesCategory(c))
-            .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+        => Catalog
+            .OrderCategories(Catalog.Categories.Where(c => !IsServicePackagesCategory(c)))
             .FirstOrDefault() ?? "";
 
     private List<string> GetIndividualCategoryOptions()
-        => Catalog.Categories
-            .Where(c => !IsServicePackagesCategory(c))
-            .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+        => Catalog
+            .OrderCategories(Catalog.Categories.Where(c => !IsServicePackagesCategory(c)))
             .ToList();
 
     private int GetServicePackagesCount()
@@ -2433,17 +2287,16 @@
         => Catalog.Jobs.Count(j => !IsServicePackagesCategory(NormalizeCategory(j.Category)));
 
     private List<string> GetIndividualServiceCategories()
-        => Catalog.Jobs
-            .Select(j => NormalizeCategory(j.Category))
-            .Where(c => !IsServicePackagesCategory(c))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+        => Catalog
+            .OrderCategories(
+                Catalog.Jobs
+                    .Select(j => NormalizeCategory(j.Category))
+                    .Where(c => !IsServicePackagesCategory(c)))
             .ToList();
 
     private List<JobDefinition> ServicePackages
-        => Catalog.Jobs
-            .Where(j => IsServicePackagesCategory(j.Category))
-            .OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase)
+        => Catalog
+            .OrderJobsForDisplay(Catalog.Jobs.Where(j => IsServicePackagesCategory(j.Category)))
             .ToList();
 
     private void InitializePackageOverrideInputs(JobDefinition? job = null)
@@ -2734,14 +2587,14 @@
                 }
                 break;
             case nameof(JobDefinition.DefaultMinutes):
-                if (int.TryParse(value, out var mins) && mins > 0)
+                if (int.TryParse(value, out var mins) && mins >= 0)
                 {
                     job.DefaultMinutes = mins;
                 }
                 else
                 {
                     IsError = true;
-                    Message = "Time must be greater than 0.";
+                    Message = "Time must be 0 or greater.";
                 }
                 break;
             case nameof(JobDefinition.BasePriceIncVat):
@@ -2843,4 +2696,7 @@
     }
 }
 
+
+
+
 

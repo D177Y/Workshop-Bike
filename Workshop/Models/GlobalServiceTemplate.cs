@@ -14,5 +14,6 @@ public sealed class GlobalServiceTemplate
     public ServicePricingMode PricingMode { get; set; } = ServicePricingMode.FixedPrice;
     public ServiceHourlyRateTier AutoPricingTier { get; set; } = ServiceHourlyRateTier.Default;
     public decimal EstimatedPriceIncVat { get; set; }
+    public List<JobServicePackageOverride> PackageOverrides { get; set; } = new();
     public int SortOrder { get; set; }
 }

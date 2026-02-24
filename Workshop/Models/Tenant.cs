@@ -17,10 +17,15 @@ public sealed class Tenant
     public int MaxMechanics { get; set; } = 6;
     public string StripeCustomerId { get; set; } = "";
     public string StripeSubscriptionId { get; set; } = "";
+    public string StripeSubscriptionStatus { get; set; } = "";
+    public DateTime? StripeCurrentPeriodEndUtc { get; set; }
+    public DateTime? StripeSubscriptionUpdatedAtUtc { get; set; }
+    public bool HasActivatedSubscription { get; set; }
     public int FinancialYearStartMonth { get; set; } = 1;
     public int FinancialYearStartDay { get; set; } = 1;
     public int FinancialYearEndMonth { get; set; } = 12;
     public int FinancialYearEndDay { get; set; } = 31;
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? TrialDataPurgedAtUtc { get; set; }
 }

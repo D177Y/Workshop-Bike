@@ -5,7 +5,7 @@
 <Section>
     <div class="mk-center-head mk-reveal">
         <h1 class="mk-page-title">How VeloLabs works</h1>
-        <p class="mk-page-sub">From store setup to completed jobs, here's the operational flow.</p>
+        <p class="mk-page-sub">Start a no-card trial, run your workshop flow, and upgrade when ready.</p>
     </div>
 </Section>
 
@@ -50,12 +50,13 @@
 @code {
     private static readonly IReadOnlyList<HowStep> Steps =
     [
-        new(1, "store", "Set up your stores", "Add one or more workshop locations. Assign team access per store."),
-        new(2, "users", "Add your mechanics", "Create mechanic profiles with working hours and skill areas. Capacity is calculated automatically."),
+        new(1, "users", "Start your 14-day free trial", "Create your account with no card required and begin setup immediately."),
+        new(2, "store", "Set up your stores", "Add one or more workshop locations. Assign team access per store."),
         new(3, "package", "Define services & packages", "Set up individual services and bundled packages with pricing and estimated durations."),
-        new(4, "clipboard", "Take intake & build quotes", "Receive workshop requests, assess the bike, and send a clear quote to the customer."),
-        new(5, "wrench", "Book & execute jobs", "Convert quotes to bookings. Track progress on job cards with real-time status updates."),
-        new(6, "plug", "Integrate & sync", "Connect Timetastic for mechanic time-off. Keep your schedule accurate without manual updates.")
+        new(4, "clipboard", "Take intake & build quotes", "Receive workshop requests, assess the bike, and send clear quotes to customers."),
+        new(5, "wrench", "Book & execute jobs", "Convert quotes to bookings and track progress on job cards with real-time status updates."),
+        new(6, "plug", "Integrate & sync", "Connect Timetastic for mechanic time-off so schedules stay accurate automatically."),
+        new(7, "bar", "Upgrade before data is deleted", "After trial end there is a 7-day upgrade window, then a 7-day feedback window. If still unpaid, operational data is removed.")
     ];
 
     private sealed record HowStep(int Number, string Icon, string Title, string Description);

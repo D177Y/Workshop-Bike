@@ -9,11 +9,12 @@
 @using Microsoft.Extensions.Logging
 @using Workshop.Data
 @using Workshop.Models
+@using Workshop.Services
 @inject IDbContextFactory<WorkshopDbContext> DbFactory
 @inject UserManager<AppUser> UserManager
 @inject Workshop.Services.IEmailSender EmailSender
+@inject TrialLifecycleService TrialLifecycle
 @inject NavigationManager Nav
-@inject BillingService Billing
 @inject ILogger<Signup> Logger
 
 <Section>
@@ -59,27 +60,20 @@
                     <ValidationMessage For="@(() => _model.BusinessName)" />
                 </div>
 
-                <div class="mk-signup-two">
-                    <div class="mk-field">
-                        <label for="stores">Number of stores <span>*</span></label>
-                        <InputSelect id="stores" class="mk-input" @bind-Value="_model.StoreCountBand">
-                            <option value="">Select...</option>
-                            <option value="1">1</option>
-                            <option value="2-5">2-5</option>
-                            <option value="6+">6+</option>
-                        </InputSelect>
-                        <ValidationMessage For="@(() => _model.StoreCountBand)" />
-                    </div>
-                    <div class="mk-field">
-                        <label for="mechanics">Number of mechanics <span>*</span></label>
-                        <InputSelect id="mechanics" class="mk-input" @bind-Value="_model.MechanicBand">
-                            <option value="">Select...</option>
-                            <option value="1-3">1-3</option>
-                            <option value="4-10">4-10</option>
-                            <option value="11+">11+</option>
-                        </InputSelect>
-                        <ValidationMessage For="@(() => _model.MechanicBand)" />
-                    </div>
+                <div class="mk-field">
+                    <label for="package">Select package <span>*</span></label>
+                    <InputSelect id="package" class="mk-input" @bind-Value="_model.SelectedPlan">
+                        <option value="">Select...</option>
+                        <option value="starter">Starter</option>
+                        <option value="standard">Standard</option>
+                        <option value="premium">Premium</option>
+                        <option value="enterprise">Enterprise</option>
+                    </InputSelect>
+                    <ValidationMessage For="@(() => _model.SelectedPlan)" />
+                    @if (!string.IsNullOrWhiteSpace(PackageSummary))
+                    {
+                        <small>@PackageSummary</small>
+                    }
                 </div>
 
                 <div class="mk-signup-two">
@@ -155,7 +149,7 @@
                 }
 
                 <button class="mk-btn mk-btn-primary mk-signup-submit" type="submit" disabled="@IsBusy">
-                    @(IsBusy ? "Creating account..." : "Create free account")
+                    @(IsBusy ? "Starting free trial..." : "Start free trial")
                 </button>
 
                 <p class="mk-signup-foot">Already have an account? <a href="/login">Sign in</a></p>
@@ -175,11 +169,25 @@
 
 @code {
     private readonly SignupModel _model = new();
+    [SupplyParameterFromQuery(Name = "plan")]
+    public string? PlanQuery { get; set; }
+
     private string Message = "";
     private bool IsError;
     private bool IsBusy;
     private bool ShowPassword;
     private bool ShowConfirmPassword;
+    private string PackageSummary => DescribePlan(_model.SelectedPlan);
+
+    protected override void OnParametersSet()
+    {
+        if (string.IsNullOrWhiteSpace(_model.SelectedPlan))
+        {
+            var queryPlan = NormalizePlanKey(PlanQuery);
+            if (queryPlan is not null)
+                _model.SelectedPlan = queryPlan;
+        }
+    }
 
     private async Task HandleSignup()
     {
@@ -191,11 +199,39 @@
         {
             await using var db = await DbFactory.CreateDbContextAsync();
 
-            var plan = ResolvePlan(_model.MechanicBand);
-            var maxMechanics = ResolveMechanicLimit(_model.MechanicBand);
+            var plan = ResolvePlan(_model.SelectedPlan);
+            var maxMechanics = PlanCatalog.GetMechanicLimit(plan);
             var businessName = _model.BusinessName.Trim();
             var contactName = $"{_model.FirstName} {_model.LastName}".Trim();
             var email = _model.Email.Trim();
+
+            var existingUser = await UserManager.FindByEmailAsync(email);
+            if (existingUser is not null)
+            {
+                var existingTenant = await db.Tenants
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(t => t.Id == existingUser.TenantId);
+
+                if (existingTenant is not null)
+                {
+                    var lifecycle = TrialLifecycle.Evaluate(existingTenant);
+                    if (lifecycle.TrialAlreadyUsed)
+                    {
+                        Nav.NavigateTo("/pricing?paid=1&reason=trial-used", forceLoad: true);
+                        return;
+                    }
+
+                    if (lifecycle.RequiresAppGate)
+                    {
+                        Nav.NavigateTo("/login?ReturnUrl=%2Ftrial-access", forceLoad: true);
+                        return;
+                    }
+                }
+
+                Message = "An account with this email already exists. Please sign in to continue.";
+                IsError = true;
+                return;
+            }
 
             var tenantCode = Slugify(businessName);
             if (string.IsNullOrWhiteSpace(tenantCode))
@@ -268,21 +304,9 @@
                 return;
             }
 
-            try
-            {
-                var baseUrl = Nav.BaseUri;
-                var session = Billing.CreateCheckoutSession(tenant.Id, user.Email!, plan, baseUrl);
-                Nav.NavigateTo(session.Url, forceLoad: true);
-            }
-            catch (Exception ex) when (ex is Stripe.StripeException or InvalidOperationException)
-            {
-                Logger.LogError(ex, "Failed to create Stripe checkout session during signup.");
-                var detail = ex.Message;
-                if (detail.Length > 220)
-                    detail = detail[..220] + "...";
-                Message = $"Account created, but billing checkout is unavailable. {detail}";
-                IsError = true;
-            }
+            var encodedEmail = Uri.EscapeDataString(email);
+            Nav.NavigateTo($"/signup-success?email={encodedEmail}", forceLoad: true);
+            return;
         }
         catch (Exception ex)
         {
@@ -296,21 +320,32 @@
         }
     }
 
-    private static PlanTier ResolvePlan(string mechanicBand) => mechanicBand switch
-    {
-        "1-3" => PlanTier.Standard,
-        "4-10" => PlanTier.Premium,
-        "11+" => PlanTier.Enterprise,
-        _ => PlanTier.Standard
-    };
+    private static PlanTier ResolvePlan(string selectedPlan)
+        => PlanCatalog.TryParseKey(selectedPlan, out var parsed)
+            ? parsed
+            : PlanTier.Standard;
 
-    private static int ResolveMechanicLimit(string mechanicBand) => mechanicBand switch
+    private static string DescribePlan(string selectedPlan)
     {
-        "1-3" => 3,
-        "4-10" => 10,
-        "11+" => 999,
-        _ => 3
-    };
+        if (!PlanCatalog.TryParseKey(selectedPlan, out var tier))
+            return "";
+
+        var definition = PlanCatalog.Get(tier);
+        var summary = $"Includes up to {definition.StoreLimit} {(definition.StoreLimit == 1 ? "store" : "stores")} and {definition.MechanicLimit} mechanic calendars.";
+        if (definition.IncludesAbacus)
+            summary += " Includes EPOS integration (Abacus).";
+        return summary;
+    }
+
+    private static string? NormalizePlanKey(string? rawPlan)
+    {
+        if (string.IsNullOrWhiteSpace(rawPlan))
+            return null;
+
+        return PlanCatalog.TryParseKey(rawPlan, out var tier)
+            ? PlanCatalog.ToKey(tier)
+            : null;
+    }
 
     private static string Slugify(string input)
     {
@@ -341,11 +376,8 @@
         [Required]
         public string BusinessName { get; set; } = "";
 
-        [Required]
-        public string StoreCountBand { get; set; } = "";
-
-        [Required]
-        public string MechanicBand { get; set; } = "";
+        [Required(ErrorMessage = "Please select a package.")]
+        public string SelectedPlan { get; set; } = "";
 
         [Required]
         [MinLength(8)]

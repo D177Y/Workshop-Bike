@@ -206,7 +206,7 @@
             <label>Category<span class="required-asterisk">*</span></label>
             <div class="inline-row">
                 <select @bind="NewAddOnCategory">
-                    @foreach (var c in Catalog.Categories.OrderBy(c => c))
+                    @foreach (var c in Catalog.OrderCategories(Catalog.Categories))
                     {
                         <option value="@c">@c</option>
                     }
@@ -451,7 +451,7 @@ else
         ShowAddForm = true;
         EditingAddOnId = null;
         NewAddOnName = "";
-        NewAddOnCategory = Catalog.Categories.FirstOrDefault() ?? "";
+        NewAddOnCategory = Catalog.OrderCategories(Catalog.Categories).FirstOrDefault() ?? "";
         NewAddOnDescription = "";
         SelectedPackages.Clear();
         PackageSettingsByJobId.Clear();
@@ -512,8 +512,9 @@ else
 
     private Task OpenCategoryEditor()
     {
-        CategoryEditorItems = Catalog.CategoryColors
-            .Select(kvp => new CategoryEditorItem(kvp.Key, NormalizeColor(kvp.Value)))
+        CategoryEditorItems = Catalog
+            .OrderCategories(Catalog.CategoryColors.Keys)
+            .Select(category => new CategoryEditorItem(category, NormalizeColor(Catalog.CategoryColors[category])))
             .ToList();
 
         if (!CategoryEditorItems.Any(i => IsServicePackagesCategory(i.Name)))
@@ -881,10 +882,8 @@ else
 
     private List<string> GetAddOnCategories()
     {
-        return Catalog.AddOns
-            .Select(a => NormalizeCategory(a.Category))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+        return Catalog
+            .OrderCategories(Catalog.AddOns.Select(a => NormalizeCategory(a.Category)))
             .ToList();
     }
 

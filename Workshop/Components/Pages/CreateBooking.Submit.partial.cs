@@ -47,6 +47,13 @@ public partial class CreateBooking
             return;
         }
 
+        if (!ValidateManualServicePricingInputs(out var manualValidationMessage))
+        {
+            ShowValidation = true;
+            Message = manualValidationMessage;
+            return;
+        }
+
         var package = SelectedServicePackage;
         var title = package is not null
             ? package.Name
@@ -116,6 +123,8 @@ public partial class CreateBooking
             SourceQuoteId = SourceQuoteId.Trim()
         };
 
+        booking.JobCard = BuildInitialBookingJobCard(booking);
+
         await Data.AddBookingAsync(booking);
 
         if (!string.IsNullOrWhiteSpace(SourceQuoteId) && !string.IsNullOrWhiteSpace(CustomerAccountNumber))
@@ -169,5 +178,67 @@ public partial class CreateBooking
         }
 
         return all;
+    }
+
+    private BookingJobCard BuildInitialBookingJobCard(Booking booking)
+    {
+        var card = new BookingJobCard
+        {
+            StartedAtUtc = DateTime.UtcNow,
+            LastUpdatedUtc = DateTime.UtcNow,
+            AssignedMechanicId = booking.MechanicId,
+            StatusName = "Scheduled",
+            CustomerNotes = (booking.Notes ?? "").Trim(),
+            CommunicationDraft = $"Update on your booking ({booking.Title})."
+        };
+
+        var selectedJobIds = booking.JobIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var servicePackageId = selectedJobIds.FirstOrDefault(IsServicePackage);
+
+        foreach (var jobId in selectedJobIds)
+        {
+            var job = Catalog.Jobs.FirstOrDefault(j => j.Id.Equals(jobId, StringComparison.OrdinalIgnoreCase));
+            if (job is null)
+                continue;
+
+            var packageContext = Catalog.IsServicePackage(job.Id) ? null : servicePackageId;
+            int minutes;
+            decimal price;
+            if (RequiresManualPricingAtUse(job))
+            {
+                minutes = GetManualServiceMinutes(job.Id);
+                price = GetManualServicePrice(job.Id);
+            }
+            else
+            {
+                var priced = Catalog.PriceAndTime(job.Id, packageContext);
+                minutes = priced.minutes;
+                price = priced.priceIncVat;
+            }
+
+            card.Services.Add(new JobCardServiceItem
+            {
+                JobId = job.Id,
+                Name = job.Name,
+                Description = (job.Description ?? "").Trim(),
+                EstimatedMinutes = Math.Max(0, minutes),
+                EstimatedPriceIncVat = Math.Max(0m, price)
+            });
+        }
+
+        if (card.Services.Count == 0)
+        {
+            card.Services.Add(new JobCardServiceItem
+            {
+                Name = string.IsNullOrWhiteSpace(booking.Title) ? "Workshop service" : booking.Title.Trim(),
+                EstimatedMinutes = Math.Max(0, booking.TotalMinutes),
+                EstimatedPriceIncVat = Math.Max(0m, booking.TotalPriceIncVat)
+            });
+        }
+
+        return card;
     }
 }

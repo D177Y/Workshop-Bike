@@ -42,6 +42,12 @@ public sealed class DatabaseInitializer
                 await db.SaveChangesAsync();
             }
 
+            if (!await db.CatalogSettings.AnyAsync(x => x.TenantId == 0))
+            {
+                db.CatalogSettings.Add(SeedData.DefaultCatalogSettings(0));
+                await db.SaveChangesAsync();
+            }
+
             if (!await db.GlobalServiceCategories.AnyAsync())
             {
                 db.GlobalServiceCategories.AddRange(SeedData.GlobalServiceCategories());
@@ -51,6 +57,12 @@ public sealed class DatabaseInitializer
             if (!await db.GlobalServiceTemplates.AnyAsync())
             {
                 db.GlobalServiceTemplates.AddRange(SeedData.GlobalServiceTemplates());
+                await db.SaveChangesAsync();
+            }
+
+            if (!await db.GlobalServicePackageTemplates.AnyAsync())
+            {
+                db.GlobalServicePackageTemplates.AddRange(SeedData.GlobalServicePackageTemplates());
                 await db.SaveChangesAsync();
             }
 

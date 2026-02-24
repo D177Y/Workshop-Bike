@@ -1,20 +1,26 @@
 @page "/confirm-email"
-@layout PublicLayout
+@layout MarketingLayout
 @attribute [AllowAnonymous]
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.WebUtilities
 @using Workshop.Models
 @inject UserManager<AppUser> UserManager
 
-<section class="auth-wrapper">
-    <div class="auth-card">
-        <h2>Email confirmation</h2>
-        <div class="section-subtitle">@Message</div>
-        <div style="margin-top:18px;">
-            <a class="btn solid" href="/login">Go to login</a>
-        </div>
+<Section>
+    <div class="mk-center-head mk-confirm-head">
+        <h1 class="mk-page-title">Verify your email</h1>
     </div>
-</section>
+</Section>
+
+<Section Soft="true">
+    <div class="mk-confirm-grid">
+        <article class="mk-card mk-confirm-card">
+            <p>@Message</p>
+            <a class="mk-btn mk-btn-primary mk-confirm-login" href="/login">Login</a>
+            <p class="mk-confirm-help">If you cannot sign in yet, please request another verification email.</p>
+        </article>
+    </div>
+</Section>
 
 @code {
     [Parameter, SupplyParameterFromQuery]

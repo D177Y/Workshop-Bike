@@ -1,0 +1,1361 @@
+﻿@page "/super/settings/default-service-packages"
+@attribute [Authorize(Roles = "SuperAdmin")]
+@implements IDisposable
+@using Microsoft.JSInterop
+@using Syncfusion.Blazor.DropDowns
+@using Syncfusion.Blazor.Inputs
+@using Syncfusion.Blazor.Popups
+@using Workshop.Models
+@using Workshop.Services
+@inject SuggestedCatalogService SuggestedCatalog
+@inject IJSRuntime JS
+
+<div class="sd-shell">
+    <header class="sd-header">
+        <h3>Default Service Packages</h3>
+        <p>Build linked service package templates used during one-click tenant setup.</p>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <section class="sd-flash @(IsError ? "error" : "success")">@Message</section>
+    }
+
+    <section class="sd-card">
+        <div class="sd-toolbar">
+            <div class="sd-filter">
+                <SfTextBox Placeholder="Package filter"
+                           FloatLabelType="FloatLabelType.Never"
+                           @bind-Value="PackageFilter" />
+            </div>
+            <span class="sd-count">@FilteredPackages.Count packages</span>
+        </div>
+
+        @if (!CanReorderPackages)
+        {
+            <div class="sd-note">Clear the filter and close popups to reorder packages or package items with drag and drop.</div>
+        }
+
+        @if (FilteredPackages.Count == 0)
+        {
+            <div class="sd-empty">No service packages match the current filter.</div>
+        }
+        else
+        {
+            <div class="package-list package-dnd-list">
+                @for (var packageIndex = 0; packageIndex < FilteredPackages.Count; packageIndex++)
+                {
+                    var package = FilteredPackages[packageIndex];
+                    var directItems = package.Items
+                        .OrderBy(i => i.SortOrder)
+                        .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    var packageKey = package.Id.ToString();
+
+                    <article class="package-card package-dnd-row"
+                             data-index="@packageIndex"
+                             draggable="@(CanReorderPackages ? "true" : "false")">
+                        <div class="package-head">
+                            <span class="drag-handle package-drag-handle" aria-hidden="true">&#9776;</span>
+                            <div class="package-main">
+                                <span class="package-name">@package.Name</span>
+                                <span class="package-meta">@FormatPackageMeta(package) · @directItems.Count direct items · @ResolveExpandedItemCount(package) linked items</span>
+                            </div>
+                            <div class="row-icons">
+                                <button type="button" class="icon-btn edit-icon-btn" title="Edit package" @onclick="() => OpenEditPackageDialog(package)">
+                                    <i data-lucide="square-pen" class="sd-lucide" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" class="icon-btn danger" title="Delete package" @onclick="() => DeletePackageAsync(package.Id)">
+                                    <i data-lucide="trash-2" class="sd-lucide" aria-hidden="true"></i>
+                                </button>
+                                <button type="button"
+                                        class="icon-btn chevron-btn @(IsExpanded(package.Id) ? "expanded" : "")"
+                                        title="Expand/collapse"
+                                        @onclick="() => ToggleExpanded(package.Id)">
+                                    <svg viewBox="0 0 24 24" class="chevron-svg" aria-hidden="true" focusable="false">
+                                        <path d="m6 9 6 6 6-6"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        @if (IsExpanded(package.Id))
+                        {
+                            <div class="package-body">
+                                @if (!string.IsNullOrWhiteSpace((package.Description ?? "").Trim()))
+                                {
+                                    <div class="package-description">@package.Description</div>
+                                }
+
+                                <div class="package-item-list package-item-dnd-list" data-dnd-key="@packageKey">
+                                    @for (var itemIndex = 0; itemIndex < directItems.Count; itemIndex++)
+                                    {
+                                        var item = directItems[itemIndex];
+                                        <div class="package-item-row package-item-dnd-row"
+                                             data-index="@itemIndex"
+                                             draggable="@(CanReorderPackages ? "true" : "false")">
+                                            <span class="drag-handle package-item-drag-handle @(CanReorderPackages ? "" : "disabled")" aria-hidden="true">&#9776;</span>
+                                            <div class="package-item-main">
+                                                <span class="package-item-name">@ResolveItemName(item)</span>
+                                                <span class="package-item-meta">@ResolveItemMeta(item)</span>
+                                                @if (!string.IsNullOrWhiteSpace(ResolveItemDescription(item)))
+                                                {
+                                                    <span class="package-item-description">@ResolveItemDescription(item)</span>
+                                                }
+                                            </div>
+                                            <div class="row-icons">
+                                                <button type="button" class="icon-btn edit-icon-btn" title="Edit item" @onclick="() => OpenEditItemDialog(package.Id, item)">
+                                                    <i data-lucide="square-pen" class="sd-lucide" aria-hidden="true"></i>
+                                                </button>
+                                                <button type="button" class="icon-btn danger" title="Delete item" @onclick="() => DeleteItemAsync(package.Id, item.Id)">
+                                                    <i data-lucide="trash-2" class="sd-lucide" aria-hidden="true"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+
+                                    <div class="package-item-footer">
+                                        <button type="button" class="icon-btn plus" title="Add package item" @onclick="() => OpenCreateItemDialog(package.Id)">
+                                            <i data-lucide="plus" class="sd-lucide" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </article>
+                }
+
+                <div class="package-list-footer">
+                    <button type="button" class="icon-btn plus" title="Add service package" @onclick="OpenCreatePackageDialog">
+                        <i data-lucide="plus" class="sd-lucide" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+        }
+    </section>
+</div>
+
+<SfDialog Width="720px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          @bind-Visible="IsPackageDialogVisible"
+          Header="@PackageDialogTitle">
+    <DialogTemplates>
+        <Content>
+            <div class="service-dialog-wrap">
+                @if (!string.IsNullOrWhiteSpace(PackageDialogMessage))
+                {
+                    <div class="service-dialog-error">@PackageDialogMessage</div>
+                }
+
+                <div class="sd-form-grid service-dialog-grid">
+                    <div class="sd-field">
+                        <label>Package name</label>
+                        <SfTextBox Placeholder="Package name"
+                                   FloatLabelType="FloatLabelType.Never"
+                                   @bind-Value="PackageEditor.Name" />
+                    </div>
+
+                    <div class="sd-field">
+                        <label>Mins</label>
+                        <SfNumericTextBox TValue="int?"
+                                          Min="0"
+                                          ShowSpinButton="false"
+                                          FloatLabelType="FloatLabelType.Never"
+                                          @bind-Value="PackageEditorMinutesInput" />
+                    </div>
+
+                    <div class="sd-field">
+                        <label>Price (GBP)</label>
+                        <SfNumericTextBox TValue="decimal?"
+                                          Min="0"
+                                          Decimals="2"
+                                          Format="n2"
+                                          ShowSpinButton="false"
+                                          FloatLabelType="FloatLabelType.Never"
+                                          @bind-Value="PackageEditorPriceInput" />
+                    </div>
+
+                    <div class="sd-field">
+                        <label>Skill level</label>
+                        <SfDropDownList TValue="string"
+                                        TItem="SkillLevelOption"
+                                        DataSource="@SkillLevelOptions"
+                                        FloatLabelType="FloatLabelType.Never"
+                                        @bind-Value="PackageEditor.SkillLevel">
+                            <DropDownListFieldSettings Text="Text" Value="Value" />
+                        </SfDropDownList>
+                    </div>
+
+                    <div class="sd-field">
+                        <label>Mode</label>
+                        <SfDropDownList TValue="ServicePricingMode"
+                                        TItem="PricingModeOption"
+                                        DataSource="@PricingModeOptions"
+                                        FloatLabelType="FloatLabelType.Never"
+                                        @bind-Value="PackageEditor.PricingMode">
+                            <DropDownListFieldSettings Text="Text" Value="Value" />
+                        </SfDropDownList>
+                    </div>
+
+                    <div class="sd-field">
+                        <label>Tier</label>
+                        <SfDropDownList TValue="ServiceHourlyRateTier"
+                                        TItem="HourlyRateTierOption"
+                                        DataSource="@TierOptions"
+                                        FloatLabelType="FloatLabelType.Never"
+                                        @bind-Value="PackageEditor.AutoPricingTier">
+                            <DropDownListFieldSettings Text="Text" Value="Value" />
+                        </SfDropDownList>
+                    </div>
+
+                    <div class="sd-field span-full">
+                        <label>Description</label>
+                        <textarea class="sd-textarea"
+                                  placeholder="Optional package description"
+                                  @bind="PackageEditor.Description"></textarea>
+                    </div>
+                </div>
+
+                <div class="sd-actions service-dialog-actions">
+                    <button type="button" class="sd-btn sd-btn-primary" @onclick="SavePackageAsync">Save Package</button>
+                    <button type="button" class="sd-btn sd-btn-ghost" @onclick="ClosePackageDialog">Cancel</button>
+                </div>
+            </div>
+        </Content>
+    </DialogTemplates>
+</SfDialog>
+
+<SfDialog Width="760px"
+          IsModal="true"
+          ShowCloseIcon="true"
+          @bind-Visible="IsItemDialogVisible"
+          Header="@ItemDialogTitle">
+    <DialogTemplates>
+        <Content>
+            <div class="service-dialog-wrap">
+                <div class="service-dialog-context">@ItemDialogContext</div>
+                @if (!string.IsNullOrWhiteSpace(ItemDialogMessage))
+                {
+                    <div class="service-dialog-error">@ItemDialogMessage</div>
+                }
+
+                <div class="item-dialog-layout">
+                    <div class="sd-field">
+                        <label>Item type</label>
+                        <SfDropDownList TValue="GlobalServicePackageItemType"
+                                        TItem="PackageItemTypeOption"
+                                        DataSource="@PackageItemTypeOptions"
+                                        FloatLabelType="FloatLabelType.Never"
+                                        @bind-Value="ItemEditor.ItemType">
+                            <DropDownListFieldSettings Text="Text" Value="Value" />
+                        </SfDropDownList>
+                    </div>
+
+                    @if (ItemEditor.ItemType == GlobalServicePackageItemType.Manual)
+                    {
+                        <section class="item-mode-panel">
+                            <div class="item-mode-title">Manual row</div>
+                            <div class="item-mode-help">Add a custom checklist row that is not linked to a service template.</div>
+
+                            <div class="item-mode-grid">
+                                <div class="sd-field span-2">
+                                    <label>Row name</label>
+                                    <SfTextBox Placeholder="Manual checklist row"
+                                               FloatLabelType="FloatLabelType.Never"
+                                               @bind-Value="ItemEditor.Name" />
+                                </div>
+
+                                <div class="sd-field span-2">
+                                    <label>Description</label>
+                                    <textarea class="sd-textarea"
+                                              placeholder="Optional checklist notes"
+                                              @bind="ItemEditor.Description"></textarea>
+                                </div>
+                            </div>
+                        </section>
+                    }
+                    else if (ItemEditor.ItemType == GlobalServicePackageItemType.Service)
+                    {
+                        <section class="item-mode-panel">
+                            <div class="item-mode-title">Linked service</div>
+                            <div class="item-mode-help">Search by service name or category, then choose the service to include.</div>
+
+                            <div class="item-mode-grid">
+                                <div class="sd-field span-2">
+                                    <label>Service</label>
+                                    <SfDropDownList TValue="int?"
+                                                    TItem="ServicePickerOption"
+                                                    DataSource="@ServicePickerOptions"
+                                                    AllowFiltering="true"
+                                                    FilterType="FilterType.Contains"
+                                                    PopupHeight="300px"
+                                                    Placeholder="Search and select a service"
+                                                    FloatLabelType="FloatLabelType.Never"
+                                                    @bind-Value="ItemEditorServiceTemplateId">
+                                        <DropDownListFieldSettings Text="Text" Value="Id" GroupBy="Group" />
+                                    </SfDropDownList>
+                                </div>
+
+                                @if (ServicePickerOptions.Count == 0)
+                                {
+                                    <div class="item-inline-note span-2">No default services are available yet. Add services first in Default Services.</div>
+                                }
+
+                                <div class="sd-field span-2">
+                                    <label>Optional notes</label>
+                                    <textarea class="sd-textarea"
+                                              placeholder="Optional override description"
+                                              @bind="ItemEditor.Description"></textarea>
+                                </div>
+                            </div>
+                        </section>
+                    }
+                    else
+                    {
+                        <section class="item-mode-panel">
+                            <div class="item-mode-title">Include package</div>
+                            <div class="item-mode-help">Insert all items from another package and keep them linked.</div>
+
+                            <div class="item-mode-grid">
+                                <div class="sd-field span-2">
+                                    <label>Include package</label>
+                                    <SfDropDownList TValue="int?"
+                                                    TItem="PackagePickerOption"
+                                                    DataSource="@IncludePackageOptions"
+                                                    AllowFiltering="true"
+                                                    FilterType="FilterType.Contains"
+                                                    PopupHeight="260px"
+                                                    Placeholder="Search and select a package"
+                                                    FloatLabelType="FloatLabelType.Never"
+                                                    @bind-Value="ItemEditorIncludedPackageId">
+                                        <DropDownListFieldSettings Text="Text" Value="Id" />
+                                    </SfDropDownList>
+                                </div>
+                            </div>
+                        </section>
+                    }
+                </div>
+
+                <div class="sd-actions service-dialog-actions">
+                    <button type="button" class="sd-btn sd-btn-primary" @onclick="SaveItemAsync">Save Item</button>
+                    <button type="button" class="sd-btn sd-btn-ghost" @onclick="CloseItemDialog">Cancel</button>
+                </div>
+            </div>
+        </Content>
+    </DialogTemplates>
+</SfDialog>
+
+@code {
+    private const int UnknownCategoryOrder = int.MaxValue / 4;
+
+    private List<GlobalServicePackageTemplate> Packages = new();
+    private List<GlobalServiceTemplate> Services = new();
+    private List<GlobalServiceCategory> Categories = new();
+    private Dictionary<string, int> Category1Order = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, Dictionary<string, int>> Category2Order = new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly HashSet<int> ExpandedPackageIds = new();
+    private bool PackageExpansionInitialized;
+
+    private DotNetObjectReference<SuperDefaultServicePackages>? DotNetRef;
+
+    private string PackageFilter = "";
+    private string Message = "";
+    private bool IsError;
+
+    private bool IsPackageDialogVisible;
+    private string PackageDialogTitle = "Add Service Package";
+    private string PackageDialogMessage = "";
+    private int EditingPackageId;
+    private GlobalServicePackageTemplate PackageEditor = new();
+    private int? PackageEditorMinutesInput;
+    private decimal? PackageEditorPriceInput;
+
+    private bool IsItemDialogVisible;
+    private string ItemDialogTitle = "Add Item";
+    private string ItemDialogMessage = "";
+    private int ItemDialogPackageId;
+    private string EditingItemId = "";
+    private GlobalServicePackageItemDefinition ItemEditor = new();
+    private int? ItemEditorServiceTemplateId;
+    private int? ItemEditorIncludedPackageId;
+
+    private static readonly List<PricingModeOption> PricingModeOptions =
+    [
+        new(ServicePricingMode.AutoRate, "Auto rate"),
+        new(ServicePricingMode.FixedPrice, "Fixed price"),
+        new(ServicePricingMode.EstimatedPrice, "Estimated price")
+    ];
+
+    private static readonly List<HourlyRateTierOption> TierOptions =
+    [
+        new(ServiceHourlyRateTier.Default, "Default tier"),
+        new(ServiceHourlyRateTier.Discounted, "Discounted tier"),
+        new(ServiceHourlyRateTier.LossLeader, "Loss leader tier")
+    ];
+
+    private static readonly List<SkillLevelOption> SkillLevelOptions =
+    [
+        new("All", "All"),
+        new("Beginner", "Beginner"),
+        new("Intermediate", "Intermediate"),
+        new("Advanced", "Advanced")
+    ];
+
+    private static readonly HashSet<string> SkillLevelValues = SkillLevelOptions
+        .Select(option => option.Value)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly List<PackageItemTypeOption> PackageItemTypeOptions =
+    [
+        new(GlobalServicePackageItemType.Manual, "Manual row"),
+        new(GlobalServicePackageItemType.Service, "Linked service"),
+        new(GlobalServicePackageItemType.IncludePackage, "Include package")
+    ];
+
+    private List<GlobalServicePackageTemplate> FilteredPackages =>
+        Packages
+            .Where(MatchesFilter)
+            .OrderBy(p => p.SortOrder)
+            .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private bool CanReorderPackages =>
+        string.IsNullOrWhiteSpace((PackageFilter ?? "").Trim())
+        && !IsPackageDialogVisible
+        && !IsItemDialogVisible;
+
+    private string ItemDialogContext
+    {
+        get
+        {
+            var package = Packages.FirstOrDefault(p => p.Id == ItemDialogPackageId);
+            return package is null ? "" : package.Name;
+        }
+    }
+
+    private List<PackagePickerOption> IncludePackageOptions =>
+        Packages
+            .Where(p => p.Id != ItemDialogPackageId)
+            .OrderBy(p => p.SortOrder)
+            .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(p => new PackagePickerOption(p.Id, p.Name))
+            .ToList();
+
+    private List<ServicePickerOption> ServicePickerOptions =>
+        Services
+            .Select(service =>
+            {
+                var category1 = NormalizeCategory(service.Category1);
+                var category2 = NormalizeCategory2(service.Category2);
+                var name = (service.Name ?? "").Trim();
+                return new ServicePickerOption(
+                    service.Id,
+                    string.IsNullOrWhiteSpace(name) ? "(Unnamed service)" : $"{name} ({category2})",
+                    category1,
+                    GetCategory1SortOrder(category1),
+                    GetCategory2SortOrder(category1, category2),
+                    Math.Max(0, service.SortOrder));
+            })
+            .OrderBy(option => option.Category1Order)
+            .ThenBy(option => option.Group, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(option => option.Category2Order)
+            .ThenBy(option => option.ServiceSortOrder)
+            .ThenBy(option => option.Text, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        ResetPackageEditor();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        DotNetRef ??= DotNetObjectReference.Create(this);
+        await RefreshIconsAsync();
+        await EnsurePackageDndAsync();
+    }
+
+    public void Dispose()
+    {
+        DotNetRef?.Dispose();
+    }
+
+    private async Task LoadAsync()
+    {
+        Packages = await SuggestedCatalog.GetGlobalServicePackageTemplatesAsync();
+        Services = await SuggestedCatalog.GetGlobalTemplatesAsync();
+        Categories = await SuggestedCatalog.GetGlobalCategoriesAsync();
+        RefreshCategoryOrderMaps();
+
+        foreach (var package in Packages)
+        {
+            package.Name = (package.Name ?? "").Trim();
+            package.SkillLevel = NormalizeSkill(package.SkillLevel);
+            package.Description = (package.Description ?? "").Trim();
+            package.Items = (package.Items ?? new List<GlobalServicePackageItemDefinition>())
+                .OrderBy(i => i.SortOrder)
+                .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(CloneItem)
+                .Select((item, index) =>
+                {
+                    item.SortOrder = index;
+                    return item;
+                })
+                .ToList();
+        }
+
+        SyncExpandedPackages();
+    }
+
+    private bool MatchesFilter(GlobalServicePackageTemplate package)
+    {
+        var filter = (PackageFilter ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(filter))
+            return true;
+
+        if ((package.Name ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if ((package.Description ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return package.Items.Any(i =>
+            ResolveItemName(i).Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || ResolveItemDescription(i).Contains(filter, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool IsExpanded(int packageId)
+        => ExpandedPackageIds.Contains(packageId);
+
+    private void ToggleExpanded(int packageId)
+    {
+        if (!ExpandedPackageIds.Add(packageId))
+            ExpandedPackageIds.Remove(packageId);
+    }
+
+    private void SyncExpandedPackages()
+    {
+        var currentIds = Packages.Select(p => p.Id).ToHashSet();
+        if (!PackageExpansionInitialized)
+        {
+            ExpandedPackageIds.Clear();
+            var firstId = Packages
+                .OrderBy(p => p.SortOrder)
+                .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(p => p.Id)
+                .FirstOrDefault();
+
+            if (firstId > 0)
+                ExpandedPackageIds.Add(firstId);
+
+            PackageExpansionInitialized = true;
+            return;
+        }
+
+        ExpandedPackageIds.RemoveWhere(id => !currentIds.Contains(id));
+        if (ExpandedPackageIds.Count == 0)
+        {
+            var firstId = Packages
+                .OrderBy(p => p.SortOrder)
+                .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(p => p.Id)
+                .FirstOrDefault();
+
+            if (firstId > 0)
+                ExpandedPackageIds.Add(firstId);
+        }
+    }
+
+    private void OpenCreatePackageDialog()
+    {
+        PackageDialogTitle = "Add Service Package";
+        PackageDialogMessage = "";
+        EditingPackageId = 0;
+        PackageEditor = new GlobalServicePackageTemplate
+        {
+            SkillLevel = "All",
+            DefaultMinutes = 60,
+            PricingMode = ServicePricingMode.FixedPrice,
+            AutoPricingTier = ServiceHourlyRateTier.Default,
+            SortOrder = NextPackageSortOrder()
+        };
+
+        PackageEditorMinutesInput = PackageEditor.DefaultMinutes;
+        PackageEditorPriceInput = 0m;
+        IsPackageDialogVisible = true;
+    }
+
+    private void OpenEditPackageDialog(GlobalServicePackageTemplate package)
+    {
+        PackageDialogTitle = "Edit Service Package";
+        PackageDialogMessage = "";
+        EditingPackageId = package.Id;
+        PackageEditor = new GlobalServicePackageTemplate
+        {
+            Id = package.Id,
+            Name = package.Name,
+            SkillLevel = NormalizeSkill(package.SkillLevel),
+            Description = package.Description,
+            DefaultMinutes = package.DefaultMinutes,
+            BasePriceIncVat = package.BasePriceIncVat,
+            PricingMode = package.PricingMode,
+            AutoPricingTier = package.AutoPricingTier,
+            EstimatedPriceIncVat = package.EstimatedPriceIncVat,
+            SortOrder = package.SortOrder,
+            Items = package.Items.Select(CloneItem).ToList()
+        };
+
+        PackageEditorMinutesInput = PackageEditor.DefaultMinutes;
+        PackageEditorPriceInput = PackageEditor.PricingMode == ServicePricingMode.EstimatedPrice
+            ? PackageEditor.EstimatedPriceIncVat
+            : PackageEditor.BasePriceIncVat;
+        IsPackageDialogVisible = true;
+    }
+
+    private async Task SavePackageAsync()
+    {
+        Message = "";
+        IsError = false;
+        PackageDialogMessage = "";
+
+        var name = (PackageEditor.Name ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            PackageDialogMessage = "Package name is required.";
+            Message = PackageDialogMessage;
+            IsError = true;
+            return;
+        }
+
+        if ((PackageEditorMinutesInput ?? 0) < 0 || (PackageEditorPriceInput ?? 0m) < 0m)
+        {
+            PackageDialogMessage = "Minutes and price must be 0 or greater.";
+            Message = PackageDialogMessage;
+            IsError = true;
+            return;
+        }
+
+        var price = decimal.Round(PackageEditorPriceInput ?? 0m, 2, MidpointRounding.AwayFromZero);
+        PackageEditor.Id = EditingPackageId;
+        PackageEditor.Name = name;
+        PackageEditor.SkillLevel = NormalizeSkill(PackageEditor.SkillLevel);
+        PackageEditor.Description = (PackageEditor.Description ?? "").Trim();
+        PackageEditor.DefaultMinutes = Math.Max(0, PackageEditorMinutesInput ?? 0);
+        if (EditingPackageId <= 0)
+            PackageEditor.SortOrder = NextPackageSortOrder();
+
+        if (PackageEditor.PricingMode == ServicePricingMode.EstimatedPrice)
+        {
+            PackageEditor.EstimatedPriceIncVat = price;
+            PackageEditor.BasePriceIncVat = 0m;
+        }
+        else
+        {
+            PackageEditor.BasePriceIncVat = price;
+            PackageEditor.EstimatedPriceIncVat = 0m;
+        }
+
+        try
+        {
+            await SuggestedCatalog.SaveGlobalServicePackageTemplateAsync(PackageEditor);
+        }
+        catch (InvalidOperationException ex)
+        {
+            PackageDialogMessage = ex.Message;
+            Message = ex.Message;
+            IsError = true;
+            return;
+        }
+
+        Message = "Saved default service package.";
+        IsError = false;
+        await LoadAsync();
+        ClosePackageDialog();
+    }
+
+    private void ClosePackageDialog()
+    {
+        IsPackageDialogVisible = false;
+        ResetPackageEditor();
+    }
+
+    private void ResetPackageEditor()
+    {
+        EditingPackageId = 0;
+        PackageDialogMessage = "";
+        PackageEditor = new GlobalServicePackageTemplate
+        {
+            SkillLevel = "All",
+            DefaultMinutes = 60,
+            PricingMode = ServicePricingMode.FixedPrice,
+            AutoPricingTier = ServiceHourlyRateTier.Default
+        };
+
+        PackageEditorMinutesInput = PackageEditor.DefaultMinutes;
+        PackageEditorPriceInput = 0m;
+    }
+
+    private async Task DeletePackageAsync(int packageId)
+    {
+        await SuggestedCatalog.DeleteGlobalServicePackageTemplateAsync(packageId);
+        Message = "Deleted default service package.";
+        IsError = false;
+        await LoadAsync();
+    }
+
+    private void OpenCreateItemDialog(int packageId)
+    {
+        if (!Packages.Any(p => p.Id == packageId))
+            return;
+
+        ItemDialogTitle = "Add Package Item";
+        ItemDialogMessage = "";
+        ItemDialogPackageId = packageId;
+        EditingItemId = "";
+        ItemEditor = new GlobalServicePackageItemDefinition
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            ItemType = GlobalServicePackageItemType.Manual
+        };
+        ItemEditorServiceTemplateId = null;
+        ItemEditorIncludedPackageId = null;
+        IsItemDialogVisible = true;
+    }
+
+    private void OpenEditItemDialog(int packageId, GlobalServicePackageItemDefinition item)
+    {
+        if (!Packages.Any(p => p.Id == packageId))
+            return;
+
+        ItemDialogTitle = "Edit Package Item";
+        ItemDialogMessage = "";
+        ItemDialogPackageId = packageId;
+        EditingItemId = (item.Id ?? "").Trim();
+        ItemEditor = CloneItem(item);
+        ItemEditorServiceTemplateId = item.LinkedGlobalServiceTemplateId;
+        ItemEditorIncludedPackageId = item.IncludedGlobalServicePackageTemplateId;
+        IsItemDialogVisible = true;
+    }
+
+    private async Task SaveItemAsync()
+    {
+        Message = "";
+        IsError = false;
+        ItemDialogMessage = "";
+
+        var package = Packages.FirstOrDefault(p => p.Id == ItemDialogPackageId);
+        if (package is null)
+        {
+            ItemDialogMessage = "Package no longer exists.";
+            Message = ItemDialogMessage;
+            IsError = true;
+            return;
+        }
+
+        var items = package.Items
+            .OrderBy(i => i.SortOrder)
+            .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(CloneItem)
+            .ToList();
+
+        GlobalServicePackageItemDefinition workingItem;
+        var existingIndex = -1;
+        if (!string.IsNullOrWhiteSpace(EditingItemId))
+        {
+            existingIndex = items.FindIndex(i => i.Id.Equals(EditingItemId, StringComparison.OrdinalIgnoreCase));
+            workingItem = existingIndex >= 0 ? CloneItem(items[existingIndex]) : CloneItem(ItemEditor);
+        }
+        else
+        {
+            workingItem = new GlobalServicePackageItemDefinition
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                SortOrder = items.Count
+            };
+        }
+
+        workingItem.ItemType = ItemEditor.ItemType;
+        switch (ItemEditor.ItemType)
+        {
+            case GlobalServicePackageItemType.Manual:
+            {
+                var name = (ItemEditor.Name ?? "").Trim();
+                var description = (ItemEditor.Description ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    ItemDialogMessage = "Manual rows require a name.";
+                    Message = ItemDialogMessage;
+                    IsError = true;
+                    return;
+                }
+
+                workingItem.Name = name;
+                workingItem.Description = description;
+                workingItem.LinkedGlobalServiceTemplateId = null;
+                workingItem.IncludedGlobalServicePackageTemplateId = null;
+                break;
+            }
+
+            case GlobalServicePackageItemType.Service:
+            {
+                if (!ItemEditorServiceTemplateId.HasValue)
+                {
+                    ItemDialogMessage = "Select a service (leaf item) to link.";
+                    Message = ItemDialogMessage;
+                    IsError = true;
+                    return;
+                }
+
+                var service = Services.FirstOrDefault(s => s.Id == ItemEditorServiceTemplateId.Value);
+                if (service is null)
+                {
+                    ItemDialogMessage = "Selected service no longer exists.";
+                    Message = ItemDialogMessage;
+                    IsError = true;
+                    return;
+                }
+
+                workingItem.Name = (service.Name ?? "").Trim();
+                workingItem.Description = string.IsNullOrWhiteSpace((ItemEditor.Description ?? "").Trim())
+                    ? (service.Description ?? "").Trim()
+                    : (ItemEditor.Description ?? "").Trim();
+                workingItem.LinkedGlobalServiceTemplateId = service.Id;
+                workingItem.IncludedGlobalServicePackageTemplateId = null;
+                break;
+            }
+
+            case GlobalServicePackageItemType.IncludePackage:
+            {
+                if (!ItemEditorIncludedPackageId.HasValue)
+                {
+                    ItemDialogMessage = "Select a package to include.";
+                    Message = ItemDialogMessage;
+                    IsError = true;
+                    return;
+                }
+
+                var includedPackage = Packages.FirstOrDefault(p => p.Id == ItemEditorIncludedPackageId.Value);
+                if (includedPackage is null)
+                {
+                    ItemDialogMessage = "Selected package no longer exists.";
+                    Message = ItemDialogMessage;
+                    IsError = true;
+                    return;
+                }
+
+                if (includedPackage.Id == package.Id || WouldCreateIncludeCycle(package.Id, includedPackage.Id))
+                {
+                    ItemDialogMessage = "That package link creates a loop. Choose a different package.";
+                    Message = ItemDialogMessage;
+                    IsError = true;
+                    return;
+                }
+
+                workingItem.Name = $"Include {includedPackage.Name}";
+                workingItem.Description = "";
+                workingItem.LinkedGlobalServiceTemplateId = null;
+                workingItem.IncludedGlobalServicePackageTemplateId = includedPackage.Id;
+                break;
+            }
+        }
+
+        if (existingIndex >= 0)
+            items[existingIndex] = workingItem;
+        else
+            items.Add(workingItem);
+
+        for (var index = 0; index < items.Count; index++)
+            items[index].SortOrder = index;
+
+        var toSave = ClonePackage(package);
+        toSave.Items = items;
+        await SuggestedCatalog.SaveGlobalServicePackageTemplateAsync(toSave);
+        Message = "Saved package item.";
+        IsError = false;
+        await LoadAsync();
+        ExpandedPackageIds.Add(package.Id);
+        CloseItemDialog();
+    }
+
+    private async Task DeleteItemAsync(int packageId, string itemId)
+    {
+        var package = Packages.FirstOrDefault(p => p.Id == packageId);
+        if (package is null)
+            return;
+
+        var items = package.Items
+            .OrderBy(i => i.SortOrder)
+            .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(CloneItem)
+            .Where(i => !i.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        for (var index = 0; index < items.Count; index++)
+            items[index].SortOrder = index;
+
+        var toSave = ClonePackage(package);
+        toSave.Items = items;
+        await SuggestedCatalog.SaveGlobalServicePackageTemplateAsync(toSave);
+        Message = "Deleted package item.";
+        IsError = false;
+        await LoadAsync();
+        ExpandedPackageIds.Add(packageId);
+    }
+
+    private void CloseItemDialog()
+    {
+        IsItemDialogVisible = false;
+        ItemDialogMessage = "";
+        ItemDialogPackageId = 0;
+        EditingItemId = "";
+        ItemEditor = new GlobalServicePackageItemDefinition
+        {
+            ItemType = GlobalServicePackageItemType.Manual
+        };
+        ItemEditorServiceTemplateId = null;
+        ItemEditorIncludedPackageId = null;
+    }
+
+    private bool WouldCreateIncludeCycle(int ownerPackageId, int includedPackageId)
+    {
+        if (ownerPackageId == includedPackageId)
+            return true;
+
+        var visited = new HashSet<int>();
+        return CanReachPackage(includedPackageId, ownerPackageId, visited);
+    }
+
+    private bool CanReachPackage(int fromPackageId, int targetPackageId, HashSet<int> visited)
+    {
+        if (!visited.Add(fromPackageId))
+            return false;
+
+        var from = Packages.FirstOrDefault(p => p.Id == fromPackageId);
+        if (from is null)
+            return false;
+
+        foreach (var includeId in from.Items
+                     .Where(i => i.ItemType == GlobalServicePackageItemType.IncludePackage && i.IncludedGlobalServicePackageTemplateId.HasValue)
+                     .Select(i => i.IncludedGlobalServicePackageTemplateId!.Value))
+        {
+            if (includeId == targetPackageId)
+                return true;
+
+            if (CanReachPackage(includeId, targetPackageId, visited))
+                return true;
+        }
+
+        return false;
+    }
+
+    [JSInvokable]
+    public async Task ReorderPackage(int fromIndex, int toIndex)
+    {
+        if (!CanReorderPackages)
+            return;
+
+        var ordered = Packages
+            .OrderBy(p => p.SortOrder)
+            .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= ordered.Count || toIndex >= ordered.Count || fromIndex == toIndex)
+            return;
+
+        var moved = ordered[fromIndex];
+        ordered.RemoveAt(fromIndex);
+        ordered.Insert(toIndex, moved);
+
+        for (var index = 0; index < ordered.Count; index++)
+        {
+            var package = ordered[index];
+            if (package.SortOrder == index)
+                continue;
+
+            package.SortOrder = index;
+            await SuggestedCatalog.SaveGlobalServicePackageTemplateAsync(package);
+        }
+
+        Message = "Saved package order.";
+        IsError = false;
+        await LoadAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task ReorderItem(string packageKey, int fromIndex, int toIndex)
+    {
+        if (!CanReorderPackages)
+            return;
+
+        if (!int.TryParse((packageKey ?? "").Trim(), out var packageId))
+            return;
+
+        var package = Packages.FirstOrDefault(p => p.Id == packageId);
+        if (package is null)
+            return;
+
+        var orderedItems = package.Items
+            .OrderBy(i => i.SortOrder)
+            .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(CloneItem)
+            .ToList();
+
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= orderedItems.Count || toIndex >= orderedItems.Count || fromIndex == toIndex)
+            return;
+
+        var moved = orderedItems[fromIndex];
+        orderedItems.RemoveAt(fromIndex);
+        orderedItems.Insert(toIndex, moved);
+
+        for (var index = 0; index < orderedItems.Count; index++)
+            orderedItems[index].SortOrder = index;
+
+        var toSave = ClonePackage(package);
+        toSave.Items = orderedItems;
+        await SuggestedCatalog.SaveGlobalServicePackageTemplateAsync(toSave);
+        Message = "Saved package item order.";
+        IsError = false;
+        await LoadAsync();
+        ExpandedPackageIds.Add(packageId);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RefreshIconsAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("marketingIcons.refresh");
+        }
+        catch
+        {
+            // No-op if lucide helper is unavailable.
+        }
+    }
+
+    private async Task EnsurePackageDndAsync()
+    {
+        if (DotNetRef is null)
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "workshopStatusDnd.initSelector",
+                ".package-dnd-list",
+                DotNetRef,
+                "ReorderPackage",
+                ".package-dnd-row",
+                ".package-drag-handle");
+        }
+        catch
+        {
+            // No-op if drag init fails.
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "workshopStatusDnd.initSelector",
+                ".package-item-dnd-list",
+                DotNetRef,
+                "ReorderItem",
+                ".package-item-dnd-row",
+                ".package-item-drag-handle");
+        }
+        catch
+        {
+            // No-op if drag init fails.
+        }
+    }
+
+    private int NextPackageSortOrder()
+        => Packages.Select(p => p.SortOrder).DefaultIfEmpty(-1).Max() + 1;
+
+    private int GetCategory1SortOrder(string category1)
+    {
+        var normalized = NormalizeCategory(category1);
+        return Category1Order.TryGetValue(normalized, out var order)
+            ? order
+            : UnknownCategoryOrder;
+    }
+
+    private int GetCategory2SortOrder(string category1, string category2)
+    {
+        var normalizedCategory2 = NormalizeCategory2(category2);
+        var normalizedCategory1 = NormalizeCategory(category1);
+        if (Category2Order.TryGetValue(normalizedCategory1, out var map)
+            && map.TryGetValue(normalizedCategory2, out var order))
+        {
+            return order;
+        }
+
+        return UnknownCategoryOrder;
+    }
+
+    private void RefreshCategoryOrderMaps()
+    {
+        Category1Order = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        Category2Order = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+        var nextCategory1 = 0;
+        var orderedRows = Categories
+            .OrderBy(c => c.SortOrder)
+            .ThenBy(c => c.Category1, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(c => c.Category2, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var rootRows = orderedRows
+            .Where(c => string.IsNullOrWhiteSpace((c.Category2 ?? "").Trim()))
+            .ToList();
+        var subRows = orderedRows
+            .Where(c => !string.IsNullOrWhiteSpace((c.Category2 ?? "").Trim()))
+            .ToList();
+
+        foreach (var root in rootRows)
+        {
+            var category1 = NormalizeCategory(root.Category1);
+            if (Category1Order.ContainsKey(category1))
+                continue;
+
+            Category1Order[category1] = nextCategory1++;
+            Category2Order[category1] = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                [NormalizeCategory2("")] = -1
+            };
+        }
+
+        foreach (var sub in subRows)
+        {
+            var category1 = NormalizeCategory(sub.Category1);
+            if (!Category1Order.ContainsKey(category1))
+                Category1Order[category1] = nextCategory1++;
+        }
+
+        foreach (var sub in subRows
+                     .OrderBy(c => Category1Order.TryGetValue(NormalizeCategory(c.Category1), out var order) ? order : UnknownCategoryOrder)
+                     .ThenBy(c => c.SortOrder)
+                     .ThenBy(c => c.Category2, StringComparer.OrdinalIgnoreCase))
+        {
+            var category1 = NormalizeCategory(sub.Category1);
+            var category2 = NormalizeCategory2(sub.Category2);
+            if (string.IsNullOrWhiteSpace((sub.Category2 ?? "").Trim()))
+                continue;
+
+            if (!Category2Order.TryGetValue(category1, out var map))
+            {
+                map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                Category2Order[category1] = map;
+            }
+
+            if (map.ContainsKey(category2))
+                continue;
+
+            map[category2] = map.Values.DefaultIfEmpty(-1).Max() + 1;
+        }
+    }
+
+    private int ResolveExpandedItemCount(GlobalServicePackageTemplate package)
+    {
+        var visitedPath = new HashSet<int>();
+        return ResolveExpandedItemCountInternal(package, visitedPath);
+    }
+
+    private int ResolveExpandedItemCountInternal(GlobalServicePackageTemplate package, HashSet<int> visitedPath)
+    {
+        if (!visitedPath.Add(package.Id))
+            return 0;
+
+        var count = 0;
+        foreach (var item in package.Items.OrderBy(i => i.SortOrder))
+        {
+            if (item.ItemType == GlobalServicePackageItemType.IncludePackage && item.IncludedGlobalServicePackageTemplateId.HasValue)
+            {
+                var included = Packages.FirstOrDefault(p => p.Id == item.IncludedGlobalServicePackageTemplateId.Value);
+                if (included is null)
+                    continue;
+
+                count += ResolveExpandedItemCountInternal(included, visitedPath);
+                continue;
+            }
+
+            count++;
+        }
+
+        visitedPath.Remove(package.Id);
+        return count;
+    }
+
+    private string ResolveItemName(GlobalServicePackageItemDefinition item)
+    {
+        switch (item.ItemType)
+        {
+            case GlobalServicePackageItemType.Service:
+            {
+                if (item.LinkedGlobalServiceTemplateId.HasValue)
+                {
+                    var service = Services.FirstOrDefault(s => s.Id == item.LinkedGlobalServiceTemplateId.Value);
+                    if (service is not null)
+                        return (service.Name ?? "").Trim();
+                }
+
+                var fallback = (item.Name ?? "").Trim();
+                return string.IsNullOrWhiteSpace(fallback) ? "Linked service" : fallback;
+            }
+
+            case GlobalServicePackageItemType.IncludePackage:
+            {
+                if (item.IncludedGlobalServicePackageTemplateId.HasValue)
+                {
+                    var package = Packages.FirstOrDefault(p => p.Id == item.IncludedGlobalServicePackageTemplateId.Value);
+                    if (package is not null)
+                        return $"Include {package.Name}";
+                }
+
+                return "Include package";
+            }
+
+            case GlobalServicePackageItemType.Manual:
+            default:
+            {
+                var fallback = (item.Name ?? "").Trim();
+                return string.IsNullOrWhiteSpace(fallback) ? "Checklist row" : fallback;
+            }
+        }
+    }
+
+    private string ResolveItemMeta(GlobalServicePackageItemDefinition item)
+    {
+        switch (item.ItemType)
+        {
+            case GlobalServicePackageItemType.Service:
+            {
+                if (item.LinkedGlobalServiceTemplateId.HasValue)
+                {
+                    var service = Services.FirstOrDefault(s => s.Id == item.LinkedGlobalServiceTemplateId.Value);
+                    if (service is not null)
+                        return $"Service · {NormalizeCategory(service.Category1)} / {NormalizeCategory2(service.Category2)}";
+                }
+
+                return "Service";
+            }
+
+            case GlobalServicePackageItemType.IncludePackage:
+            {
+                if (item.IncludedGlobalServicePackageTemplateId.HasValue)
+                {
+                    var package = Packages.FirstOrDefault(p => p.Id == item.IncludedGlobalServicePackageTemplateId.Value);
+                    if (package is not null)
+                        return $"Linked package · {ResolveExpandedItemCount(package)} items";
+                }
+
+                return "Linked package";
+            }
+
+            case GlobalServicePackageItemType.Manual:
+            default:
+                return "Manual row";
+        }
+    }
+
+    private string ResolveItemDescription(GlobalServicePackageItemDefinition item)
+    {
+        if (item.ItemType == GlobalServicePackageItemType.Service && item.LinkedGlobalServiceTemplateId.HasValue)
+        {
+            var service = Services.FirstOrDefault(s => s.Id == item.LinkedGlobalServiceTemplateId.Value);
+            if (service is not null)
+                return string.IsNullOrWhiteSpace((item.Description ?? "").Trim())
+                    ? (service.Description ?? "").Trim()
+                    : (item.Description ?? "").Trim();
+        }
+
+        return (item.Description ?? "").Trim();
+    }
+
+    private static string NormalizeCategory(string? value)
+    {
+        var normalized = (value ?? "").Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? "Uncategorized" : normalized;
+    }
+
+    private static string NormalizeCategory2(string? value)
+    {
+        var normalized = (value ?? "").Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? "General" : normalized;
+    }
+
+    private static string NormalizeSkill(string? value)
+    {
+        var normalized = (value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return "All";
+
+        return SkillLevelValues.Contains(normalized) ? normalized : "All";
+    }
+
+    private static string FormatPackageMeta(GlobalServicePackageTemplate package)
+    {
+        var priceValue = package.PricingMode == ServicePricingMode.EstimatedPrice
+            ? Math.Max(0m, package.EstimatedPriceIncVat)
+            : Math.Max(0m, package.BasePriceIncVat);
+
+        var modeLabel = package.PricingMode switch
+        {
+            ServicePricingMode.AutoRate => $"Auto ({package.AutoPricingTier})",
+            ServicePricingMode.EstimatedPrice => "Estimated",
+            _ => "Fixed"
+        };
+
+        return $"{"\u00A3"}{priceValue:0.##} / {Math.Max(0, package.DefaultMinutes)} mins / {modeLabel}";
+    }
+
+    private static GlobalServicePackageTemplate ClonePackage(GlobalServicePackageTemplate package)
+        => new()
+        {
+            Id = package.Id,
+            Name = (package.Name ?? "").Trim(),
+            SkillLevel = NormalizeSkill(package.SkillLevel),
+            Description = (package.Description ?? "").Trim(),
+            DefaultMinutes = Math.Max(0, package.DefaultMinutes),
+            BasePriceIncVat = decimal.Round(Math.Max(0m, package.BasePriceIncVat), 2, MidpointRounding.AwayFromZero),
+            PricingMode = package.PricingMode,
+            AutoPricingTier = package.AutoPricingTier,
+            EstimatedPriceIncVat = decimal.Round(Math.Max(0m, package.EstimatedPriceIncVat), 2, MidpointRounding.AwayFromZero),
+            SortOrder = Math.Max(0, package.SortOrder),
+            Items = (package.Items ?? new List<GlobalServicePackageItemDefinition>())
+                .Select(CloneItem)
+                .ToList()
+        };
+
+    private static GlobalServicePackageItemDefinition CloneItem(GlobalServicePackageItemDefinition item)
+        => new()
+        {
+            Id = string.IsNullOrWhiteSpace((item.Id ?? "").Trim()) ? Guid.NewGuid().ToString("N") : (item.Id ?? "").Trim(),
+            SortOrder = Math.Max(0, item.SortOrder),
+            ItemType = item.ItemType,
+            Name = (item.Name ?? "").Trim(),
+            Description = (item.Description ?? "").Trim(),
+            LinkedGlobalServiceTemplateId = item.LinkedGlobalServiceTemplateId,
+            IncludedGlobalServicePackageTemplateId = item.IncludedGlobalServicePackageTemplateId
+        };
+
+    private sealed record PricingModeOption(ServicePricingMode Value, string Text);
+
+    private sealed record HourlyRateTierOption(ServiceHourlyRateTier Value, string Text);
+
+    private sealed record SkillLevelOption(string Value, string Text);
+
+    private sealed record PackageItemTypeOption(GlobalServicePackageItemType Value, string Text);
+
+    private sealed record PackagePickerOption(int Id, string Text);
+
+    private sealed record ServicePickerOption(
+        int Id,
+        string Text,
+        string Group,
+        int Category1Order,
+        int Category2Order,
+        int ServiceSortOrder);
+}
+

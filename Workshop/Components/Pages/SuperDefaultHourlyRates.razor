@@ -1,0 +1,188 @@
+@page "/super/settings/default-hourly-rates"
+@attribute [Authorize(Roles = "SuperAdmin")]
+@using System.Globalization
+@using Syncfusion.Blazor.DropDowns
+@using Syncfusion.Blazor.Inputs
+@using Workshop.Services
+@inject SuperAdminDefaultsService DefaultsService
+
+<div class="sd-shell">
+    <header class="sd-header">
+        <h3>Default Hourly Rates</h3>
+        <p>Set the global hourly defaults used by auto-priced service templates.</p>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <section class="sd-flash @(IsError ? "error" : "success")">@Message</section>
+    }
+
+    <section class="sd-card">
+        <div class="sd-card-head">
+            <h4>Rates</h4>
+            <span class="sd-muted">Applied to all default templates</span>
+        </div>
+
+        <div class="sd-form-grid">
+            <div class="sd-field">
+                <label>Default hourly rate</label>
+                <SfNumericTextBox TValue="decimal?"
+                                  @bind-Value="DefaultHourlyRateInput"
+                                  Min="0"
+                                  Decimals="2"
+                                  Format="n2"
+                                  ShowSpinButton="false"
+                                  Placeholder="0.00"
+                                  FloatLabelType="FloatLabelType.Never" />
+            </div>
+
+            <div class="sd-field">
+                <label>Discounted hourly rate</label>
+                <SfNumericTextBox TValue="decimal?"
+                                  @bind-Value="DiscountedHourlyRateInput"
+                                  Min="0"
+                                  Decimals="2"
+                                  Format="n2"
+                                  ShowSpinButton="false"
+                                  Placeholder="0.00"
+                                  FloatLabelType="FloatLabelType.Never" />
+            </div>
+
+            <div class="sd-field">
+                <label>Loss leader hourly rate</label>
+                <SfNumericTextBox TValue="decimal?"
+                                  @bind-Value="LossLeaderHourlyRateInput"
+                                  Min="0"
+                                  Decimals="2"
+                                  Format="n2"
+                                  ShowSpinButton="false"
+                                  Placeholder="0.00"
+                                  FloatLabelType="FloatLabelType.Never" />
+            </div>
+
+            <div class="sd-field">
+                <label>Round down to nearest</label>
+                <SfDropDownList TValue="string"
+                                TItem="RoundingOption"
+                                DataSource="@RoundingOptions"
+                                @bind-Value="RoundingIncrementInput"
+                                FloatLabelType="FloatLabelType.Never">
+                    <DropDownListFieldSettings Text="Text" Value="Value" />
+                </SfDropDownList>
+            </div>
+        </div>
+
+        <div class="sd-actions">
+            <button type="button" class="sd-btn sd-btn-primary" @onclick="SaveAsync">
+                Save and recalculate default service prices
+            </button>
+        </div>
+    </section>
+
+    <section class="sd-card sd-summary">
+        <article class="sd-summary-tile">
+            <span>Default</span>
+            <strong>@FormatMoney(DefaultHourlyRateInput)</strong>
+        </article>
+        <article class="sd-summary-tile">
+            <span>Discounted</span>
+            <strong>@FormatMoney(DiscountedHourlyRateInput)</strong>
+        </article>
+        <article class="sd-summary-tile">
+            <span>Loss Leader</span>
+            <strong>@FormatMoney(LossLeaderHourlyRateInput)</strong>
+        </article>
+    </section>
+</div>
+
+@code {
+    private decimal? DefaultHourlyRateInput = 76.00m;
+    private decimal? DiscountedHourlyRateInput = 60.00m;
+    private decimal? LossLeaderHourlyRateInput = 50.00m;
+    private string RoundingIncrementInput = "0.50";
+    private string Message = "";
+    private bool IsError;
+
+    private static readonly List<RoundingOption> RoundingOptions =
+    [
+        new("0.01", "GBP 0.01"),
+        new("0.25", "GBP 0.25"),
+        new("0.50", "GBP 0.50"),
+        new("1.00", "GBP 1.00")
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var rates = await DefaultsService.GetHourlyRatesAsync();
+        DefaultHourlyRateInput = rates.DefaultHourlyRate;
+        DiscountedHourlyRateInput = rates.DiscountedHourlyRate;
+        LossLeaderHourlyRateInput = rates.LossLeaderHourlyRate;
+        RoundingIncrementInput = FormatIncrement(rates.RoundingIncrement);
+    }
+
+    private async Task SaveAsync()
+    {
+        Message = "";
+        IsError = false;
+
+        if (!DefaultHourlyRateInput.HasValue
+            || !DiscountedHourlyRateInput.HasValue
+            || !LossLeaderHourlyRateInput.HasValue)
+        {
+            Message = "All hourly rates are required.";
+            IsError = true;
+            return;
+        }
+
+        var defaultRate = RoundCurrency(DefaultHourlyRateInput.Value);
+        var discountedRate = RoundCurrency(DiscountedHourlyRateInput.Value);
+        var lossLeaderRate = RoundCurrency(LossLeaderHourlyRateInput.Value);
+
+        if (defaultRate <= 0 || discountedRate <= 0 || lossLeaderRate <= 0)
+        {
+            Message = "All hourly rates must be greater than 0.";
+            IsError = true;
+            return;
+        }
+
+        if (!TryParseRoundingIncrement(RoundingIncrementInput, out var roundingIncrement))
+        {
+            Message = "Please select a valid rounding increment.";
+            IsError = true;
+            return;
+        }
+
+        var result = await DefaultsService.SaveHourlyRatesAsync(
+            new SuperAdminDefaultRates(defaultRate, discountedRate, lossLeaderRate, roundingIncrement),
+            recalculateAutoRateTemplates: true);
+
+        DefaultHourlyRateInput = result.DefaultHourlyRate;
+        DiscountedHourlyRateInput = result.DiscountedHourlyRate;
+        LossLeaderHourlyRateInput = result.LossLeaderHourlyRate;
+        RoundingIncrementInput = FormatIncrement(result.RoundingIncrement);
+        Message = $"Saved rates and recalculated {result.RecalculatedTemplateCount} auto-priced default services.";
+    }
+
+    private static decimal RoundCurrency(decimal value)
+        => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    private static string FormatMoney(decimal? value)
+        => $"GBP {(value ?? 0m):0.00}";
+
+    private static string FormatIncrement(decimal value)
+        => decimal.Round(value, 2, MidpointRounding.AwayFromZero).ToString("0.00", CultureInfo.InvariantCulture);
+
+    private static bool TryParseRoundingIncrement(string input, out decimal increment)
+    {
+        if (!decimal.TryParse(input, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed))
+        {
+            increment = 0.50m;
+            return false;
+        }
+
+        increment = decimal.Round(parsed, 2, MidpointRounding.AwayFromZero);
+        return increment is 0.01m or 0.25m or 0.50m or 1.00m;
+    }
+
+    private sealed record RoundingOption(string Value, string Text);
+}

@@ -212,29 +212,40 @@
         RoundingIncrement = Catalog.AutoPriceRoundingIncrement;
         RoundingMode = Catalog.AutoPriceRoundingMode;
 
-        ServicePackages = Catalog.Jobs
-            .Where(Catalog.IsServicePackage)
-            .OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase)
+        ServicePackages = Catalog
+            .OrderJobsForDisplay(Catalog.Jobs.Where(Catalog.IsServicePackage))
             .ToList();
 
-        IndividualServices = Catalog.Jobs
-            .Where(j => !Catalog.IsServicePackage(j))
-            .OrderBy(j => NormalizeCategory1(j.Category), StringComparer.OrdinalIgnoreCase)
-            .ThenBy(j => NormalizeCategory2(j.Category2), StringComparer.OrdinalIgnoreCase)
-            .ThenBy(j => j.Name, StringComparer.OrdinalIgnoreCase)
+        IndividualServices = Catalog
+            .OrderJobsForDisplay(Catalog.Jobs.Where(j => !Catalog.IsServicePackage(j)))
             .ToList();
 
         ServiceGroups = IndividualServices
             .GroupBy(j => NormalizeCategory1(j.Category), StringComparer.OrdinalIgnoreCase)
-            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
             .SelectMany(category1Group =>
-                category1Group
+            {
+                var category1 = category1Group.Key;
+                return category1Group
                     .GroupBy(j => NormalizeCategory2(j.Category2), StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
-                    .Select(category2Group => new ServiceGroup(
-                        category1Group.Key,
-                        category2Group.Key,
-                        category2Group.ToList())))
+                    .Select(category2Group => new
+                    {
+                        Category1 = category1,
+                        Category2 = category2Group.Key,
+                        Category1Order = Catalog.GetCategory1SortOrder(category1),
+                        Category2Order = Catalog.GetCategory2SortOrder(category1, category2Group.Key),
+                        Services = category2Group
+                            .OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase)
+                            .ToList()
+                    });
+            })
+            .OrderBy(group => group.Category1Order)
+            .ThenBy(group => group.Category1, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(group => group.Category2Order)
+            .ThenBy(group => group.Category2, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new ServiceGroup(
+                group.Category1,
+                group.Category2,
+                group.Services))
             .ToList();
 
         TierByServiceId.Clear();

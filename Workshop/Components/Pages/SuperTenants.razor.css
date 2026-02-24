@@ -1,0 +1,103 @@
+.sd-shell {
+    display: grid;
+    gap: 16px;
+    max-width: 1120px;
+    padding: 10px 0 24px;
+}
+
+.sd-header h3 {
+    margin: 0;
+    font-size: 26px;
+    color: #0f172a;
+}
+
+.sd-header p {
+    margin: 6px 0 0;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.sd-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 16px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.sd-card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.sd-card-head h4 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 18px;
+}
+
+.sd-muted {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.sd-empty {
+    border: 1px dashed #cbd5e1;
+    border-radius: 12px;
+    background: #f8fafc;
+    color: #64748b;
+    padding: 16px;
+    text-align: center;
+    font-size: 13px;
+}
+
+.tenant-grid-wrap {
+    border: 1px solid #dbe3ee;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #ffffff;
+}
+
+.tenant-grid-wrap ::deep .tenant-grid.e-grid {
+    border: none;
+}
+
+.tenant-grid-wrap ::deep .tenant-grid .e-gridheader {
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.tenant-grid-wrap ::deep .tenant-grid .e-headercell {
+    background: #f8fafc;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.tenant-grid-wrap ::deep .tenant-grid .e-rowcell {
+    color: #0f172a;
+    font-size: 14px;
+    border-color: #edf2f7;
+}
+
+.tenant-tier {
+    color: #334155;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.tenant-tier.trial {
+    color: #166534;
+}
+
+@media (max-width: 700px) {
+    .sd-card-head {
+        display: grid;
+        gap: 4px;
+    }
+}

@@ -10,7 +10,7 @@
     <h3>@Name</h3>
     <p class="mk-pricing-desc">@Description</p>
 
-    <p class="mk-pricing-price">@CurrentPrice <span>/month</span></p>
+    <p class="mk-pricing-price">@CurrentPrice <span>@PricePeriodLabel</span></p>
 
     <ul>
         @foreach (var item in Features)
@@ -35,4 +35,5 @@
     [Parameter] public bool ExtraCtaTopSpace { get; set; }
 
     private string CurrentPrice => AnnualBilling && !string.IsNullOrWhiteSpace(AnnualPrice) ? AnnualPrice : MonthlyPrice;
+    private string PricePeriodLabel => AnnualBilling ? "/year" : "/month";
 }

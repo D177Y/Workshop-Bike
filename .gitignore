@@ -32,6 +32,17 @@ bld/
 [Oo]ut/
 [Ll]og/
 [Ll]ogs/
+**/[Bb]in/
+**/[Oo]bj/
+
+# Workspace artifacts and local deployment outputs
+_publish/
+_temp_*/
+_tmp_*/
+_tmp_*
+Login
+Workshop/keys/
+external-design/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/

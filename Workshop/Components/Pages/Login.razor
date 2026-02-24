@@ -103,6 +103,7 @@
             Message = error.ToString() switch
             {
                 "notallowed" => "Please verify your email address before signing in.",
+                "locked" => "Too many failed attempts. Your account is temporarily locked. Please try again later.",
                 "invalid" => "Invalid email or password.",
                 _ => ""
             };

@@ -1,0 +1,160 @@
+.sd-shell {
+    display: grid;
+    gap: 16px;
+    max-width: 980px;
+    padding: 10px 0 24px;
+}
+
+.sd-header h3 {
+    margin: 0;
+    font-size: 26px;
+    color: #0f172a;
+}
+
+.sd-header p {
+    margin: 6px 0 0;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.sd-flash {
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: 14px;
+}
+
+.sd-flash.success {
+    border-color: #86efac;
+    background: #f0fdf4;
+    color: #166534;
+}
+
+.sd-flash.error {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #991b1b;
+}
+
+.sd-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 16px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.sd-card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.sd-card-head h4 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 18px;
+}
+
+.sd-muted {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.sd-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.sd-field {
+    display: grid;
+    gap: 6px;
+}
+
+.sd-field label {
+    margin: 0;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.sd-field ::deep .e-control-wrapper,
+.sd-field ::deep .e-input-group,
+.sd-field ::deep .e-ddl {
+    width: 100%;
+}
+
+.sd-actions {
+    margin-top: 14px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.sd-btn {
+    border: none;
+    border-radius: 999px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.sd-btn-primary {
+    background: #0d6efd;
+    color: #ffffff;
+}
+
+.sd-btn-primary:hover {
+    background: #0b5ed7;
+}
+
+.sd-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+}
+
+.sd-summary-tile {
+    border: 1px solid #dbe3ee;
+    border-radius: 12px;
+    padding: 12px;
+    background: #f8fafc;
+    display: grid;
+    gap: 4px;
+}
+
+.sd-summary-tile span {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.sd-summary-tile strong {
+    color: #0f172a;
+    font-size: 18px;
+    line-height: 1.1;
+}
+
+@media (max-width: 700px) {
+    .sd-card-head {
+        display: grid;
+        gap: 4px;
+    }
+
+    .sd-actions {
+        justify-content: stretch;
+    }
+
+    .sd-btn {
+        width: 100%;
+        text-align: center;
+    }
+}

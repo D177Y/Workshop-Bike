@@ -30,8 +30,10 @@ public sealed class WorkshopDbContext : IdentityDbContext<AppUser, AppRole, int>
     public DbSet<TimetasticWebhookEvent> TimetasticWebhookEvents => Set<TimetasticWebhookEvent>();
     public DbSet<CustomerProfile> CustomerProfiles => Set<CustomerProfile>();
     public DbSet<EmailRetryQueueItem> EmailRetryQueueItems => Set<EmailRetryQueueItem>();
+    public DbSet<TrialExitFeedback> TrialExitFeedbackEntries => Set<TrialExitFeedback>();
     public DbSet<GlobalServiceCategory> GlobalServiceCategories => Set<GlobalServiceCategory>();
     public DbSet<GlobalServiceTemplate> GlobalServiceTemplates => Set<GlobalServiceTemplate>();
+    public DbSet<GlobalServicePackageTemplate> GlobalServicePackageTemplates => Set<GlobalServicePackageTemplate>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -49,6 +51,7 @@ public sealed class WorkshopDbContext : IdentityDbContext<AppUser, AppRole, int>
         ConfigureTimetasticWebhookEvents(modelBuilder);
         ConfigureCustomerProfiles(modelBuilder);
         ConfigureEmailRetryQueue(modelBuilder);
+        ConfigureTrialExitFeedback(modelBuilder);
         ConfigureGlobalServiceDefaults(modelBuilder);
         ConfigureUserMechanicAccess(modelBuilder);
         ConfigureUserStoreAccess(modelBuilder);
@@ -79,6 +82,19 @@ public sealed class WorkshopDbContext : IdentityDbContext<AppUser, AppRole, int>
         modelBuilder.Entity<Tenant>()
             .Property(x => x.ContactPhone)
             .HasMaxLength(50);
+
+        modelBuilder.Entity<Tenant>()
+            .HasIndex(x => x.TrialDataPurgedAtUtc);
+
+        modelBuilder.Entity<Tenant>()
+            .Property(x => x.StripeSubscriptionStatus)
+            .HasMaxLength(40);
+
+        modelBuilder.Entity<Tenant>()
+            .HasIndex(x => x.StripeSubscriptionStatus);
+
+        modelBuilder.Entity<Tenant>()
+            .HasIndex(x => x.HasActivatedSubscription);
 
         modelBuilder.Entity<Tenant>()
             .Property(x => x.FinancialYearStartMonth)
@@ -339,6 +355,27 @@ public sealed class WorkshopDbContext : IdentityDbContext<AppUser, AppRole, int>
             .HasMaxLength(40);
     }
 
+    private static void ConfigureTrialExitFeedback(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<TrialExitFeedback>()
+            .HasKey(x => x.Id);
+
+        modelBuilder.Entity<TrialExitFeedback>()
+            .HasIndex(x => new { x.TenantId, x.SubmittedAtUtc });
+
+        modelBuilder.Entity<TrialExitFeedback>()
+            .Property(x => x.Disliked)
+            .HasMaxLength(4000);
+
+        modelBuilder.Entity<TrialExitFeedback>()
+            .Property(x => x.Improvements)
+            .HasMaxLength(4000);
+
+        modelBuilder.Entity<TrialExitFeedback>()
+            .Property(x => x.NoSignupReason)
+            .HasMaxLength(4000);
+    }
+
     private static void ConfigureGlobalServiceDefaults(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<GlobalServiceCategory>()
@@ -384,7 +421,36 @@ public sealed class WorkshopDbContext : IdentityDbContext<AppUser, AppRole, int>
             .HasMaxLength(80);
 
         modelBuilder.Entity<GlobalServiceTemplate>()
+            .Property(x => x.PackageOverrides)
+            .HasConversion(new JsonValueConverter<List<JobServicePackageOverride>>(JsonOptions, () => new List<JobServicePackageOverride>()))
+            .HasColumnType("json");
+
+        modelBuilder.Entity<GlobalServiceTemplate>()
             .HasIndex(x => new { x.Name, x.Category1, x.Category2 });
+
+        modelBuilder.Entity<GlobalServicePackageTemplate>()
+            .HasKey(x => x.Id);
+
+        modelBuilder.Entity<GlobalServicePackageTemplate>()
+            .Property(x => x.Name)
+            .HasMaxLength(200);
+
+        modelBuilder.Entity<GlobalServicePackageTemplate>()
+            .Property(x => x.SkillLevel)
+            .HasMaxLength(80);
+
+        modelBuilder.Entity<GlobalServicePackageTemplate>()
+            .Property(x => x.Description)
+            .HasMaxLength(2000);
+
+        modelBuilder.Entity<GlobalServicePackageTemplate>()
+            .Property(x => x.Items)
+            .HasConversion(new JsonValueConverter<List<GlobalServicePackageItemDefinition>>(JsonOptions, () => new List<GlobalServicePackageItemDefinition>()))
+            .HasColumnType("json");
+
+        modelBuilder.Entity<GlobalServicePackageTemplate>()
+            .HasIndex(x => x.Name)
+            .IsUnique();
     }
 
     private static void ConfigureUserMechanicAccess(ModelBuilder modelBuilder)

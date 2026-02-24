@@ -1707,22 +1707,19 @@ else
     {
         get
         {
-            var filtered = Catalog.Jobs
-                .Where(j => string.IsNullOrWhiteSpace(JobCardServiceFilter) || j.Name.Contains(JobCardServiceFilter, StringComparison.OrdinalIgnoreCase))
-                .GroupBy(j => j.Category)
-                .ToDictionary(g => g.Key, g => g.OrderBy(j => j.Name).ToList(), StringComparer.OrdinalIgnoreCase);
+            var orderedJobs = Catalog
+                .OrderJobsForDisplay(
+                    Catalog.Jobs.Where(j => string.IsNullOrWhiteSpace(JobCardServiceFilter)
+                                            || j.Name.Contains(JobCardServiceFilter, StringComparison.OrdinalIgnoreCase)),
+                    servicePackagesFirst: true)
+                .ToList();
 
-            var ordered = new List<KeyValuePair<string, List<JobDefinition>>>();
-            if (filtered.TryGetValue("Service Packages", out var packages))
-            {
-                ordered.Add(new KeyValuePair<string, List<JobDefinition>>("Service Packages", packages));
-                filtered.Remove("Service Packages");
-            }
-
-            foreach (var group in filtered.OrderBy(g => g.Key))
-                ordered.Add(group);
-
-            return ordered.ToDictionary(k => k.Key, v => v.Value, StringComparer.OrdinalIgnoreCase);
+            return orderedJobs
+                .GroupBy(j => (j.Category ?? "").Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
         }
     }
 
@@ -1734,13 +1731,21 @@ else
                 return new Dictionary<string, List<JobDefinition>>(StringComparer.OrdinalIgnoreCase);
 
             var packageId = SelectedJobCardPackageId;
-            return Catalog.Jobs
-                .Where(j => !Catalog.IsServicePackage(j.Id))
-                .Where(j => Catalog.IsServiceAvailableAsAdditionalService(j.Id, packageId))
-                .Where(j => string.IsNullOrWhiteSpace(JobCardAdditionalServiceFilter) || j.Name.Contains(JobCardAdditionalServiceFilter, StringComparison.OrdinalIgnoreCase))
-                .GroupBy(j => j.Category)
-                .OrderBy(g => g.Key)
-                .ToDictionary(g => g.Key, g => g.OrderBy(j => j.Name).ToList(), StringComparer.OrdinalIgnoreCase);
+            var orderedJobs = Catalog
+                .OrderJobsForDisplay(
+                    Catalog.Jobs
+                        .Where(j => !Catalog.IsServicePackage(j.Id))
+                        .Where(j => Catalog.IsServiceAvailableAsAdditionalService(j.Id, packageId))
+                        .Where(j => string.IsNullOrWhiteSpace(JobCardAdditionalServiceFilter)
+                                    || j.Name.Contains(JobCardAdditionalServiceFilter, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            return orderedJobs
+                .GroupBy(j => (j.Category ?? "").Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
         }
     }
 
