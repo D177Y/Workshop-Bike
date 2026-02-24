@@ -143,6 +143,7 @@
     private bool _showTrialBanner;
     private bool _trialExpired;
     private string _trialBannerMessage = "";
+    private string _lastTrackedRoute = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -172,6 +173,9 @@
         {
             // Ignore disconnects during navigation/teardown.
         }
+
+        if (firstRender)
+            await TrackCurrentRouteAsync();
     }
 
     private async Task RefreshNavigationAsync()
@@ -359,8 +363,35 @@
             _errorBoundary?.Recover();
             await RefreshNavigationSafeAsync();
             EnsureSuperAdminRoute();
+            await TrackCurrentRouteAsync();
             StateHasChanged();
         });
+    }
+
+    private async Task TrackCurrentRouteAsync()
+    {
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var candidate = string.IsNullOrWhiteSpace(relativePath) ? "/" : "/" + relativePath;
+        if (!AppRouteMemory.TryNormalizeForResume(candidate, _isSuperAdmin, out var normalized))
+            return;
+
+        if (string.Equals(_lastTrackedRoute, normalized, StringComparison.Ordinal))
+            return;
+
+        _lastTrackedRoute = normalized;
+
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", AppRouteMemory.LastAppRouteStorageKey, normalized);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore disconnects during navigation/teardown.
+        }
+        catch (JSException)
+        {
+            // Ignore local storage failures.
+        }
     }
 
     private void EnsureSuperAdminRoute()

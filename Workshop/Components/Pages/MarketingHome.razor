@@ -1,6 +1,12 @@
 @page "/"
 @layout MarketingLayout
 @attribute [AllowAnonymous]
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@using Workshop.Services
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
+@inject NavigationManager Nav
 
 <Section>
     <div class="mk-home-hero">
@@ -115,3 +121,34 @@
         <a class="mk-btn mk-btn-primary" href="/signup">Start free trial</a>
     </div>
 </Section>
+
+@code {
+    private bool _redirectAttempted;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _redirectAttempted)
+            return;
+
+        _redirectAttempted = true;
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+            return;
+
+        var isSuperAdmin = authState.User.IsInRole("SuperAdmin");
+        string? storedRoute = null;
+
+        try
+        {
+            storedRoute = await JS.InvokeAsync<string?>("localStorage.getItem", AppRouteMemory.LastAppRouteStorageKey);
+        }
+        catch (JSException)
+        {
+            // Ignore local storage failures.
+        }
+
+        var target = AppRouteMemory.ResolveOpenWorkshopRoute(storedRoute, isSuperAdmin);
+        Nav.NavigateTo(target, forceLoad: true, replace: true);
+    }
+}

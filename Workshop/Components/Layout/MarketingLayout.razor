@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @using Microsoft.JSInterop
 @using Microsoft.AspNetCore.Components.Authorization
+@using Workshop.Services
 @inject IJSRuntime JS
 @inject AuthenticationStateProvider AuthStateProvider
 
@@ -11,7 +12,7 @@
 <div class="mk-shell">
     <header class="mk-nav-wrap">
         <nav class="mk-nav mk-container" aria-label="Main">
-            <a class="mk-brand" href="/">
+            <a class="mk-brand" href="@(_isAuthenticated ? _openWorkshopHref : "/")">
                 <img class="mk-brand-mark-image" src="/favicon.ico" alt="" aria-hidden="true" />
                 <span class="mk-brand-text">VeloLabs</span>
             </a>
@@ -25,8 +26,13 @@
             <div class="mk-nav-actions">
                 @if (_isAuthenticated)
                 {
-                    <a class="mk-nav-signin" href="/logout">Log out</a>
-                    <a class="mk-btn mk-btn-primary" href="/pricing?paid=1">Upgrade now</a>
+                    <details class="mk-account-menu">
+                        <summary class="mk-nav-signin">Account</summary>
+                        <div class="mk-account-dropdown">
+                            <a href="/logout">Log out</a>
+                        </div>
+                    </details>
+                    <a class="mk-btn mk-btn-primary" href="@_openWorkshopHref">Open Workshop</a>
                 }
                 else
                 {
@@ -44,7 +50,7 @@
     <footer class="mk-footer">
         <div class="mk-container mk-footer-grid">
             <div>
-                <a class="mk-brand mk-footer-brand" href="/">
+                <a class="mk-brand mk-footer-brand" href="@(_isAuthenticated ? _openWorkshopHref : "/")">
                     <img class="mk-brand-mark-image" src="/favicon.ico" alt="" aria-hidden="true" />
                     <span class="mk-brand-text">VeloLabs</span>
                 </a>
@@ -74,16 +80,45 @@
 
 @code {
     private bool _isAuthenticated;
+    private bool _isSuperAdmin;
+    private string _openWorkshopHref = AppRouteMemory.DefaultAppRoute;
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         _isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+        _isSuperAdmin = authState.User.IsInRole("SuperAdmin");
+        _openWorkshopHref = AppRouteMemory.ResolveOpenWorkshopRoute(null, _isSuperAdmin);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await JS.InvokeVoidAsync("marketingIcons.refresh");
-        await JS.InvokeVoidAsync("marketingReveals.refresh");
+        if (firstRender && _isAuthenticated)
+        {
+            try
+            {
+                var stored = await JS.InvokeAsync<string?>("localStorage.getItem", AppRouteMemory.LastAppRouteStorageKey);
+                var target = AppRouteMemory.ResolveOpenWorkshopRoute(stored, _isSuperAdmin);
+                if (!string.Equals(_openWorkshopHref, target, StringComparison.Ordinal))
+                {
+                    _openWorkshopHref = target;
+                    StateHasChanged();
+                }
+            }
+            catch (JSException)
+            {
+                // Ignore local storage failures.
+            }
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("marketingIcons.refresh");
+            await JS.InvokeVoidAsync("marketingReveals.refresh");
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore disconnects during navigation/teardown.
+        }
     }
 }

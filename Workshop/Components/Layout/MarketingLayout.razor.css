@@ -72,6 +72,51 @@
     gap: 0.9rem;
 }
 
+.mk-account-menu {
+    position: relative;
+}
+
+.mk-account-menu summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+.mk-account-menu summary::-webkit-details-marker {
+    display: none;
+}
+
+.mk-account-menu[open] .mk-nav-signin {
+    color: var(--mk-text);
+}
+
+.mk-account-dropdown {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    min-width: 140px;
+    border: 1px solid var(--mk-border);
+    border-radius: 0.65rem;
+    background: #fff;
+    box-shadow: 0 12px 30px rgba(7, 22, 65, 0.12);
+    padding: 0.4rem;
+    z-index: 60;
+}
+
+.mk-account-dropdown a {
+    display: block;
+    text-decoration: none;
+    color: var(--mk-muted);
+    font-size: 0.86rem;
+    font-weight: 500;
+    padding: 0.45rem 0.55rem;
+    border-radius: 0.45rem;
+}
+
+.mk-account-dropdown a:hover {
+    color: var(--mk-text);
+    background: var(--mk-bg-soft);
+}
+
 .mk-footer {
     border-top: 1px solid var(--mk-border);
     background: var(--mk-bg-soft);
