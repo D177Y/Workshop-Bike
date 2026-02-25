@@ -320,6 +320,16 @@ app.MapPost("/auth/login", async (
     {
         logger.LogInformation("Login succeeded for user {UserId} from {RemoteIp}.", loginUser.Id, remoteIp);
 
+        try
+        {
+            loginUser.LastLoginUtc = DateTime.UtcNow;
+            await signInManager.UserManager.UpdateAsync(loginUser);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not record LastLoginUtc for user {UserId}.", loginUser.Id);
+        }
+
         if (string.Equals(returnUrl, "/app", StringComparison.OrdinalIgnoreCase)
             && await signInManager.UserManager.IsInRoleAsync(loginUser, "SuperAdmin"))
         {

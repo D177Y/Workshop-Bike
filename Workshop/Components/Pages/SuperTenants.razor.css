@@ -1,7 +1,7 @@
 .sd-shell {
     display: grid;
     gap: 16px;
-    max-width: 1120px;
+    max-width: 1180px;
     padding: 10px 0 24px;
 }
 
@@ -25,24 +25,38 @@
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-.sd-card-head {
+.sd-muted {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.sd-toolbar {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 10px;
     margin-bottom: 12px;
 }
 
-.sd-card-head h4 {
-    margin: 0;
-    color: #0f172a;
-    font-size: 18px;
+.sd-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 600;
 }
 
-.sd-muted {
+.sd-toggle input {
+    margin: 0;
+}
+
+.sd-count {
     color: #64748b;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 700;
+    white-space: nowrap;
 }
 
 .sd-empty {
@@ -55,49 +69,295 @@
     font-size: 13px;
 }
 
-.tenant-grid-wrap {
+.tenant-table {
     border: 1px solid #dbe3ee;
     border-radius: 12px;
-    overflow: hidden;
     background: #ffffff;
+    overflow: hidden;
 }
 
-.tenant-grid-wrap ::deep .tenant-grid.e-grid {
-    border: none;
-}
-
-.tenant-grid-wrap ::deep .tenant-grid .e-gridheader {
-    border-bottom: 1px solid #e2e8f0;
-}
-
-.tenant-grid-wrap ::deep .tenant-grid .e-headercell {
+.tenant-table-head {
+    min-height: 42px;
     background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    display: grid;
+    grid-template-columns: minmax(240px, 1.6fr) minmax(190px, 1.25fr) 90px 130px 130px 140px 56px;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px;
     color: #334155;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.03em;
     text-transform: uppercase;
 }
 
-.tenant-grid-wrap ::deep .tenant-grid .e-rowcell {
+.tenant-head-expand {
+    text-align: right;
+}
+
+.tenant-item {
+    border-top: 1px solid #edf2f7;
+}
+
+.tenant-item:first-of-type {
+    border-top: none;
+}
+
+.tenant-summary {
+    width: 100%;
+    border: none;
+    background: transparent;
+    display: grid;
+    grid-template-columns: minmax(240px, 1.6fr) minmax(190px, 1.25fr) 90px 130px 130px 140px 56px;
+    gap: 10px;
+    align-items: center;
+    text-align: left;
+    padding: 10px 12px;
+    cursor: pointer;
+}
+
+.tenant-summary:hover {
+    background: #f8fafc;
+}
+
+.tenant-col {
+    min-width: 0;
     color: #0f172a;
+    font-size: 13px;
+}
+
+.tenant-name {
+    display: grid;
+    gap: 4px;
+}
+
+.tenant-name strong {
     font-size: 14px;
-    border-color: #edf2f7;
+    color: #0f172a;
+    overflow-wrap: anywhere;
+}
+
+.tenant-name-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tenant-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.tenant-pill.active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.tenant-pill.inactive {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.tenant-pill.neutral {
+    background: #e2e8f0;
+    color: #334155;
+}
+
+.tenant-pill.purged {
+    background: #fef3c7;
+    color: #92400e;
 }
 
 .tenant-tier {
+    display: inline-flex;
     color: #334155;
     font-size: 13px;
     font-weight: 600;
+    overflow-wrap: anywhere;
 }
 
 .tenant-tier.trial {
     color: #166534;
 }
 
-@media (max-width: 700px) {
-    .sd-card-head {
+.tenant-kpi {
+    display: block;
+    color: #0f172a;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.tenant-col small {
+    display: block;
+    margin-top: 2px;
+    color: #64748b;
+    font-size: 11px;
+}
+
+.tenant-expand-col {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.tenant-chevron {
+    width: 18px;
+    height: 18px;
+    stroke: #475569;
+    stroke-width: 2;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 0.18s ease;
+}
+
+.tenant-chevron.expanded {
+    transform: rotate(180deg);
+}
+
+.tenant-details {
+    border-top: 1px solid #edf2f7;
+    background: #f8fafc;
+    padding: 10px 12px 12px;
+}
+
+.tenant-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.tenant-detail-card {
+    border: 1px solid #dbe3ee;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 10px;
+}
+
+.tenant-detail-card h5 {
+    margin: 0 0 8px;
+    color: #0f172a;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.setup-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 6px;
+}
+
+.setup-list li {
+    font-size: 12px;
+    color: #475569;
+}
+
+.setup-list li.done {
+    color: #166534;
+    font-weight: 600;
+}
+
+.setup-list li.todo {
+    color: #64748b;
+}
+
+.tenant-detail-card dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 10px;
+}
+
+.tenant-detail-card dt {
+    color: #64748b;
+    font-size: 12px;
+}
+
+.tenant-detail-card dd {
+    margin: 0;
+    color: #0f172a;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: right;
+}
+
+.tenant-purge-note {
+    margin-bottom: 10px;
+}
+
+.sd-note {
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #334155;
+    padding: 10px;
+    font-size: 12px;
+}
+
+@media (max-width: 1080px) {
+    .tenant-table-head,
+    .tenant-summary {
+        grid-template-columns: minmax(210px, 1.5fr) minmax(170px, 1.15fr) 80px 120px 120px 120px 44px;
+        gap: 8px;
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+}
+
+@media (max-width: 920px) {
+    .tenant-table-head {
+        display: none;
+    }
+
+    .tenant-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        row-gap: 8px;
+        align-items: start;
+    }
+
+    .tenant-expand-col {
+        position: absolute;
+        right: 14px;
+        top: 14px;
+    }
+
+    .tenant-item {
+        position: relative;
+    }
+
+    .tenant-col small {
+        font-size: 10px;
+    }
+
+    .tenant-detail-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .sd-toolbar {
         display: grid;
+        gap: 8px;
+    }
+
+    .tenant-summary {
+        grid-template-columns: 1fr;
+        padding-right: 42px;
+    }
+
+    .tenant-col {
+        min-height: auto;
+    }
+
+    .tenant-name-meta {
         gap: 4px;
     }
 }

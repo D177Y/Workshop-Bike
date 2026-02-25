@@ -1,58 +1,168 @@
 @page "/super/dashboard/tenants"
 @attribute [Authorize(Roles = "SuperAdmin")]
-@using Microsoft.EntityFrameworkCore
-@using Syncfusion.Blazor.Grids
-@using Workshop.Data
-@using Workshop.Models
 @using Workshop.Services
-@inject IDbContextFactory<WorkshopDbContext> DbFactory
+@inject SuperAdminDashboardService DashboardService
 
 <div class="sd-shell">
     <header class="sd-header">
         <h3>Tenants</h3>
-        <p>View all tenant businesses, current tier, and trial progress.</p>
+        <p>Monitor tenant health and usage with compact summaries and on-demand details.</p>
     </header>
 
     <section class="sd-card">
-        <div class="sd-card-head">
-            <h4>Tenant List</h4>
-            <span class="sd-muted">@TenantRows.Count tenants</span>
+        <div class="sd-toolbar">
+            <label class="sd-toggle">
+                <input type="checkbox" @bind="ShowActiveOnly" />
+                <span>Active tenants only</span>
+            </label>
+            <span class="sd-count">@VisibleTenantRows.Count of @TenantRows.Count tenants</span>
         </div>
 
-        @if (TenantRows.Count == 0)
+        @if (VisibleTenantRows.Count == 0)
         {
-            <div class="sd-empty">No tenants found.</div>
+            <div class="sd-empty">No tenants match the current filter.</div>
         }
         else
         {
-            <div class="tenant-grid-wrap">
-                <SfGrid DataSource="@TenantRows"
-                        AllowSorting="true"
-                        Width="100%"
-                        CssClass="tenant-grid">
-                    <GridColumns>
-                        <GridColumn Field="@nameof(TenantRow.BusinessName)" HeaderText="Business Name" Width="300"></GridColumn>
-                        <GridColumn HeaderText="Tier" Width="300">
-                            <Template>
-                                @{
-                                    var row = (TenantRow)context;
-                                }
+            <div class="tenant-table">
+                <div class="tenant-table-head">
+                    <span>Tenant</span>
+                    <span>Tier</span>
+                    <span>Setup</span>
+                    <span>Activity</span>
+                    <span>Bookings</span>
+                    <span>Users</span>
+                    <span class="tenant-head-expand">Details</span>
+                </div>
+
+                @foreach (var row in VisibleTenantRows)
+                {
+                    <article class="tenant-item @(row.IsActive ? "is-active" : "is-inactive")">
+                        <button type="button"
+                                class="tenant-summary"
+                                @onclick="() => ToggleExpanded(row.TenantId)"
+                                aria-expanded="@IsExpanded(row.TenantId)">
+                            <div class="tenant-col tenant-name">
+                                <strong>@row.BusinessName</strong>
+                                <div class="tenant-name-meta">
+                                    <span class="tenant-pill @(row.IsActive ? "active" : "inactive")">@((row.IsActive) ? "Active" : "Inactive")</span>
+                                    <span class="tenant-pill neutral">@row.DaysSinceStart d since start</span>
+                                    @if (row.DataPurged)
+                                    {
+                                        <span class="tenant-pill purged">Data purged</span>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="tenant-col">
                                 <span class="tenant-tier @(row.IsTrial ? "trial" : "")">@row.TierDisplay</span>
-                            </Template>
-                        </GridColumn>
-                        <GridColumn Field="@nameof(TenantRow.DaysSinceStart)"
-                                    HeaderText="Days Since Start"
-                                    Width="170"
-                                    TextAlign="TextAlign.Right"></GridColumn>
-                    </GridColumns>
-                </SfGrid>
+                            </div>
+
+                            <div class="tenant-col">
+                                <span class="tenant-kpi">@row.SetupCompletedSteps/@row.SetupTotalSteps</span>
+                            </div>
+
+                            <div class="tenant-col">
+                                <span class="tenant-kpi">@FormatActivityHeadline(row)</span>
+                                <small>@FormatLastLogin(row)</small>
+                            </div>
+
+                            <div class="tenant-col">
+                                @if (row.DataPurged)
+                                {
+                                    <span class="tenant-kpi">Purged</span>
+                                    <small>Usage unavailable</small>
+                                }
+                                else
+                                {
+                                    <span class="tenant-kpi">@row.BookingsTotal total</span>
+                                    <small>@row.BookingsLast30Days in 30d</small>
+                                }
+                            </div>
+
+                            <div class="tenant-col">
+                                <span class="tenant-kpi">@row.VerifiedUsers/@row.TotalUsers verified</span>
+                                <small>@row.ActiveUsers active users</small>
+                            </div>
+
+                            <div class="tenant-col tenant-expand-col">
+                                <svg class="tenant-chevron @(IsExpanded(row.TenantId) ? "expanded" : "")"
+                                     viewBox="0 0 24 24"
+                                     aria-hidden="true"
+                                     focusable="false">
+                                    <path d="m6 9 6 6 6-6"></path>
+                                </svg>
+                            </div>
+                        </button>
+
+                        @if (IsExpanded(row.TenantId))
+                        {
+                            <div class="tenant-details">
+                                @if (row.DataPurged)
+                                {
+                                    <div class="sd-note tenant-purge-note">
+                                        Operational data was purged on @FormatDate(row.DataPurgedAtUtc). Setup and booking metrics may be unavailable.
+                                    </div>
+                                }
+
+                                <div class="tenant-detail-grid">
+                                    <section class="tenant-detail-card">
+                                        <h5>Setup Guide</h5>
+                                        <ul class="setup-list">
+                                            <li class="@(row.HasStore ? "done" : "todo")">Store configured</li>
+                                            <li class="@(row.HasMechanic ? "done" : "todo")">Mechanic added</li>
+                                            <li class="@(row.HasService ? "done" : "todo")">Service catalog added</li>
+                                            <li class="@(row.ProfileComplete ? "done" : "todo")">Business profile complete</li>
+                                        </ul>
+                                    </section>
+
+                                    <section class="tenant-detail-card">
+                                        <h5>Usage Snapshot</h5>
+                                        <dl>
+                                            <dt>Last login</dt>
+                                            <dd>@FormatLastLogin(row)</dd>
+                                            <dt>Days since activity</dt>
+                                            <dd>@FormatDaysSinceLastActivity(row)</dd>
+                                            <dt>Bookings total</dt>
+                                            <dd>@FormatBookingCount(row.BookingsTotal, row.DataPurged)</dd>
+                                            <dt>Bookings (30 days)</dt>
+                                            <dd>@FormatBookingCount(row.BookingsLast30Days, row.DataPurged)</dd>
+                                            <dt>Email verification</dt>
+                                            <dd>@row.VerifiedUsers/@row.TotalUsers users verified</dd>
+                                        </dl>
+                                    </section>
+                                </div>
+                            </div>
+                        }
+                    </article>
+                }
             </div>
         }
     </section>
 </div>
 
 @code {
-    private List<TenantRow> TenantRows = new();
+    private List<SuperAdminTenantInsightRow> TenantRows = new();
+    private readonly HashSet<int> _expandedTenantIds = [];
+    private bool _showActiveOnly = true;
+
+    private bool ShowActiveOnly
+    {
+        get => _showActiveOnly;
+        set
+        {
+            if (_showActiveOnly == value)
+                return;
+
+            _showActiveOnly = value;
+            PruneExpandedRows();
+        }
+    }
+
+    private IReadOnlyList<SuperAdminTenantInsightRow> VisibleTenantRows =>
+        ShowActiveOnly
+            ? TenantRows.Where(x => x.IsActive).ToList()
+            : TenantRows;
 
     protected override async Task OnInitializedAsync()
     {
@@ -61,57 +171,44 @@
 
     private async Task LoadAsync()
     {
-        var nowUtc = DateTime.UtcNow;
-
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var tenants = await db.Tenants
-            .AsNoTracking()
-            .OrderBy(t => t.Name)
-            .ToListAsync();
-
-        TenantRows = tenants
-            .Select(tenant => BuildTenantRow(tenant, nowUtc))
-            .ToList();
+        TenantRows = await DashboardService.GetTenantInsightsAsync();
+        PruneExpandedRows();
     }
 
-    private static TenantRow BuildTenantRow(Tenant tenant, DateTime nowUtc)
+    private void ToggleExpanded(int tenantId)
     {
-        var createdAtUtc = DateTime.SpecifyKind(tenant.CreatedAtUtc, DateTimeKind.Utc);
-        var daysSinceStart = Math.Max(0, (int)(nowUtc.Date - createdAtUtc.Date).TotalDays);
-        var lifecycle = TrialLifecycleService.Evaluate(tenant, nowUtc);
-        var daysLeft = lifecycle.DaysUntilTrialEnd;
-        var isTrial = lifecycle.Phase == TrialLifecyclePhase.ActiveTrial;
-
-        var tierDisplay = isTrial
-            ? $"Free Trial ({daysLeft} {(daysLeft == 1 ? "day" : "days")} left)"
-            : FormatPlanTier(tenant.Plan);
-
-        return new TenantRow(
-            BusinessName: NormalizeBusinessName(tenant),
-            TierDisplay: tierDisplay,
-            DaysSinceStart: daysSinceStart,
-            IsTrial: isTrial);
+        if (!_expandedTenantIds.Add(tenantId))
+            _expandedTenantIds.Remove(tenantId);
     }
 
-    private static string NormalizeBusinessName(Tenant tenant)
+    private bool IsExpanded(int tenantId) => _expandedTenantIds.Contains(tenantId);
+
+    private void PruneExpandedRows()
     {
-        var value = (tenant.Name ?? "").Trim();
-        return string.IsNullOrWhiteSpace(value) ? $"Tenant {tenant.Id}" : value;
+        var visibleIds = VisibleTenantRows.Select(x => x.TenantId).ToHashSet();
+        _expandedTenantIds.RemoveWhere(id => !visibleIds.Contains(id));
     }
 
-    private static string FormatPlanTier(PlanTier plan)
-        => plan switch
-        {
-            PlanTier.Starter => "Starter",
-            PlanTier.Standard => "Standard",
-            PlanTier.Premium => "Premium",
-            PlanTier.Enterprise => "Enterprise",
-            _ => "Standard"
-        };
+    private static string FormatDate(DateTime? valueUtc)
+        => valueUtc.HasValue
+            ? valueUtc.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm")
+            : "N/A";
 
-    private sealed record TenantRow(
-        string BusinessName,
-        string TierDisplay,
-        int DaysSinceStart,
-        bool IsTrial);
+    private static string FormatLastLogin(SuperAdminTenantInsightRow row)
+        => row.LastLoginUtc.HasValue
+            ? row.LastLoginUtc.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm")
+            : "No sign-in yet";
+
+    private static string FormatDaysSinceLastActivity(SuperAdminTenantInsightRow row)
+        => row.DaysSinceLastActivity.HasValue
+            ? $"{row.DaysSinceLastActivity.Value} days"
+            : "No sign-in yet";
+
+    private static string FormatActivityHeadline(SuperAdminTenantInsightRow row)
+        => row.DaysSinceLastActivity.HasValue
+            ? $"{row.DaysSinceLastActivity.Value}d ago"
+            : "No sign-in";
+
+    private static string FormatBookingCount(int value, bool dataPurged)
+        => dataPurged ? "Unavailable (purged)" : value.ToString();
 }
