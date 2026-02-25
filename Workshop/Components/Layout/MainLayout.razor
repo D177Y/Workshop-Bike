@@ -311,7 +311,7 @@
         _navItems.Add(new NavItem { NodeId = "settings-integrations", NodeText = "Integrations", NavigateUrl = "/settings/integrations", Pid = "settings" });
 
         _navItems.Add(new NavItem { NodeId = "profile", NodeText = "Profile", NavigateUrl = "/profile" });
-        _navItems.Add(new NavItem { NodeId = "logout", NodeText = "Log out", NavigateUrl = "/logout" });
+        _navItems.Add(new NavItem { NodeId = "logout", NodeText = "Log out" });
     }
 
     private void BuildSuperAdminNavItems()
@@ -325,7 +325,7 @@
         _navItems.Add(new NavItem { NodeId = "super-default-categories", NodeText = "Default Categories", NavigateUrl = "/super/settings/default-categories", Pid = "super-settings" });
         _navItems.Add(new NavItem { NodeId = "super-default-service-packages", NodeText = "Default Service Packages", NavigateUrl = "/super/settings/default-service-packages", Pid = "super-settings" });
         _navItems.Add(new NavItem { NodeId = "super-default-services", NodeText = "Default Services", NavigateUrl = "/super/settings/default-services", Pid = "super-settings" });
-        _navItems.Add(new NavItem { NodeId = "logout", NodeText = "Log out", NavigateUrl = "/logout" });
+        _navItems.Add(new NavItem { NodeId = "logout", NodeText = "Log out" });
     }
 
     private void SyncSelectionWithRoute()
@@ -468,6 +468,12 @@
 
         if (item.HasChild)
             return Task.CompletedTask;
+
+        if (string.Equals(item.NodeId, "logout", StringComparison.Ordinal))
+        {
+            Nav.NavigateTo("/logout", forceLoad: true);
+            return Task.CompletedTask;
+        }
 
         if (string.IsNullOrWhiteSpace(item.NavigateUrl))
             return Task.CompletedTask;

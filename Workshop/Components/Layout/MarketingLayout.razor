@@ -4,6 +4,7 @@
 @using Workshop.Services
 @inject IJSRuntime JS
 @inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
 
 <HeadContent>
     <link href="_content/Syncfusion.Blazor/styles/fluent2.css" rel="stylesheet" />
@@ -29,7 +30,7 @@
                     <details class="mk-account-menu">
                         <summary class="mk-nav-signin">Account</summary>
                         <div class="mk-account-dropdown">
-                            <a href="/logout">Log out</a>
+                            <a href="/logout" @onclick="OnLogoutClick" @onclick:preventDefault="true">Log out</a>
                         </div>
                     </details>
                     <a class="mk-btn mk-btn-primary" href="@_openWorkshopHref">Open Workshop</a>
@@ -121,4 +122,7 @@
             // Ignore disconnects during navigation/teardown.
         }
     }
+
+    private void OnLogoutClick()
+        => Nav.NavigateTo("/logout", forceLoad: true);
 }
