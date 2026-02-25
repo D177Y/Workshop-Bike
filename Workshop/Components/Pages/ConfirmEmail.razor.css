@@ -37,6 +37,19 @@
     color: var(--mk-muted) !important;
 }
 
+.mk-confirm-status {
+    font-size: 0.9rem !important;
+    margin-top: 0.25rem;
+}
+
+.mk-confirm-status-ok {
+    color: #14532d !important;
+}
+
+.mk-confirm-status-error {
+    color: #b91c1c !important;
+}
+
 @media (max-width: 980px) {
     .mk-confirm-card {
         width: 100%;

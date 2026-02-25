@@ -3,8 +3,13 @@
 @attribute [AllowAnonymous]
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.Extensions.Logging
 @using Workshop.Models
+@using Workshop.Services
 @inject UserManager<AppUser> UserManager
+@inject IEmailSender EmailSender
+@inject NavigationManager Nav
+@inject ILogger<ConfirmEmail> Logger
 
 <Section>
     <div class="mk-center-head mk-confirm-head">
@@ -16,8 +21,28 @@
     <div class="mk-confirm-grid">
         <article class="mk-card mk-confirm-card">
             <p>@Message</p>
-            <a class="mk-btn mk-btn-primary mk-confirm-login" href="/login">Login</a>
-            <p class="mk-confirm-help">If you cannot sign in yet, please request another verification email.</p>
+            @if (_canResend)
+            {
+                <button type="button"
+                        class="mk-btn mk-btn-primary mk-confirm-login"
+                        @onclick="ResendVerificationEmailAsync"
+                        disabled="@_isResending">
+                    @(_isResending ? "Sending..." : "Resend verification email")
+                </button>
+            }
+            else
+            {
+                <a class="mk-btn mk-btn-primary mk-confirm-login" href="/login">Login</a>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_resendStatus))
+            {
+                <p class="mk-confirm-status @(_resendStatusIsError ? "mk-confirm-status-error" : "mk-confirm-status-ok")">@_resendStatus</p>
+            }
+
+            <p class="mk-confirm-help">
+                If you cannot sign in yet, please request another verification email.
+            </p>
         </article>
     </div>
 </Section>
@@ -30,9 +55,17 @@
     public string? Code { get; set; }
 
     private string Message = "Confirming your email...";
+    private bool _canResend;
+    private bool _isResending;
+    private string _resendStatus = "";
+    private bool _resendStatusIsError;
 
     protected override async Task OnParametersSetAsync()
     {
+        _canResend = false;
+        _resendStatus = "";
+        _resendStatusIsError = false;
+
         if (UserId <= 0 || string.IsNullOrWhiteSpace(Code))
         {
             Message = "Invalid confirmation link.";
@@ -48,6 +81,65 @@
 
         var decoded = System.Text.Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(Code));
         var result = await UserManager.ConfirmEmailAsync(user, decoded);
-        Message = result.Succeeded ? "Email confirmed. You can now log in." : "This confirmation link is no longer valid.";
+        if (result.Succeeded)
+        {
+            Message = "Email confirmed. You can now log in.";
+            return;
+        }
+
+        Message = "This confirmation link is no longer valid.";
+        _canResend = true;
+    }
+
+    private async Task ResendVerificationEmailAsync()
+    {
+        if (_isResending)
+            return;
+
+        _isResending = true;
+        _resendStatus = "";
+        _resendStatusIsError = false;
+
+        try
+        {
+            if (UserId <= 0)
+            {
+                _resendStatus = "We could not resend verification for this link. Please log in and try again.";
+                _resendStatusIsError = true;
+                return;
+            }
+
+            var user = await UserManager.FindByIdAsync(UserId.ToString());
+            if (user is null || string.IsNullOrWhiteSpace(user.Email) || user.EmailConfirmed)
+            {
+                _resendStatus = "If your account is pending verification, a new verification email has been sent.";
+                return;
+            }
+
+            var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+            var encoded = WebEncoders.Base64UrlEncode(System.Text.Encoding.UTF8.GetBytes(code));
+            var callbackUrl = Nav.ToAbsoluteUri($"/confirm-email?userId={user.Id}&code={encoded}");
+
+            var html = $"""
+                <h2>Confirm your VeloLabs account</h2>
+                <p>You requested a new verification email. Click below to verify your email.</p>
+                <p><a href="{callbackUrl}">Confirm email</a></p>
+                <p>If you did not request this, you can ignore this email.</p>
+                """;
+            var text = $"Confirm your VeloLabs account: {callbackUrl}";
+
+            await EmailSender.SendAsync(user.Email, "Confirm your VeloLabs account", html, text);
+            _resendStatus = "If your account is pending verification, a new verification email has been sent.";
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            Logger.LogError(ex, "Failed to resend verification email for user {UserId}.", UserId);
+            _resendStatus = "We could not send a new verification email right now. Please try again in a few minutes.";
+            _resendStatusIsError = true;
+        }
+        finally
+        {
+            _isResending = false;
+        }
     }
 }
